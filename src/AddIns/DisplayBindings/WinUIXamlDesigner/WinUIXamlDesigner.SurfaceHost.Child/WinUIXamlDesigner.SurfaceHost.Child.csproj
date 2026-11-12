@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The DDP child process for the Surface backend. It is NOT a WinUI process: it speaks the shared
+       designer RPC to the IDE (DesignerChildHost) and talks to one upstream Surface.exe per document
+       through WinUIXamlDesigner.SurfaceHost. That is why it needs no Windows App SDK or Visual Studio
+       MSBuild and can be built with plain `dotnet build`, unlike WinUIXamlDesigner.MicrosoftHost.
+       Launch arguments: port and token (as every DDP child), plus surface-exe (required) and
+       surface-args (optional), each written with two leading hyphens. See Program.cs. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>WinUIXamlDesigner.SurfaceHost.Child</AssemblyName>
+    <RootNamespace>ICSharpCode.WinUIXamlDesigner.SurfaceHost.Child</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="StreamJsonRpc" />
+    <!-- Content only (no assemblies): the Surface renderer, its provisioner and sources, published by the
+         lextudio/WinAppVSCE fork. Referenced for its folder, which the target below copies next to the child. -->
+    <PackageReference Include="LeXtudio.WinUISurface" GeneratePathProperty="true" ExcludeAssets="all" />
+    <ProjectReference Include="..\WinUIXamlDesigner.SurfaceHost\WinUIXamlDesigner.SurfaceHost.csproj" />
+    <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
+  </ItemGroup>
+  <!-- SurfacePayload/HostSDK (provisioner inputs) and SurfacePayload/Surface/win-x64|win-arm64 (bundled surface). -->
+  <Target Name="CopySurfacePayload" AfterTargets="Build" Condition="'$(PkgLeXtudio_WinUISurface)' != ''">
+    <ItemGroup>
+      <SurfaceHostSdkFile Include="$(PkgLeXtudio_WinUISurface)\HostSDK\**\*" />
+      <SurfaceBundledFile Include="$(PkgLeXtudio_WinUISurface)\Surface\**\*" />
+    </ItemGroup>
+    <!-- RecursiveDir is relative to each glob's own root, so each tree is copied under its own folder name. -->
+    <Copy SourceFiles="@(SurfaceHostSdkFile)"
+          DestinationFiles="@(SurfaceHostSdkFile->'$(OutDir)SurfacePayload\HostSDK\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(SurfaceBundledFile)"
+          DestinationFiles="@(SurfaceBundledFile->'$(OutDir)SurfacePayload\Surface\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+  <!-- Keep the child and its payload next to the add-in, like the Uno and Microsoft children: the parent probes this
+       deployed location (SurfaceDesignRuntimeHostBootstrap), never a developer-only build output. Declared after
+       CopySurfacePayload so the payload is already in the output when this runs. -->
+  <Target Name="DeployToAddIns" AfterTargets="Build" Condition="'$(TargetDir)' != ''">
+    <ItemGroup>
+      <ChildOutput Include="$(TargetDir)**" />
+    </ItemGroup>
+    <!-- Normalized: the unnormalized .. segments overflow MAX_PATH on a deep CI checkout (the Copy task checks the string it is given). -->
+    <PropertyGroup>
+      <_SurfaceDeployRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..\..\..\AddIns\DisplayBindings\WinUIXamlDesigner\SurfaceHost'))</_SurfaceDeployRoot>
+    </PropertyGroup>
+    <Copy SourceFiles="@(ChildOutput)" SkipUnchangedFiles="true"
+          DestinationFiles="@(ChildOutput->'$(_SurfaceDeployRoot)\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+</Project>

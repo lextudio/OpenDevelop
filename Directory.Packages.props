@@ -36,6 +36,10 @@
          Xceed.Wpf.Toolkit). Published by the fork's own workflow to GitHub Packages; it replaced the
          externals/wpftoolkit submodule. -->
     <PackageVersion Include="LeXtudio.Wpf.Toolkit" Version="3.7.2" />
+    <!-- The WinUI Surface renderer and SurfaceProvisioner (microsoft/WinAppVSCE previewer PR 323), trimmed and packed by
+         the lextudio/WinAppVSCE fork's release-surface workflow: HostSDK/ plus the bundled surface per architecture.
+         Content only; consumed by WinUIXamlDesigner.SurfaceHost.Child. See doc/technotes/winui-designer-landscape.md. -->
+    <PackageVersion Include="LeXtudio.WinUISurface" Version="0.1.0" />
     <!-- ILSpy's decompiler and its non-UI service layer, taken from the published packages instead
          of from the externals/ilspy submodule. The two OpenDevelop patches that used to force a
          source build now live on this side of the boundary: see Dom/ITreeNodeModelOwner.cs

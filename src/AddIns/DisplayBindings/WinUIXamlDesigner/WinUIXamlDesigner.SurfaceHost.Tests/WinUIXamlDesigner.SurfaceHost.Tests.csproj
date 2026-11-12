@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests the Surface client against an in-process fake surface (no Windows App SDK needed), plus one
+       test that drives the real Surface.exe when OD_SURFACE_EXE names it (see SurfaceRealProcessTests). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>ICSharpCode.WinUIXamlDesigner.SurfaceHost.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="StreamJsonRpc" />
+    <ProjectReference Include="..\WinUIXamlDesigner.SurfaceHost\WinUIXamlDesigner.SurfaceHost.csproj" />
+    <!-- The IDE-side client (UnoDesignClient, built standalone without any IDE assembly): IdeClientTests drives it
+         against the real child to cover the extra-arguments path the Surface runtime host uses. -->
+    <ProjectReference Include="..\WinUIXamlDesigner.MicrosoftHost.Remote\WinUIXamlDesigner.MicrosoftHost.Remote.csproj" />
+    <!-- Built, not referenced: SurfaceChildProcessTests launches the child's own output as a separate process. -->
+    <ProjectReference Include="..\WinUIXamlDesigner.SurfaceHost.Child\WinUIXamlDesigner.SurfaceHost.Child.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

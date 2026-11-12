@@ -954,7 +954,9 @@ experiment:
 - return a structured result (`built|cached|degraded|failed`) and never silently substitute a host.
 
 Acceptance evidence: a Gallery page using `{x:Bind}` renders its real values (not placeholders), and
-two different WASDK versions in one solution open concurrently without cross-contamination.
+two different WASDK versions in one solution open concurrently without cross-contamination. (Measured: the first half is
+not reachable with the upstream surface, which never runs generated binding code; see the `{x:Bind}` table in section 7.8.
+It needs our own compiled-page route. The second half still applies to either.)
 
 ### 7.2 Do not replace the snapshot canvas with native embedding
 
@@ -1041,8 +1043,9 @@ repository's two-SDK-roles rule.
 
 Gains, all in the Microsoft WinUI backend on Windows:
 
-1. `{x:Bind}`, generated metadata and PRI are authentic instead of stripped or approximated; custom
-   controls stop being placeholders.
+1. Generated metadata and PRI are authentic instead of stripped or approximated, and custom controls stop being
+   placeholders. **`{x:Bind}` is not in this list:** the surface never runs the project's generated binding code, so it stays a
+   placeholder or is dropped (measured in the spike results above).
 2. Removes two known defects: the `.xbf` mirror collision between concurrently opened WinUI
    projects, and the reflection-on-template-parts native crash that forced the 3-failure circuit
    breaker.
@@ -1063,6 +1066,184 @@ by our own provisioner without touching the document model or the Uno path.
 **Feasibility spike (about one day), before forking:** build the PR head, launch `Surface.exe`
 without VS from a Windows machine, send one `LoadXaml` from DevFlow, and confirm a frame comes back.
 If that fails, build §7.1 ourselves.
+
+**Spike result (2026-11-12, Windows 11 x64 VM, PR head `6e4b388`): passed.** Measured, not inferred:
+
+| Check | Result |
+|---|---|
+| `dotnet build surface/Surface/Surface.csproj -p:Platform=x64 -p:RuntimeIdentifier=win-x64` | 0 errors, ~78 s including restore |
+| `Surface.exe` launched with no VS/VS Code, only `SURFACE_AUTH_TOKEN` | port announced in 2.2-2.7 s; `Hello` -> `Ready` (protocol 1, caps `frame-stream,native-hwnd`) |
+| `LoadXaml` (bundled WASDK 2.2.0 host) | PNG `Frame` in ~1.3 s; real Button/ToggleSwitch/Slider with correct theming |
+| `SurfaceProvisioner --build` on `tests/fixtures/WinUIDesignerFixture/Microsoft/WinUISample.csproj` (WASDK 2.4.0) | `status: built`, `matchedHost: true`, managed and native hashes matched, WinUI component 2.3.6; cold 212 s (surface build 40 s, PRI build 46 s) |
+| Same request again | `status: cached`, `cacheHit: true`, 2.5 s; cache entry 0.16 GB |
+| `LoadXaml` of the fixture's `MainPage.xaml` (has `x:Class`) on the matched host | `Ready.wasdk` = 2.4.0; `Frame` in 0.7 s with the page's own background and button |
+
+Things the run showed that the PR documents do not say:
+
+- **The provisioner discovers the WASDK version from the project, so it needs a `PackageReference`.**
+  `tests/fixtures/WinUIDesignerFixture/MicrosoftHost/MicrosoftWinUISample.csproj` deliberately has none (so it restores
+  with no feed) and fails with `Could not discover a WindowsAppSDK version` (`versionSource: 3`). Use `Microsoft/WinUISample.csproj`.
+- **The provisioner targets net8 and fails to start on a machine with only .NET 10+ (exit 150).** `DOTNET_ROLL_FORWARD=Major`
+  worked for the spike; a fork should retarget it or ship the runtime.
+- **Launching a matched host is two steps:** copy the cache entry's `host` folder to a per-process run directory, then start
+  `Surface.exe --user-pri <run>\Surface.designtime.pri` (`SurfaceClient.cs:186-206`). The cache entry itself is pristine and
+  must not be launched against. The run copy took ~1.4 s here (`--prepare-run` does this for callers that use the CLI).
+- **Path length is a hard failure.** Started from a deep scratch path, `Surface.exe` died with `DllNotFoundException:
+  Microsoft.WindowsAppRuntime.Bootstrap.dll ... filename too long (0x800700CE)`. Everything worked from `C:\wxp\...`.
+  The adapter must place the cache, staging root and run directories under a short root.
+- **No pre-existing .NET 10 pin.** The PR repository has no `global.json`, so it built with the newest SDK installed (11.0 RC).
+
+Answered from source and from the run:
+
+- **Sparse-package identity (their Y1) does not apply to a `surface/`-only consumer.** The registration code is in the VSIX
+  project (`vs-extension/WinUIXamlPreview/Protocol/SurfaceIdentity.cs`, `SurfaceIdentity/Register-Experimental.ps1`); nothing
+  under `surface/Surface` or `surface/SurfaceProvisioner` registers a package, and the spike ran unpackaged with no identity.
+  Our adapter registers nothing unless it chooses to.
+- **SDK selection:** `HostBuilder.cs:86` runs a bare `dotnet` from PATH. The repository's two-SDK-roles rule therefore has to
+  be enforced by our adapter (set `PATH`/`DOTNET_ROOT` for the provisioner child to the SDK chosen in Tools > Options > .NET SDK),
+  not assumed.
+
+Fork preparation was rehearsed locally (nothing pushed): a branch with only `surface/`, a `global.json` pinning .NET 10, and
+`SurfaceProvisioner`/its tests retargeted `net8.0` -> `net10.0` builds and runs natively with no roll-forward, and reuses the
+existing cache entry. `surface/protocol/Compatibility.csproj` links sources from the removed `vs-extension` and needs its own
+fix in the fork.
+
+The first piece of the §7.7 adapter exists as `src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.SurfaceHost`
+(framework-neutral; the DDP `IWinUIXamlRuntimeHost` on top of it is not written). It holds the wire connection (handshake,
+`frame-stream` capability check, one request in flight, and any timeout or cancellation faults the connection so a late frame
+cannot answer the next request - the R1 gap handled client-side), the provisioner result parser (`degraded`, unknown or
+inconsistent statuses are never "matched") and the launch rules (port line, short-root guard, per-process run copy,
+`--user-pri`). On top of those, `SurfaceDesignDocument` expresses one surface as the shared DDP shapes: `session/open|update`
+become a `DesignerSessionState` with the PNG frame (`Dpi` = pixels / DIPs), a stale `Version` is refused without touching the
+surface, a render error is a rejected state with a positioned diagnostic while the last good frame stays, and edit RPCs are
+refused as ordinary results (the surface has no document model, so the parent's source model stays the authority).
+`Tree` is null: the surface reports no element tree, so the child sends none. (The Document Outline still works in the IDE:
+it is built from the parent's own source model; see the live run below. What is missing is live element bounds, so selection
+overlays and drag/resize need a surface that reports geometry.) Its tests (`WinUIXamlDesigner.SurfaceHost.Tests`) use an in-process fake surface
+(39 pass) and one test that drives the real `Surface.exe` when `OD_SURFACE_EXE`/`OD_SURFACE_ARGS` are set; it passed against
+the matched 2.4.0 host.
+
+The child executable now exists: `WinUIXamlDesigner.SurfaceHost.Child` (plain `dotnet build`, no WinUI or VS MSBuild). It
+runs through the shared `DesignerChildHost` (`--port`/`--token`), takes `--surface-exe` and optional `--surface-args`, answers
+the same 19-method DDP map as the other WinUI children, launches one `Surface.exe` per document (`SurfaceProcessHost`, kill
+on dispose) and kills them on shutdown or parent loss. Edits, `design/theme` and `design/go-to-state` are refused as ordinary
+results; `design/hit-test` never hits; `app/resources` reports success (the matched host merges the project's resources
+itself). `SurfaceChildProcessTests` plays the IDE side over real JSON-RPC: token and protocol checks, handshake, a failed
+launch that leaves the child alive, clean exit 0 on `shutdown`, and, with a real surface, open, update, refused edit, PNG
+export, a positioned error and close. 43 of 43 passed three runs in a row against the matched 2.4.0 host. A graceful
+`shutdown` used to race its own reply (the child could exit first); the child now releases `Main` 200 ms after replying.
+
+**The package and the IDE wiring (2026-11-12).** The fork is `lextudio/WinAppVSCE`, branch `opendevelop` (the precedent fork's
+branch name): `surface/` only, `global.json` pinning .NET 10, the provisioner on `net10.0`, `surface/Package` and
+`.github/workflows/release-surface.yml`, which builds both architectures with `Build-Payload.ps1`, smoke-tests the x64 surface
+(`surface/Smoke-Surface.ps1`: Hello/Ready and one PNG frame, no IDE), packs and, on a manual dispatch with `publish`, replaces
+and pushes the package to GitHub Packages. **`LeXtudio.WinUISurface` 0.1.0 is published** (32 MB: `HostSDK/` plus the bundled
+surface for `win-x64` and `win-arm64`). Unpacked on its own, its provisioner built a matched 2.4.0 host for
+`tests/fixtures/WinUIDesignerFixture/Microsoft`. Things the runs taught:
+
+- The surface needs the **Windows App Runtime installed** (Main, Singleton and DDLM packages, not only the framework package);
+  without it it exits `0x80670016`. Hosted runners lack it, and the upstream CI installs it with
+  `windowsappruntimeinstall-x64.exe --quiet --force`; so does the workflow, and the fork README lists it as a prerequisite.
+  Any machine that opens a Surface-backed designer needs it too.
+- A package of subfolders must not put `%(RecursiveDir)` in `PackagePath` (NuGet appends the folder a second time).
+- `dotnet nuget push "dir/*.nupkg"` is not glob-expanded on Windows; GitHub Packages 404s a package that does not exist yet.
+
+OpenDevelop pins `LeXtudio.WinUISurface` in `Directory.Packages.props`, maps it under both feeds in `NuGet.config` and in
+`sync-openavalon-feed.ps1`'s fork list (so a local build needs no token), and `WinUIXamlDesigner.SurfaceHost.Child` references it
+(`ExcludeAssets=all`, `GeneratePathProperty`) and copies it into `SurfacePayload/` beside the child, which `DeployToAddIns`
+puts in the add-in's `SurfaceHost/` folder; the add-in project references the child so it builds with the add-in.
+
+**`OD_WINUI_RUNTIME=surface`** is wired and opt-in (nothing changes for the other values or when unset):
+
+- `RegisterDevFlowActionsCommand` registers `SurfaceDesignRuntimeHostBootstrap` last when the variable is `surface`; the
+  Microsoft and Uno factories stay registered behind it. The bootstrap declines non-Windows-App-SDK projects and any machine
+  where `SurfaceHost/` is not deployed.
+- `UnoDesignClient.AcquireSharedAsync` gained an optional `extraArguments` (appended to the child command line and part of
+  `CompatibilityKey`, so documents needing different arguments never share a child); `UnoDesignRuntimeHost` gained an optional
+  `childLaunchProvider`. When it is set the child is launched on its own runtime (never inside the designed app's runtimeconfig
+  and deps, which would pin it to the app's framework and a graph without the child's assemblies) and its status text carries
+  the provider's reason when it cannot start.
+- The provider (`SurfaceDesignRuntimeHostBootstrap.PrepareAsync`) finds the project, picks a short root (`OD_SURFACE_ROOT`, else
+  `%LOCALAPPDATA%\OpenDevelop\surf`; a root over 120 characters is refused with the reason), runs the provisioner with the SDK
+  from `DotNetSdkService` on its PATH, logs to the "WinUI Designer" output channel, and accepts only a verified matched host
+  (`built` or `cached`): `degraded`, `failed` or anything else is reported to the user and **no surface is started**, so a bundled
+  host is never silently substituted. It passes `--host-dir`, `--run-root` and `--surface-args "--user-dll <project output>"`.
+- The child makes a private run copy of the matched host per document (a surface rewrites its own `Surface.pri` at start) and
+  removes it on close, after the process has exited.
+
+Verified by tests (48 of 48 pass with every gated test enabled): the provisioner runner against the real unpacked package; the
+child's per-document run copies; and **the real IDE-side `UnoDesignClient`** (its standalone build) launching the real child with
+`extraArguments`, handshaking as `WinUI.Surface` and rendering a page through the matched-host surface.
+
+**Compiled, but not run in an IDE.** The add-in chain builds with no errors (`dotnet build` of
+`ICSharpCode.WinUIXamlDesigner.UnoDesignHost.csproj` with `-p:SkipWinUIHotReloadTap=true`, which is the documented way to skip the
+native Hot Reload TAP when Visual Studio's C++ tools are absent; the `externals/winappvsce` submodule had to be initialised and
+its `WinUiXaml.LanguageServer` built first). That covers `UnoDesignRuntimeHost`, `UnoDesignClient`, the bootstrap, the registration
+command and the child project's `DeployToAddIns`: the add-in's `SurfaceHost/` folder then holds the child and the 116 MB payload,
+the host assembly contains `SurfaceDesignRuntimeHostBootstrap`, and the registration command carries its type name and the
+`surface` selection.
+
+**Run in a live IDE (2026-11-12, this VM, no Visual Studio needed).** The shell builds with `dotnet build
+src/Main/SharpDevelop/SharpDevelop.csproj -p:DisableGitVersionTask=true -p:ProGpuWpfUseCurrentRuntimeIdentifier=false
+-p:GitVersion_*=...` (`build.ps1 shell` mangled `-p:DisableGitVersionTask=true` into `- p : D i s a b l e ...` and failed with
+MSB1001, a bug in the script's argument handling on this machine). The IDE needs two more add-ins to open a project, which
+the partial tree did not have: `TextTemplating` (a declared dependency of C# Binding; without it C# Binding is skipped silently and
+the solution load fails with "No backend for project type installed") and `CSharpBinding`. With
+`OD_TEST_MODE=1 OD_WINUI_RUNTIME=surface dotnet run --project src/Main/SharpDevelop/SharpDevelop.csproj -f net10.0-windows
+--no-build`, DevFlow on port 9299, `od.open-solution` for `tests/fixtures/WinUIDesignerFixture/Microsoft/WinUISample.slnx` and
+`od.open-file` for `MainPage.xaml`:
+
+- `od.winui-designer.status`: `backend: WinUI`, `rendered: true`, status `Rendered by WinUI Surface host (1024×720)`.
+- The "WinUI Designer" output channel shows the whole chain: the project build, the provisioner (cold: `Built, Windows App SDK
+  2.4.0, 69.7s`; warm: `Cached`, 18.4 s including the project build), the child starting a surface from a private run copy with
+  `--user-pri` and `--user-dll <WinUISample.exe>`, and `surface ready (WASDK 2.4.0)`.
+- **Document Outline works** (`Page, Grid, RootStack, TitleText, PrimaryButton`): it comes from the parent's source model.
+- Edit round trip: `od.winui-designer.select PrimaryButton`, then `properties-pad.edit Content` changed `Hello WinUI` to
+  `Edited in the IDE` with the designer still rendered, dirty and `canUndo: true`; `od.winui-designer.undo` restored it
+  (`canUndo: false`, `canRedo: true`). Whether the edit repainted is proved by the tests (`UpdateAsync` returns a new frame), not by
+  a pixel check here: no screenshot was taken.
+- Without the C# Binding add-in loaded the status was `WinUI Surface host: '<file>' belongs to no project.`: the bootstrap
+  declines with its own reason, as designed.
+
+Rules found on the way: a designer build may use only the SDK selected in Tools > Options > .NET SDK (the startup SDK when nothing
+is selected), so the provider takes `DotNetSdkService.ResolveSdkForProject(project)` and refuses to start when there is none; it
+no longer calls `ResolveDotnetHostForArchitecture`, which ranks installed SDKs. A force-killed IDE cannot close its documents, so
+their run copies would stay under `%LOCALAPPDATA%\OpenDevelop\surf\run`; each child therefore keeps its copies in a folder named
+for its process id, removes that folder on shutdown, and at startup sweeps the id-named folders of processes that no longer exist
+(never a live one's, never a folder whose name is not a process id).
+
+Still not done: the OpenCode review and the commit (`build/opencode-review.ps1` needs the OpenCode CLI and its provider auth, which are
+not on this machine), ARM64 (this machine is AMD64), and a pixel-level check of the edited frame in the IDE.
+
+**`{x:Bind}` and custom controls, measured** (upstream `TestUserApp` built with `dotnet build`, copied to a short path and passed
+as `--user-dll`, bundled WASDK 2.2.0 host, one page with a `FancyBadge` custom control and two `{x:Bind}` properties):
+
+| Content | `sampleData: true` | `sampleData: false` |
+|---|---|---|
+| `<local:FancyBadge Label="..."/>` (type from the project DLL) | real control: its own template and its `Label` dependency property | same |
+| Project `Themes/Styles.xaml` (merged as `ms-appx:///TestUserApp/Themes/Styles.xaml`) | applied (the button took the project's teal style) | same |
+| `Text="{x:Bind Title}"` | placeholder text named after the property: `Title` | binding dropped, empty |
+| `Content="{x:Bind ButtonLabel}"` | placeholder: `Button label` | dropped, empty button |
+
+So **custom controls become real; `{x:Bind}` does not.** The surface parses markup with `XamlReader` and never runs the project's
+generated binding code, so no real value can appear. This corrects two statements above: gain 1 of section 7.8 holds for custom
+controls, generated metadata and PRI resources, but not for `{x:Bind}`; and the section 7.1 acceptance test ("a Gallery page
+using `{x:Bind}` renders its real values (not placeholders)") cannot be met by the upstream surface. Meeting it needs the
+compiled-page route (run the XAML compiler and instantiate the generated page class), which is the §7.1 build, not this backend.
+
+The same page on the version-matched host (`TestUserApp` rebuilt with `-p:TestWasdkVersion=2.4.0`, provisioned: `built`,
+`matchedHost: true`, 110 s cold, `cached` in 2.2 s afterwards; launched with `--user-dll` and `--user-pri`, `Ready.wasdk`
+2.4.0) produced a frame **byte-identical** (same SHA-256) to the bundled 2.2.0 host's with sample data on, so the table holds
+for a matched host too.
+
+**Two WASDK versions at once, measured:** the bundled 2.2.0 surface and a matched 2.4.0 surface were started together
+and each rendered the fixture `MainPage.xaml` (two background jobs, 7.4 s wall time for both, ports announced after ~1.8 s,
+`Ready.wasdk` 2.2.0 and 2.4.0 respectively, both frames identical because that page does not depend on the version). They are
+separate processes, each with its own run directory, so there is no shared `.xbf` mirror to collide on (the known defect in the
+current Microsoft host, section 7.8 item 2). This covers two versions side by side in one session, not two projects sharing
+one matched host.
+
+Still open: ARM64 (this machine is AMD64; only x64 was exercised).
 
 ---
 

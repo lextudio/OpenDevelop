@@ -92,6 +92,8 @@ $libGhosttyVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Pa
 $forkPackages = @(
     'ICSharpCode.AvalonEdit.LibreWPF',
     'LeXtudio.Wpf.Toolkit',
+    # The lextudio/WinAppVSCE fork's Surface payload (content only), used by the WinUI Surface design backend.
+    'LeXtudio.WinUISurface',
     'Dirkster.AvalonDock.Core', 'Dirkster.AvalonDock.LibreWPF', 'Dirkster.AvalonDock.Serializer.Xml',
     # Themes.VS2013 depends on the VS theme package: synchronize the complete restore closure.
     'Dirkster.AvalonDock.Themes.VS.LibreWPF', 'Dirkster.AvalonDock.Themes.VS2013.LibreWPF',

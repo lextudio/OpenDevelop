@@ -28,6 +28,9 @@
          they are separate processes. -->
     <ProjectReference Include="..\WinUIXamlDesigner.LanguageServer.WinUI\WinUIXamlDesigner.LanguageServer.WinUI.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" Private="false" />
     <ProjectReference Include="..\WinUIXamlDesigner.LanguageServer.Uno\WinUIXamlDesigner.LanguageServer.Uno.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" Private="false" />
+    <!-- The Surface design child (opt-in via OD_WINUI_RUNTIME=surface) and its payload, deployed to SurfaceHost/ by its
+         own DeployToAddIns. A separate process, so not referenced. -->
+    <ProjectReference Include="..\WinUIXamlDesigner.SurfaceHost.Child\WinUIXamlDesigner.SurfaceHost.Child.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" Private="false" />
     <!-- The Hot Reload agent (and, on Windows, its native TAPs) this addin's
          WinUIApplicationHotReloadAdapter injects: built with the addin and deployed into its
          HotReload/winui/ by the agent's own DeployAgentToAddIn. Never referenced - it runs inside

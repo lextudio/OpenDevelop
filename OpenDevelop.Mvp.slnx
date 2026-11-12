@@ -89,6 +89,9 @@
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoDesignHost/ICSharpCode.WinUIXamlDesigner.UnoDesignHost.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoDesignHost.Remote/WinUIXamlDesigner.UnoDesignHost.Remote.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.UnoHost.Tests/WinUIXamlDesigner.UnoHost.Tests.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.SurfaceHost/WinUIXamlDesigner.SurfaceHost.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.SurfaceHost.Child/WinUIXamlDesigner.SurfaceHost.Child.csproj" />
+    <Project Path="src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.SurfaceHost.Tests/WinUIXamlDesigner.SurfaceHost.Tests.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/FormsDesigner/">
     <Project Path="src/AddIns/DisplayBindings/FormsDesigner/Project/FormsDesigner.csproj" />

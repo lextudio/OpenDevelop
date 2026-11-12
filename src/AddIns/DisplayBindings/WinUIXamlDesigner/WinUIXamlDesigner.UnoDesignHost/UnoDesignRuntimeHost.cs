@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -49,6 +49,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 	readonly string documentFileName;
 	readonly string? hostDllPath;
 	readonly Func<Architecture?, string?>? hostDllPathLocator;
+	readonly Func<string, CancellationToken, Task<DesignHostChildLaunch>>? childLaunchProvider;
 	readonly string hostDisplayName;
 	UnoDesignClient client;
 	Task connectTask;
@@ -62,9 +63,14 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 	double? configuredDesignHeight;
 	bool disposed;
 
+	/// <param name="childLaunchProvider">Only for a child that is not a WinUI/Uno runtime itself (the Surface child): it
+	/// supplies the extra command-line text that child needs, or says why it cannot start. When set, the child is
+	/// launched on its own runtime, never inside the designed app's dependency graph.</param>
 	public UnoDesignRuntimeHost(XamlFrameworkContext framework, string documentFileName, string? hostDllPath = null,
-		string? hostDisplayName = null, Func<Architecture?, string?>? hostDllPathLocator = null)
+		string? hostDisplayName = null, Func<Architecture?, string?>? hostDllPathLocator = null,
+		Func<string, CancellationToken, Task<DesignHostChildLaunch>>? childLaunchProvider = null)
 	{
+		this.childLaunchProvider = childLaunchProvider;
 		// The host may be constructed on the UI thread but fed XAML from a background loader
 		// (AbstractViewContentHandlingLoadErrors.LoadInternal), and every async continuation
 		// here settles on a thread-pool thread - so capture the UI dispatcher explicitly and
@@ -546,7 +552,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 				// Only the native WinUI child runs with the designed app's dependency graph (checked
 				// below). The Uno compatibility renderer just needs the output assembly, so a class
 				// library - which never gets a .runtimeconfig.json - must not look like a failed build.
-				var requireRuntimeGraph = hostDisplayName.Contains("WinUI", StringComparison.OrdinalIgnoreCase);
+				var requireRuntimeGraph = hostDisplayName.Contains("WinUI", StringComparison.OrdinalIgnoreCase) && childLaunchProvider == null;
 				var build = await DesignerBuildCoordinator.EnsureBuiltAsync(designProject, requireRuntimeGraph,
 					report: message => { SetStatus(message); ReportDesigner(message); });
 				if (!build.IsUsable)
@@ -563,7 +569,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 			// cannot produce a faithful Microsoft WinUI preview, so give the user an actionable
 			// configuration/build prompt and do not start a misleading child process.
 			if (hostDisplayName.Contains("WinUI", StringComparison.OrdinalIgnoreCase)
-				&& (string.IsNullOrEmpty(runtimeConfig) || string.IsNullOrEmpty(depsFile)))
+				&& childLaunchProvider == null && (string.IsNullOrEmpty(runtimeConfig) || string.IsNullOrEmpty(depsFile)))
 			{
 				SetStatus(dependencyError ?? "WinUI designer requires a built project output for the active configuration. Select a buildable Windows App SDK configuration and build it, then close and reopen this document.");
 				return;
@@ -572,7 +578,23 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 			// versioned Microsoft child here, beside dependency-context discovery, rather than
 			// freezing the IDE's net10 default during factory registration.
 			var child = hostDllPath ?? hostDllPathLocator?.Invoke(dotnetHostArchitecture);
-			created = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, child, appBin, dotnetHostPath, dotnetHostArchitecture);
+			string? extraArguments = null;
+			if (childLaunchProvider != null)
+			{
+				// The Surface child runs on its own runtime: adopting the designed app's runtimeconfig/deps would pin
+				// it to the app's framework and a dependency graph that does not contain the child's own assemblies.
+				// It receives only the app directory (to find the project's DLL) and what the provider supplies.
+				runtimeConfig = "";
+				depsFile = "";
+				var launch = await childLaunchProvider(documentFileName, CancellationToken.None);
+				if (launch.Arguments == null)
+				{
+					SetStatus(launch.Error ?? (hostDisplayName + " cannot start."));
+					return;
+				}
+				extraArguments = launch.Arguments;
+			}
+			created = await UnoDesignClient.AcquireSharedAsync(runtimeConfig, depsFile, CancellationToken.None, child, appBin, dotnetHostPath, dotnetHostArchitecture, extraArguments);
 			if (generation != Volatile.Read(ref connectGeneration))
 			{
 				_ = Task.Run(created.Dispose);

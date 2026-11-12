@@ -29,7 +29,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 
 	static readonly SharedDesignerHostPool<CompatibilityKey, Connection> sharedPool = new(
 		(_, connection) => connection.IsAlive,
-		async (key, token) => { var connection = new Connection(key.RuntimeConfigPath, key.DepsFilePath, key.HostDllPath, key.AppBinPath, key.DotnetHostPath); RouteOutput(connection); await connection.StartConnectionAsync(token); return connection; });
+		async (key, token) => { var connection = new Connection(key.RuntimeConfigPath, key.DepsFilePath, key.HostDllPath, key.AppBinPath, key.DotnetHostPath, key.ExtraArguments); RouteOutput(connection); await connection.StartConnectionAsync(token); return connection; });
 
 	/// <summary>
 	/// Sends a child's output to the designer's Output pad channel.
@@ -164,11 +164,14 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 	/// already known to the caller - folded into the pool key so apps of different architectures
 	/// never share a child. Defaults to this process's own when <paramref name="dotnetHostPath"/>
 	/// is null.</param>
-	public static async Task<UnoDesignClient> AcquireSharedAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null, string? appBinPath = null, string? dotnetHostPath = null, Architecture? dotnetHostArchitecture = null)
+	/// <param name="extraArguments">Command-line text appended after the standard child arguments, for a child that needs
+	/// more than the common port/token/appbin (the Surface child's matched-host and run-root options). Part of the pool
+	/// key, so documents that need different arguments never share a child.</param>
+	public static async Task<UnoDesignClient> AcquireSharedAsync(string runtimeConfigPath, string depsFilePath, CancellationToken cancellationToken, string? hostDllPath = null, string? appBinPath = null, string? dotnetHostPath = null, Architecture? dotnetHostArchitecture = null, string? extraArguments = null)
 	{
 		var host = Path.GetFullPath(hostDllPath ?? LocateChildDll() ?? throw new FileNotFoundException("The Uno design host child is not deployed."));
 		var architecture = dotnetHostArchitecture ?? RuntimeInformation.ProcessArchitecture;
-		var key = new CompatibilityKey(Normalize(runtimeConfigPath), Normalize(depsFilePath), host, architecture, Normalize(appBinPath), dotnetHostPath);
+		var key = new CompatibilityKey(Normalize(runtimeConfigPath), Normalize(depsFilePath), host, architecture, Normalize(appBinPath), dotnetHostPath, string.IsNullOrEmpty(extraArguments) ? null : extraArguments);
 		return new UnoDesignClient(await sharedPool.AcquireAsync(key, cancellationToken).ConfigureAwait(false), key);
 	}
 	static string Normalize(string path) => string.IsNullOrEmpty(path) ? "" : Path.GetFullPath(path);
@@ -373,7 +376,7 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		if (poolKey != null) sharedPool.Release(poolKey, (Connection)connection); else connection.Dispose();
 	}
 
-	sealed record CompatibilityKey(string RuntimeConfigPath, string DepsFilePath, string HostDllPath, Architecture Architecture, string AppBinPath = "", string? DotnetHostPath = null);
+	sealed record CompatibilityKey(string RuntimeConfigPath, string DepsFilePath, string HostDllPath, Architecture Architecture, string AppBinPath = "", string? DotnetHostPath = null, string? ExtraArguments = null);
 	sealed class Connection : DesignerHostProcessClient
 	{
 		readonly string runtimeConfigPath;
@@ -381,14 +384,16 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		readonly string? hostDllPath;
 		readonly string? appBinPath;
 		readonly string? dotnetHostPath;
+		readonly string? extraArguments;
 		public DesignerCapabilities Capabilities { get; private set; } = null!;
-		public Connection(string runtimeConfigPath, string depsFilePath, string? hostDllPath, string? appBinPath = null, string? dotnetHostPath = null)
+		public Connection(string runtimeConfigPath, string depsFilePath, string? hostDllPath, string? appBinPath = null, string? dotnetHostPath = null, string? extraArguments = null)
 		{
 			this.runtimeConfigPath = runtimeConfigPath;
 			this.depsFilePath = depsFilePath;
 			this.hostDllPath = hostDllPath;
 			this.appBinPath = appBinPath;
 			this.dotnetHostPath = dotnetHostPath;
+			this.extraArguments = extraArguments;
 		}
 		public Task StartConnectionAsync(CancellationToken token) => StartAsync(token);
 		protected override string GetChildDllPath() => hostDllPath ?? throw new FileNotFoundException("The Uno design host child is not deployed.");
@@ -417,12 +422,15 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 			}
 		}
 		protected override string BuildCommandLine(string childDll, int port, string token)
-			=> new DesignerHostLaunchSpec {
+		{
+			var commandLine = new DesignerHostLaunchSpec {
 				RuntimeConfigPath = runtimeConfigPath,
 				DepsFilePath = depsFilePath,
 				AppBinPath = appBinPath,
 				IncludeAppBin = true
 			}.BuildCommandLine(childDll, port, token);
+			return string.IsNullOrEmpty(extraArguments) ? commandLine : commandLine + " " + extraArguments;
+		}
 		protected override TimeSpan HandshakeTimeout => TimeSpan.FromSeconds(60);
 		protected override async Task OnConnectedAsync(JsonRpc rpc, string token, CancellationToken cancellationToken)
 		{
