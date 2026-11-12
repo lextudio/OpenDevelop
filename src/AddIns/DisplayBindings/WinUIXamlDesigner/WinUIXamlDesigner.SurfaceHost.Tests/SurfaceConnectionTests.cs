@@ -121,6 +121,16 @@ public class SurfaceConnectionTests
 	}
 
 	[Fact]
+	public async Task Disposing_a_connection_twice_is_allowed()
+	{
+		await using var surface = new FakeSurface((m, w) => Type(m) == "Hello" ? Ready(w) : Task.CompletedTask);
+		var conn = await SurfaceConnection.ConnectAsync(await surface.ConnectAsync(), null, Timeout, Ct);
+
+		await conn.DisposeAsync();
+		await conn.DisposeAsync();   // must not throw: a document disposed by its owner and again by a caller is normal
+	}
+
+	[Fact]
 	public async Task Closed_connection_is_reported_as_faulted()
 	{
 		await using var surface = new FakeSurface(async (m, w) => {

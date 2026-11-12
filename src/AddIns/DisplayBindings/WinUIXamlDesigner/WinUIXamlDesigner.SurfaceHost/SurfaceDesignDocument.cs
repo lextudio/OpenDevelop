@@ -179,9 +179,9 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		return root;
 	}
 	/// <summary>An edit request this backend cannot honour; a normal result, with the document version unchanged.</summary>
-	public DesignerSessionState Refuse(string sessionId, string documentId, string operation)
+	public DesignerSessionState Refuse(string sessionId, string documentId, string operation, string? reason = null)
 		=> Rejected(sessionId, documentId, Math.Max(version, 0),
-			operation + " is not supported by the Surface renderer; edits are applied to the source document.");
+			operation + " is not supported by the Surface renderer" + (reason == null ? "; edits are applied to the source document." : ": " + reason));
 
 	/// <summary>Writes the last rendered frame to <paramref name="path"/> and returns the path.</summary>
 	public string ExportPng(string path)

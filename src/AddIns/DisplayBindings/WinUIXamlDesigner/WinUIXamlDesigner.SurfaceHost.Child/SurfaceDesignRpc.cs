@@ -13,6 +13,7 @@ namespace ICSharpCode.WinUIXamlDesigner.SurfaceHost.Child;
 sealed class SurfaceDesignRpc
 {
 	public const string Runtime = "WinUI.Surface";
+	const string ThemeReason = "its frames are always the Light theme (SURFACE_THEME=Dark at launch gives byte-identical frames, and SetTheme is a no-op upstream), so restarting it would change nothing.";
 	static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(90);
 
 	readonly string? surfaceExe;
@@ -93,12 +94,13 @@ sealed class SurfaceDesignRpc
 		rpc.AddLocalRpcMethod("design/set-bounds", new Func<string, string, long, string, double, double, double, double, DesignerSessionState>((s, d, v, e, x, y, w, h) => Refuse(s, d, "design/set-bounds")));
 		rpc.AddLocalRpcMethod("design/delete-elements", new Func<string, string, long, string[], DesignerSessionState>((s, d, v, e) => Refuse(s, d, "design/delete-elements")));
 		rpc.AddLocalRpcMethod("design/rename", new Func<string, string, long, string, string, DesignerSessionState>((s, d, v, e, n) => Refuse(s, d, "design/rename")));
-		// The surface takes its theme from SURFACE_THEME at launch (SetTheme is a logged no-op upstream), so a
-		// theme change needs a relaunch; until the adapter does that it is refused rather than pretended.
-		rpc.AddLocalRpcMethod("design/theme", new Func<string, string, long, string, DesignerSessionState>((s, d, v, t) => Refuse(s, d, "design/theme")));
-		rpc.AddLocalRpcMethod("design/go-to-state", new Func<string, string, long, string, string, DesignerSessionState>((s, d, v, g, st) => Refuse(s, d, "design/go-to-state")));
+		// Measured on the bundled 2.2.0 and a matched 2.4.0 surface: SURFACE_THEME=Dark at launch gives frames byte-identical to Light (the
+		// surface logs "Light theme" either way), and SetTheme is a logged no-op upstream. Restarting the surface would change nothing visible
+		// while reporting that it did, so the change is refused with that reason. There is no visual-state message at all.
+		rpc.AddLocalRpcMethod("design/theme", new Func<string, string, long, string, DesignerSessionState>((s, d, v, t) => Refuse(s, d, "design/theme", ThemeReason)));
+		rpc.AddLocalRpcMethod("design/go-to-state", new Func<string, string, long, string, string, DesignerSessionState>((s, d, v, g, st) => Refuse(s, d, "design/go-to-state", "the surface has no message for forcing a visual state.")));
 		rpc.AddLocalRpcMethod("app/resources", new Func<string, string, string, DesignerAppResourcesResult>(AppResources));
-		rpc.AddLocalRpcMethod("design/hit-test", new Func<string, string, long, double, double, DesignerHitTestResult>(HitTest));
+	rpc.AddLocalRpcMethod("design/hit-test", new Func<string, string, long, double, double, DesignerHitTestResult>(HitTest));
 		rpc.AddLocalRpcMethod("design/export-png", new Func<string, string, string, string>(ExportPng));
 		rpc.AddLocalRpcMethod("ping", new Action(() => { }));
 		rpc.AddLocalRpcMethod("shutdown", new Action(() => {
@@ -202,8 +204,8 @@ sealed class SurfaceDesignRpc
 
 	void Close(string sessionId, string documentId) => documents.Remove(sessionId, documentId, Dispose);
 
-	DesignerSessionState Refuse(string sessionId, string documentId, string operation)
-		=> documents.Get(sessionId, documentId).Refuse(sessionId, documentId, operation);
+	DesignerSessionState Refuse(string sessionId, string documentId, string operation, string? reason = null)
+		=> documents.Get(sessionId, documentId).Refuse(sessionId, documentId, operation, reason);
 
 	static DesignerAppResourcesResult AppResources(string sessionId, string documentId, string xaml)
 		// A surface merges the project's resources itself (from the matched host and --user-dll), so there is

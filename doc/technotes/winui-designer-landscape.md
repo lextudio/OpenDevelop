@@ -1285,6 +1285,20 @@ dropped and its children move to the nearest resolved ancestor; a page where not
   they are simply absent, not mislabelled. Elements without an `x:Name` are in the tree (so hit-testing by geometry and the pick chain
   can see them) but the shell can only name them by type and index.
 
+**Theme and visual states (item 5): not possible with this surface's frames, and refused with the reason.** Upstream says a surface
+takes its theme once, from `SURFACE_THEME` at startup (`SetTheme` is a logged no-op), so a theme change would be a relaunch. A relaunch
+(new surface with the variable, replay the last document and viewport, rebuild the tree, retire the old surface) was written and
+passed against fake surfaces, then **discarded** because the real surface does not respond: rendering the same page with
+`SURFACE_THEME` unset, `Light` and `Dark` gave byte-identical frames (SHA-256 `D1CE88DCF1E0`, 11,536 bytes) on both the bundled
+2.2.0 host and a matched 2.4.0 host, and the surface logs `Preview-canvas background brush: ApplicationPageBackgroundThemeBrush (Light
+theme)` in every case (its `boot.log`, where `App.ctor` would log `RequestedTheme = Dark`, is not written when the surface runs from a
+run copy, so the reason inside the surface was not seen). A restart would have cost a process and a render and then reported a theme
+change that did not happen. So `design/theme` is refused with that measured reason, and `design/go-to-state` is refused because the
+surface has no message for forcing a visual state. `SurfaceThemeObservationTests` is a tripwire: it asserts that a Dark launch still
+renders the Light frame, and its failure message says to implement the restart when it starts to differ. The VS client uses the native
+window path, which may honour the theme; this client only gets frames from it.
+Also fixed on the way: disposing a `SurfaceConnection` twice threw `ObjectDisposedException`; it is now idempotent.
+
 Still not done: the OpenCode review (`build/opencode-review.ps1` needs the OpenCode CLI and its provider auth, which were not on the
 machine; the change was committed without it at the user's explicit request) and ARM64 (this machine is AMD64).
 

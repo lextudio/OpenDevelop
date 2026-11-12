@@ -381,8 +381,12 @@ public sealed class SurfaceConnection : IAsyncDisposable
 		=> new(GetString(root, "phase"), GetString(root, "message"), GetNullableInt(root, "line"), GetNullableInt(root, "column"),
 			root.TryGetProperty("notDesignable", out var nd) && nd.ValueKind == JsonValueKind.True);
 
+	int disposed;
+
 	public async ValueTask DisposeAsync()
 	{
+		if (Interlocked.Exchange(ref disposed, 1) != 0)
+			return;   // disposing twice is allowed and does nothing the second time
 		stopReading.Cancel();
 		// Closing the stream also ends a read that is blocked inside the socket.
 		try { await stream.DisposeAsync().ConfigureAwait(false); } catch { }

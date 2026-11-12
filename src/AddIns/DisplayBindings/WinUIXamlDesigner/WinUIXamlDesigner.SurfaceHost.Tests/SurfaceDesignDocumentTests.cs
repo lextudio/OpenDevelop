@@ -115,6 +115,21 @@ public class SurfaceDesignDocumentTests
 		Assert.False(state.Accepted);
 		Assert.Equal(3L, state.Version);
 		Assert.Contains("design/set-property", state.Error);
+		Assert.Contains("source document", state.Error);   // the default reason: edits go to the parent's source model
+	}
+
+	[Fact]
+	public async Task A_refusal_can_carry_its_own_reason_instead_of_the_default()
+	{
+		await using var surface = RenderingSurface();
+		await using var doc = await Open(surface);
+		await doc.OpenAsync(Request("<Page/>", version: 3), Ct);
+
+		var state = doc.Refuse("s1", "d1", "design/theme", "its frames are always the Light theme.");
+
+		Assert.False(state.Accepted);
+		Assert.Equal(3L, state.Version);
+		Assert.Equal("design/theme is not supported by the Surface renderer: its frames are always the Light theme.", state.Error);
 	}
 
 	[Fact]

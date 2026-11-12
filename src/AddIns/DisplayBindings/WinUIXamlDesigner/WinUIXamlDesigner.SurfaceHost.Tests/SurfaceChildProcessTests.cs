@@ -313,6 +313,15 @@ public class SurfaceChildProcessTests
 		Assert.False(refused.Accepted);
 		Assert.Equal(2L, refused.Version);
 
+		// A theme change and a forced visual state are refused as ordinary results, with the measured reason, not pretended.
+		var theme = await child.Call<DesignerSessionState>("design/theme", "s1", "d1", 2L, "Dark");
+		Assert.False(theme.Accepted);
+		Assert.Contains("design/theme", theme.Error);
+		Assert.Contains("Light theme", theme.Error);
+		var state = await child.Call<DesignerSessionState>("design/go-to-state", "s1", "d1", 2L, "CommonStates", "Pressed");
+		Assert.False(state.Accepted);
+		Assert.Contains("visual state", state.Error);
+
 		string png = Path.Combine(Path.GetTempPath(), "od-ddp-" + Guid.NewGuid().ToString("N") + ".png");
 		try {
 			await child.Call<string>("design/export-png", "s1", "d1", png);
