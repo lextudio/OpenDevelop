@@ -179,7 +179,7 @@ public class SurfaceChildProcessTests
 			Assert.Equal(0, await child.ShutdownAsync());
 			Assert.Empty(Directory.GetDirectories(runRoot));   // the child removed its own folder on shutdown
 		} finally {
-			try { Directory.Delete(runRoot, true); } catch (IOException) { }
+			TestFiles.TryDelete(runRoot);
 		}
 	}
 
@@ -207,7 +207,7 @@ public class SurfaceChildProcessTests
 			Assert.True(Directory.Exists(unrelated), "a folder that is not a process id must be kept");
 			Assert.Equal(0, await child.ShutdownAsync());
 		} finally {
-			try { Directory.Delete(runRoot, true); } catch (IOException) { }
+			TestFiles.TryDelete(runRoot);
 		}
 	}
 
@@ -237,6 +237,44 @@ public class SurfaceChildProcessTests
 
 		Assert.Contains("Windows App Runtime is not installed", ex.Message);
 		await child.Call<object?>("ping");   // the child survives and can be asked again after the user installs the runtime
+	}
+
+	/// <summary>A canvas click answered by the real surface's own PickAt, through the child's design/hit-test.</summary>
+	[Fact]
+	public async Task Real_surface_hit_tests_a_named_element_over_ddp()
+	{
+		string? exe = Environment.GetEnvironmentVariable("OD_SURFACE_EXE");
+		if (string.IsNullOrEmpty(exe) || !OperatingSystem.IsWindows())
+			Assert.Skip("OD_SURFACE_EXE is not set (or not Windows).");
+		await using var child = await Child.StartAsync(exe, Environment.GetEnvironmentVariable("OD_SURFACE_ARGS") ?? "");
+		await child.Call<HostHandshake>("initialize", Token, DesignerProtocol.Version, "s1");
+		const string xaml = "<Page xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\">"
+			+ "<StackPanel><Button x:Name=\"Go\" Content=\"Click me\"/><TextBlock Text=\"unnamed text\"/></StackPanel></Page>";
+		var opened = await child.Call<DesignerSessionState>("session/open", Request(xaml, 1));
+		Assert.True(opened.Accepted, opened.Error + "\n" + child.Stderr);
+
+		var clock = System.Diagnostics.Stopwatch.StartNew();
+		var onButton = await child.Call<DesignerHitTestResult>("design/hit-test", "s1", "d1", 1L, 20.0, 15.0);
+		long firstHitMs = clock.ElapsedMilliseconds;   // this one also pays for the surface's first native window
+		clock.Restart();
+		var onButtonAgain = await child.Call<DesignerHitTestResult>("design/hit-test", "s1", "d1", 1L, 25.0, 18.0);
+		long hitMs = clock.ElapsedMilliseconds;
+		clock.Restart();
+		var onEmpty = await child.Call<DesignerHitTestResult>("design/hit-test", "s1", "d1", 1L, 900.0, 600.0);
+		long missMs = clock.ElapsedMilliseconds;
+		var onUnnamed = await child.Call<DesignerHitTestResult>("design/hit-test", "s1", "d1", 1L, 20.0, 45.0);
+		TestContext.Current.SendDiagnosticMessage($"hit-test latency (host natively, pick, leave): first hit {firstHitMs} ms, repeat hit {hitMs} ms, miss {missMs} ms");
+
+		Assert.True(onButton.Hit, "a click on the named button should hit it; child stderr:\n" + child.Stderr);
+		Assert.Equal("Go", onButton.ComponentName);
+		Assert.Equal("Button", onButton.ComponentType);
+		Assert.False(onEmpty.Hit);
+		Assert.False(onUnnamed.Hit);   // an unnamed element is not offered to the shell
+		Assert.True(onButtonAgain.Hit && onButtonAgain.ComponentName == "Go");
+		Assert.True(firstHitMs < 3000 && hitMs < 3000, $"a click should stay interactive; first {firstHitMs} ms, repeat {hitMs} ms");
+		// A miss neither broke the connection nor the next render.
+		var again = await child.Call<DesignerSessionState>("session/update", Request(xaml, 2));
+		Assert.True(again.Accepted, again.Error);
 	}
 
 	[Fact]

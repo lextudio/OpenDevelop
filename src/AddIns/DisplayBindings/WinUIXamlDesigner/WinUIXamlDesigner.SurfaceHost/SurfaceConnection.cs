@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 
 namespace ICSharpCode.WinUIXamlDesigner.SurfaceHost;
 
@@ -14,6 +15,12 @@ public sealed record SurfaceError(string Phase, string Message, int? Line, int? 
 
 /// <summary>Exactly one of <see cref="Frame"/> and <see cref="Error"/> is set.</summary>
 public sealed record SurfaceRenderResult(SurfaceFrame? Frame, SurfaceError? Error);
+
+/// <summary>
+/// The element a pick landed on. <see cref="Name"/> is its x:Name when it has one; <see cref="Path"/> is the surface's own tree path
+/// and may be unresolved. The bounds are in the artboard's DIPs.
+/// </summary>
+public sealed record SurfacePick(int Id, string ElementType, string? Name, string? Path, double X, double Y, double Width, double Height);
 
 /// <summary>The peer cannot speak a shared protocol version, or lacks a capability this client requires.</summary>
 public sealed class SurfaceProtocolException : Exception
@@ -30,8 +37,12 @@ public sealed class SurfaceConnectionFaultedException : Exception
 /// <summary>
 /// One client connection to a Surface process. The v1 wire has no request or document id, so a reply
 /// can only be paired with its request by order. This type therefore allows one request in flight and
-/// treats any timeout or cancellation as fatal: a late reply to the abandoned request would otherwise be
+/// treats any timeout or cancellation of a render request as fatal: a late reply to the abandoned request would otherwise be
 /// taken for the answer to the next one and paint a superseded document (the upstream "R1" gap).
+///
+/// One background task owns the socket and turns lines into messages on a channel. A caller waits on that channel with a
+/// timeout, so abandoning a wait never abandons a half-read line. That is what lets a <em>pick</em> that hits nothing, which the
+/// surface answers with silence, end as an ordinary miss instead of a fault.
 /// </summary>
 public sealed class SurfaceConnection : IAsyncDisposable
 {
@@ -45,18 +56,21 @@ public sealed class SurfaceConnection : IAsyncDisposable
 	readonly StreamWriter writer;
 	readonly SemaphoreSlim gate = new(1, 1);
 	readonly TimeSpan requestTimeout;
+	readonly Channel<JsonDocument> messages = Channel.CreateUnbounded<JsonDocument>(new UnboundedChannelOptions { SingleWriter = true });
+	readonly CancellationTokenSource stopReading = new();
+	readonly Task readLoop;
 	Exception? fault;
 
-	SurfaceConnection(Stream stream, TimeSpan requestTimeout, SurfaceReady ready, StreamReader reader, StreamWriter writer)
+	SurfaceConnection(Stream stream, TimeSpan requestTimeout, StreamReader reader, StreamWriter writer)
 	{
 		this.stream = stream;
 		this.requestTimeout = requestTimeout;
 		this.reader = reader;
 		this.writer = writer;
-		Ready = ready;
+		readLoop = Task.Run(ReadLoopAsync);
 	}
 
-	public SurfaceReady Ready { get; }
+	public SurfaceReady Ready { get; private set; } = new(0, 0, Array.Empty<string>(), "");
 
 	/// <summary>Performs the Hello/Ready exchange. <paramref name="token"/> is the launch token given to the process, if any.</summary>
 	public static async Task<SurfaceConnection> ConnectAsync(
@@ -65,6 +79,7 @@ public sealed class SurfaceConnection : IAsyncDisposable
 		var utf8 = new UTF8Encoding(false);
 		var reader = new StreamReader(stream, utf8, false, 1 << 16, leaveOpen: true);
 		var writer = new StreamWriter(stream, utf8, 1 << 16, leaveOpen: true) { NewLine = "\n", AutoFlush = true };
+		var connection = new SurfaceConnection(stream, timeout, reader, writer);
 		try {
 			var hello = new Dictionary<string, object?> {
 				["type"] = "Hello",
@@ -78,7 +93,7 @@ public sealed class SurfaceConnection : IAsyncDisposable
 			await writer.WriteLineAsync(JsonSerializer.Serialize(hello)).ConfigureAwait(false);
 
 			while (true) {
-				using var doc = await ReadMessageAsync(reader, timeout, cancellationToken).ConfigureAwait(false);
+				using var doc = await connection.NextAsync(timeout, cancellationToken).ConfigureAwait(false);
 				var root = doc.RootElement;
 				switch (GetString(root, "type")) {
 					case "Ready":
@@ -89,15 +104,15 @@ public sealed class SurfaceConnection : IAsyncDisposable
 						if (ready.Protocol < ProtocolVersion || ready.MinProtocol > ProtocolVersion)
 							throw new SurfaceProtocolException(
 								$"No shared protocol version (surface {ready.MinProtocol}..{ready.Protocol}, client {ProtocolVersion}).");
-						return new SurfaceConnection(stream, timeout, ready, reader, writer);
+						connection.Ready = ready;
+						return connection;
 					case "Error":
 						throw new SurfaceProtocolException(
 							"The surface refused the handshake (" + GetString(root, "phase") + "): " + GetString(root, "message"));
 				}
 			}
 		} catch {
-			reader.Dispose();
-			await writer.DisposeAsync().ConfigureAwait(false);
+			await connection.DisposeAsync().ConfigureAwait(false);
 			throw;
 		}
 	}
@@ -126,16 +141,111 @@ public sealed class SurfaceConnection : IAsyncDisposable
 			["documentPath"] = documentPath,
 		}, cancellationToken);
 
+	/// <summary>
+	/// Asks the surface which element is at a design point, for a click on the canvas.
+	///
+	/// The surface only selects in its native-window mode: in the frame mode this client renders with, <c>PickAt</c> finds nothing,
+	/// even on a named button. So a pick is a self-contained excursion under the request gate: <c>EnterNative</c> with the document
+	/// and a fixed 1:1 view (pane space is then design space), <c>SetMode</c> design, <c>PickAt</c>, then <c>ExitNative</c> so
+	/// the next render is a frame again (in native mode <c>UpdateXaml</c> answers with a window handle, not a frame). The native
+	/// window is therefore only built when somebody clicks.
+	///
+	/// A hit is answered with <c>Selected</c> and a miss with silence, which cannot be told from a slow hit by waiting. So the pick is
+	/// followed by a fence: an <c>UpdateXaml</c>, which in native mode re-hosts the page on the same UI thread, in order, and answers
+	/// <c>Hwnd</c>. Whatever <c>Selected</c> came before that <c>Hwnd</c> is the answer; none is a certain miss and returns null, without
+	/// faulting the connection. <paramref name="timeout"/> only bounds how long a stuck surface is waited for (a fence that never
+	/// comes faults the connection).
+	/// </summary>
+	public async Task<SurfacePick?> PickAtAsync(
+		string xaml, double width, double height, double scale, double x, double y, TimeSpan timeout,
+		CancellationToken cancellationToken = default)
+	{
+		await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+		try {
+			ThrowIfFaulted();
+			try {
+				DrainStale();
+				await SendAsync(new Dictionary<string, object?> {
+					["type"] = "EnterNative",
+					["xaml"] = xaml,
+					["width"] = width,
+					["height"] = height,
+					["scale"] = scale,
+					["sampleData"] = false,
+					["documentPath"] = null,
+					["paneWidthPx"] = (int)Math.Ceiling(width * scale),
+					["paneHeightPx"] = (int)Math.Ceiling(height * scale),
+					// Not "fit": a fitted view scales the pane (0.91 here), and picks and bounds are in pane space.
+					["view"] = new Dictionary<string, object?> { ["fit"] = false, ["zoom"] = 1.0, ["offsetX"] = 0.0, ["offsetY"] = 0.0 },
+				}).ConfigureAwait(false);
+
+				bool hosted = false;
+				while (true) {
+					using var doc = await NextAsync(requestTimeout, cancellationToken).ConfigureAwait(false);
+					string type = GetString(doc.RootElement, "type");
+					if (type == "Hwnd") { hosted = true; break; }
+					if (type == "Error") break;   // the native flag stays set either way, so leave native mode below
+				}
+
+				SurfacePick? pick = null;
+				if (hosted) {
+					await SendAsync(new Dictionary<string, object?> { ["type"] = "SetMode", ["design"] = true }).ConfigureAwait(false);
+					await SendAsync(new Dictionary<string, object?> { ["type"] = "PickAt", ["x"] = x, ["y"] = y }).ConfigureAwait(false);
+					// The fence. The surface runs messages on its UI thread in order and sends a hit's Selected from there, and in
+					// native mode UpdateXaml re-hosts the page and answers Hwnd. So when this Hwnd arrives, any Selected for the PickAt
+					// has already been sent: a hit is whatever came before it, and silence is a certain miss (no timer to get wrong
+					// under load).
+					await SendAsync(new Dictionary<string, object?> {
+						["type"] = "UpdateXaml", ["xaml"] = xaml, ["sampleData"] = false, ["documentPath"] = null,
+					}).ConfigureAwait(false);
+					pick = await WaitForFenceAsync(timeout, cancellationToken).ConfigureAwait(false);
+				}
+
+				await SendAsync(new Dictionary<string, object?> { ["type"] = "ExitNative" }).ConfigureAwait(false);
+				while (true) {
+					using var doc = await NextAsync(requestTimeout, cancellationToken).ConfigureAwait(false);
+					if (GetString(doc.RootElement, "type") == "NativeExited")
+						break;
+				}
+				return pick;
+			} catch (Exception ex) when (ex is not SurfaceConnectionFaultedException && ex is not OperationCanceledException) {
+				fault = ex;
+				throw new SurfaceConnectionFaultedException("The surface connection was lost during a pick.", ex);
+			}
+		} finally {
+			gate.Release();
+		}
+	}
+
+	/// <summary>Reads until the fence (<c>Hwnd</c>, or an <c>Error</c>) and returns the first <c>Selected</c> seen before it, if any.</summary>
+	async Task<SurfacePick?> WaitForFenceAsync(TimeSpan timeout, CancellationToken cancellationToken)
+	{
+		SurfacePick? pick = null;
+		while (true) {
+			// A fence that never comes means the surface is stuck or gone: the TimeoutException faults the connection.
+			using var doc = await NextAsync(timeout, cancellationToken).ConfigureAwait(false);
+			var root = doc.RootElement;
+			switch (GetString(root, "type")) {
+				case "Selected":
+					pick ??= new SurfacePick(GetInt(root, "id"), GetString(root, "elementType"), GetNullableString(root, "name"),
+						GetNullableString(root, "path"), GetDouble(root, "x"), GetDouble(root, "y"), GetDouble(root, "w"), GetDouble(root, "h"));
+					break;
+				case "Hwnd" or "Error":
+					return pick;
+			}
+		}
+	}
+	Task SendAsync(Dictionary<string, object?> message) => writer.WriteLineAsync(JsonSerializer.Serialize(message));
 	async Task<SurfaceRenderResult> RequestAsync(Dictionary<string, object?> message, CancellationToken cancellationToken)
 	{
 		await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
 		try {
-			if (fault != null)
-				throw new SurfaceConnectionFaultedException("The surface connection is no longer usable.", fault);
+			ThrowIfFaulted();
 			try {
+				DrainStale();
 				await writer.WriteLineAsync(JsonSerializer.Serialize(message)).ConfigureAwait(false);
 				while (true) {
-					using var doc = await ReadMessageAsync(reader, requestTimeout, cancellationToken).ConfigureAwait(false);
+					using var doc = await NextAsync(requestTimeout, cancellationToken).ConfigureAwait(false);
 					var root = doc.RootElement;
 					switch (GetString(root, "type")) {
 						case "Frame":
@@ -157,30 +267,61 @@ public sealed class SurfaceConnection : IAsyncDisposable
 		}
 	}
 
-	static async Task<JsonDocument> ReadMessageAsync(StreamReader reader, TimeSpan timeout, CancellationToken cancellationToken)
+	void ThrowIfFaulted()
+	{
+		if (fault != null)
+			throw new SurfaceConnectionFaultedException("The surface connection is no longer usable.", fault);
+	}
+
+	/// <summary>Drops anything the surface said between requests (a late selection, a view change) so it cannot be mistaken for a reply.</summary>
+	void DrainStale()
+	{
+		while (messages.Reader.TryRead(out var stale))
+			stale.Dispose();
+	}
+
+	/// <summary>The next message, or a <see cref="TimeoutException"/> after <paramref name="timeout"/> (the read itself is never cancelled).</summary>
+	async Task<JsonDocument> NextAsync(TimeSpan timeout, CancellationToken cancellationToken)
 	{
 		using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 		cts.CancelAfter(timeout);
-		while (true) {
+		try {
+			return await messages.Reader.ReadAsync(cts.Token).ConfigureAwait(false);
+		} catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
+			throw new TimeoutException("The surface did not reply within " + timeout + ".");
+		} catch (ChannelClosedException e) {
+			throw new EndOfStreamException("The surface closed the connection.", e.InnerException);
+		}
+	}
+
+	async Task ReadLoopAsync()
+	{
+		try {
 			string? line;
-			try {
-				line = await reader.ReadLineAsync(cts.Token).ConfigureAwait(false);
-			} catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
-				throw new TimeoutException("The surface did not reply within " + timeout + ".");
+			while ((line = await reader.ReadLineAsync(stopReading.Token).ConfigureAwait(false)) != null) {
+				if (line.Length == 0)
+					continue;
+				messages.Writer.TryWrite(JsonDocument.Parse(line));
 			}
-			if (line == null)
-				throw new EndOfStreamException("The surface closed the connection.");
-			if (line.Length == 0)
-				continue;
-			return JsonDocument.Parse(line);
+			messages.Writer.TryComplete();
+		} catch (OperationCanceledException) {
+			messages.Writer.TryComplete();
+		} catch (Exception e) {
+			messages.Writer.TryComplete(e);
 		}
 	}
 
 	static string GetString(JsonElement e, string name)
 		=> e.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() ?? "" : "";
 
+	static string? GetNullableString(JsonElement e, string name)
+		=> e.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+
 	static int GetInt(JsonElement e, string name, int fallback = 0)
 		=> e.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var v) ? v : fallback;
+
+	static double GetDouble(JsonElement e, string name)
+		=> e.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetDouble(out var v) ? v : 0;
 
 	static int? GetNullableInt(JsonElement e, string name)
 		=> e.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var v) ? v : null;
@@ -213,9 +354,14 @@ public sealed class SurfaceConnection : IAsyncDisposable
 
 	public async ValueTask DisposeAsync()
 	{
+		stopReading.Cancel();
+		// Closing the stream also ends a read that is blocked inside the socket.
+		try { await stream.DisposeAsync().ConfigureAwait(false); } catch { }
+		try { await readLoop.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false); } catch { }
+		DrainStale();
 		reader.Dispose();
-		await writer.DisposeAsync().ConfigureAwait(false);
-		await stream.DisposeAsync().ConfigureAwait(false);
+		try { await writer.DisposeAsync().ConfigureAwait(false); } catch { }
+		stopReading.Dispose();
 		gate.Dispose();
 	}
 }

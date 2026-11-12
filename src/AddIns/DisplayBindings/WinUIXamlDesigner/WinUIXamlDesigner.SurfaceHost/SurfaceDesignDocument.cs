@@ -19,6 +19,8 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 	readonly SurfaceConnection connection;
 	readonly SurfaceProcessHost? owner;
 	readonly Action? afterDispose;
+	double viewportWidth = 1280, viewportHeight = 720, viewportScale = 1.0;
+	string lastXaml = "";
 	long frameSequence;
 	long version = -1;
 	byte[]? lastPng;
@@ -48,6 +50,7 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 	{
 		var snapshot = request.Snapshot;
 		var viewport = request.Viewport ?? new DesignerViewport { Width = 1280, Height = 720 };
+		viewportWidth = viewport.Width; viewportHeight = viewport.Height; viewportScale = viewport.Dpi;
 		var result = await connection.LoadXamlAsync(
 			PrimaryText(snapshot), viewport.Width, viewport.Height, viewport.Dpi, false, null, cancellationToken).ConfigureAwait(false);
 		return Complete(snapshot, result);
@@ -62,6 +65,30 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 				$"Stale document version {snapshot.Version}; the surface is at {version}.");
 		var result = await connection.UpdateXamlAsync(PrimaryText(snapshot), false, null, cancellationToken).ConfigureAwait(false);
 		return Complete(snapshot, result);
+	}
+
+	/// <summary>
+	/// How long to wait for the surface's fence (see <see cref="SurfaceConnection.PickAtAsync"/>) before treating it as stuck. A healthy
+	/// surface answers in tens of milliseconds, so this only bounds a hang; it is not a miss timer.
+	/// </summary>
+	public TimeSpan PickTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+	/// <summary>
+	/// The element at a design point, for canvas clicks. Only a <em>named</em> element is reported as a hit: the shell resolves a
+	/// click to the source document by x:Name, and the surface's own tree path is not the shell's path scheme, so an unnamed element
+	/// (or empty space) is a miss and the shell falls back to its source-model selection. A miss never faults the connection.
+	/// </summary>
+	public async Task<DesignerHitTestResult> HitTestAsync(double x, double y, CancellationToken cancellationToken = default)
+	{
+		var pick = await connection.PickAtAsync(lastXaml, viewportWidth, viewportHeight, viewportScale, x, y, PickTimeout, cancellationToken).ConfigureAwait(false);
+		if (pick?.Name is not { Length: > 0 } name)
+			return new DesignerHitTestResult { Hit = false };
+		return new DesignerHitTestResult {
+			Hit = true,
+			ComponentName = name,
+			ComponentType = pick.ElementType,
+			Chain = new List<string> { name },
+		};
 	}
 
 	/// <summary>An edit request this backend cannot honour; a normal result, with the document version unchanged.</summary>
@@ -96,6 +123,7 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 
 		var frame = result.Frame!;
 		lastPng = frame.Png;
+		lastXaml = PrimaryText(snapshot);
 		version = snapshot.Version;
 		var ok = new DesignerSessionState {
 			SessionId = snapshot.SessionId,

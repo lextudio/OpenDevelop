@@ -207,10 +207,20 @@ sealed class SurfaceDesignRpc
 		// nothing for the parent to deliver; saying so explicitly keeps the app/resources step from failing.
 		=> new() { Success = true };
 
-	static DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y)
-		// The surface reports picks through its own PickAt/Selected messages, which this adapter does not use
-		// yet, so no element is ever hit. The parent falls back to its source-model selection.
-		=> new() { Hit = false };
+	/// <summary>
+	/// A click on the canvas, answered by the surface's own PickAt. Only a named element is a hit (see
+	/// <see cref="SurfaceDesignDocument.HitTestAsync"/>); a lost connection is a miss, not an RPC failure, so a click never errors.
+	/// </summary>
+	DesignerHitTestResult HitTest(string sessionId, string documentId, long baseVersion, double x, double y)
+	{
+		var document = documents.Get(sessionId, documentId);
+		try {
+			return document.HitTestAsync(x, y).GetAwaiter().GetResult();
+		} catch (SurfaceConnectionFaultedException e) {
+			Console.Error.WriteLine($"{Runtime}: design/hit-test failed: {e.Message}");
+			return new DesignerHitTestResult { Hit = false };
+		}
+	}
 
 	string ExportPng(string sessionId, string documentId, string path)
 		=> documents.Get(sessionId, documentId).ExportPng(path);

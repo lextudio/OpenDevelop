@@ -1239,6 +1239,28 @@ for its process id, removes that folder on shutdown, and at startup sweeps the i
   (the child and payload ride on the add-in's `DeployToAddIns` when the solution builds). Not added: a DevFlow journey that opens a
   WinUI page with the Surface runtime (it needs the Windows App Runtime installed on the runner, which the fork's workflow already
   does with `windowsappruntimeinstall-x64.exe --quiet --force`).
+- *Canvas hit test (`design/hit-test`), and what it does not give you.* Probed against the real surface:
+  - **`PickAt` finds nothing in frame mode**, even on a named button (the surface logs `PickAt: no authored element at (20,15)`).
+    It only selects in native-window mode. After `EnterNative` the same click answers `Selected` for the named `Button` (with its
+    `x:Name`, `path` `0.0.0` and bounds), for the unnamed `TextBlock`, and for the `StackPanel` on empty space. Picks and bounds are in
+    *pane* space, and the default view is "fit" (zoom 0.91 for a 480x320 page in a 1024x720 pane), so the pick sends
+    `view: { fit: false, zoom: 1 }` to make pane space design space.
+  - **In native mode `UpdateXaml` answers `Hwnd`, not a frame**, so a pick is a self-contained excursion under the connection's request
+    gate: `EnterNative`, `SetMode` design, `PickAt`, a fence, `ExitNative`. The native window is built only when somebody clicks; the first
+    click took 549 ms end to end (that includes the surface's first native window), repeat clicks were not timed.
+  - **The fence replaces a miss timer.** A hit is `Selected` and a miss is silence, which cannot be told from a slow hit by waiting;
+    the first version (400 ms) lost a hit once under load (a flake in the full suite). The surface handles messages on its UI thread in
+    order, and `UpdateXaml` in native mode re-hosts the page and answers `Hwnd`, so sending one right after `PickAt` fences it: whatever
+    `Selected` came before that `Hwnd` is the answer and none is a certain miss. Tested with a hit that takes 900 ms.
+  - **Only a named element is a hit.** The shell resolves a click by `x:Name`, and the surface's own tree path (`0.0.1`) is not the
+    shell's path scheme, so an unnamed element or empty space is reported as a miss and the shell keeps its source-model selection.
+  - **The WinUI runtime host does not call `design/hit-test`.** Nothing in the WinUI path uses `IDesignHostHitTesting`; its canvas
+    resolves clicks with `ResolveNameAt` over the session's `Tree` (`DesignerElementNode` bounds), and the Surface child sends no tree. So
+    this method is correct and tested (fake surface, real surface over DDP, and the real `UnoDesignClient`) but **does not by itself
+    enable selecting on the canvas**. That needs the child to supply a `Tree` with bounds: the surface has no "list the tree" message,
+    only per-element `Selected` (via `PickAt`, or `SelectByPath` with a path), so a tree would have to be assembled from the source
+    document's structure plus a burst of selections in native mode, at the cost of a native excursion per refresh.
+  - Verified in the IDE only as far as the client: the IDE runs hidden here, so a real pointer click was not injected.
 
 Still not done: the OpenCode review (`build/opencode-review.ps1` needs the OpenCode CLI and its provider auth, which were not on the
 machine; the change was committed without it at the user's explicit request) and ARM64 (this machine is AMD64).
