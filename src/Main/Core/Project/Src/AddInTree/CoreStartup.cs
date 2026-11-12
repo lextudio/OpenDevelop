@@ -142,6 +142,9 @@ namespace ICSharpCode.Core
 		public void RunInitialization()
 		{
 			addInTree.Load(addInFiles, disabledAddIns);
+			// AddIns the user suspended stay suspended: before anything, the services below included, is built from the tree
+			if (externalAddInsConfigured)
+				AddInManager.ApplySuspendedConfiguration(addInTree);
 			
 			// perform service registration
 			var container = (IServiceContainer)ServiceSingleton.ServiceProvider.GetService(typeof(IServiceContainer));

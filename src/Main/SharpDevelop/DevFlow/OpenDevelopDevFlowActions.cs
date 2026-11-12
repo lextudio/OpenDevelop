@@ -2854,13 +2854,16 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 		
-		[DevFlowAction("od.addin.suspend", Description = "Switch an AddIn's contributions off (or back on) at run time, by identity (e.g. ICSharpCode.ILSpyAddIn): nothing is unloaded, but nothing is built from its codons from then on, as if their conditions failed; what was already built stays. suspended defaults to true")]
+		[DevFlowAction("od.addin.suspend", Description = "Suspend an AddIn by identity (e.g. ICSharpCode.ILSpyAddIn), or resume it with suspended=false. Takes effect at once, needs no restart, and is remembered across restarts until the AddIn is resumed. Nothing is unloaded: nothing is built from its codons from then on, as if their conditions failed; what was already built stays. suspended defaults to true")]
 		public static string SuspendAddIn(string identity, bool suspended = true)
 		{
 			var addIn = SD.AddInTree.AddIns.FirstOrDefault(a => a.Manifest.Identities.ContainsKey(identity));
 			if (addIn == null)
 				return JsonSerializer.Serialize(new { success = false, error = "No AddIn with identity " + identity });
-			addIn.Suspended = suspended;
+			if (suspended)
+				AddInManager.Suspend(new[] { addIn });
+			else
+				AddInManager.Resume(new[] { addIn });
 			return JsonSerializer.Serialize(new { success = true, identity, suspended = addIn.Suspended });
 		}
 

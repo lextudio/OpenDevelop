@@ -228,32 +228,10 @@ public sealed class DebuggerFeatureIntegrationTests
         }
     }
 
-    // doc/technotes/decompiled-debugging.md: the ILSpy add-in supplies the decompiled sources and PDB, so with it disabled NOTHING is decompiled while
-    // debugging, by anyone. The application is shared by the assembly, so this runs on its own with the add-in disabled for that whole run:
-    //   OD_TEST_DISABLE_ADDINS=ICSharpCode.ILSpyAddIn dotnet run --no-build --project tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj -- \
-    //     -class OpenDevelop.IntegrationTests.DebuggerFeatureIntegrationTests -method OpenDevelop.IntegrationTests.DebuggerFeatureIntegrationTests.ExternalFrame_WithIlspyDisabled_DecompilesNothing -parallel none
-    // Skipped in an ordinary run. It also needs a SharpDbg that takes the IDE's symbols (decompileExternalCode): an older one decompiles by itself.
-    [Fact]
-    public async Task ExternalFrame_WithIlspyDisabled_DecompilesNothing()
-    {
-        Assert.SkipUnless(OpenDevelopAppFixture.DisabledAddIns.Contains("ICSharpCode.ILSpyAddIn"),
-            "Run with OD_TEST_DISABLE_ADDINS=ICSharpCode.ILSpyAddIn (see the comment above this test).");
-        Assert.SkipUnless(await AdapterTakesTheIdesSymbolsAsync(), "The SharpDbg the application loads does not support decompileExternalCode; it decompiles by itself.");
-
-        var started = DateTime.UtcNow;
-        // The add-in really is absent
-        var addins = await _app.InvokeAsync("od.addins");
-        var ilspy = Assert.Single(addins.GetProperty("addins").EnumerateArray(),
-            a => a.GetProperty("fileName").GetString()!.EndsWith("ILSpyAddIn.addin", StringComparison.OrdinalIgnoreCase));
-        Assert.False(ilspy.GetProperty("enabled").GetBoolean(), ilspy.ToString());
-
-        await AssertTheFirstExternalFrameIsNotDecompiledAsync(started);
-        // No decompiled sources or PDB from the add-in at all in this run
-        Assert.False(Directory.Exists(Path.Combine(_app.ConfigDirectory, "cache", "DecompiledSymbols")));
-    }
-
-    // The same claim without a restart: AddIn.Suspended switches the add-in's contributions off at run time (nothing is unloaded; what is looked up in the
-    // AddIn tree when it is needed, such as the symbol provider, is simply not there), so this runs in an ordinary run. It needs the new SharpDbg too.
+    // doc/technotes/decompiled-debugging.md: the ILSpy add-in supplies the decompiled sources and PDB, so with it suspended NOTHING is decompiled while debugging,
+    // by anyone (neither the add-in nor the adapter). AddIns are suspended at run time and the state is remembered across restarts until they are resumed
+    // (AddInManager.Suspend/Resume, the DevFlow action od.addin.suspend); nothing is unloaded, but what is looked up in the AddIn tree when it is needed, such as
+    // the symbol provider, is not there. It needs a SharpDbg that takes the IDE's symbols (decompileExternalCode): an older one decompiles by itself.
     [Fact]
     public async Task ExternalFrame_WithIlspySuspended_DecompilesNothing()
     {
@@ -268,7 +246,8 @@ public sealed class DebuggerFeatureIntegrationTests
         }
         finally
         {
-            // Whatever happens, the add-in must be back for the tests that follow in this shared application
+            // Whatever happens, the add-in must be resumed: the suspension is remembered (in this run's own configuration directory) and the application
+            // is shared by the tests that follow
             var resumed = await _app.InvokeAsync("od.addin.suspend", "ICSharpCode.ILSpyAddIn", false);
             Assert.False(resumed.GetProperty("suspended").GetBoolean(), resumed.ToString());
         }

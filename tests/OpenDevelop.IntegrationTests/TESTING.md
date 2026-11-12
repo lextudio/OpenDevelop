@@ -54,15 +54,13 @@ dotnet run --project tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationT
 
 Do not use `dotnet test` for this .NET 10 project.
 
-A test that needs an add-in **absent** cannot disable it at run time (disabling takes effect at startup), and the application is shared by the whole
-assembly. Set `OD_TEST_DISABLE_ADDINS` (comma-separated identities, e.g. `ICSharpCode.ILSpyAddIn`) for a separate run with a `-method` filter: the
-fixture writes `<config dir>/AddIns.xml` before the launch. Such a test skips itself unless the variable names its add-in, so an ordinary run never
-disables anything (see `DebuggerFeatureIntegrationTests.ExternalFrame_WithIlspyDisabled_DecompilesNothing`).
+Do not use `dotnet test` for this .NET 10 project.
 
-When it is enough that an add-in's contributions that are looked up in the AddIn tree **when needed** are absent, no restart is necessary: the DevFlow action
-`od.addin.suspend <identity> [false]` sets `AddIn.Suspended` (nothing is unloaded; `Codon.BuildItem` builds nothing from a suspended add-in), so the test runs in
-an ordinary run and must resume the add-in in a `finally` (see `ExternalFrame_WithIlspySuspended_DecompilesNothing`). What was built at startup (menus, pads,
-singletons) is not affected.
+A test that needs an add-in's contributions **absent** does not restart anything: the DevFlow action `od.addin.suspend <identity> [false]` suspends (or resumes) an
+add-in at run time (`AddInManager.Suspend`/`Resume`, `AddIn.Suspended`). Nothing is unloaded: `Codon.BuildItem`, through which everything in the AddIn tree is built,
+builds nothing from a suspended add-in, so whatever is looked up in the tree **when it is needed** is absent. What was built at startup (menus, pads, singletons) is not
+affected. The suspension is **remembered across restarts** (a `<Suspend addin='...'/>` in the configuration directory's `AddIns.xml`, which is private to the run) until the
+add-in is resumed, so a test resumes it in a `finally` (see `DebuggerFeatureIntegrationTests.ExternalFrame_WithIlspySuspended_DecompilesNothing`).
 
 Building `SharpDevelop.csproj` is **not** sufficient on its own. The addins are runtime-discovered
 plugins, not ProjectReferences of the app, so building only the app leaves their `AddIns/...`

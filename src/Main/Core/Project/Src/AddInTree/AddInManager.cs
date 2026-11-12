@@ -356,6 +356,69 @@ namespace ICSharpCode.Core
 		}
 		
 		/// <summary>
+		/// Switches the contributions of the specified AddIns off at once (<see cref="AddIn.Suspended"/>) and remembers it: they stay
+		/// suspended after a restart until <see cref="Resume"/> is called. Nothing is unloaded and nothing already built is torn down;
+		/// what is built from the AddIn tree from now on does not include them. Unlike <see cref="Disable"/>, it needs no restart.
+		/// </summary>
+		public static void Suspend(IList<AddIn> addIns)
+		{
+			SetSuspended(addIns, true);
+		}
+
+		/// <summary>
+		/// Makes the contributions of the specified suspended AddIns available again, at once, and forgets that they were suspended.
+		/// What an AddIn contributed at startup, while it was suspended, is only built again after the next restart.
+		/// </summary>
+		public static void Resume(IList<AddIn> addIns)
+		{
+			SetSuspended(addIns, false);
+		}
+
+		static void SetSuspended(IList<AddIn> addIns, bool suspend)
+		{
+			List<string> addInFiles = new List<string>();
+			List<string> disabled = new List<string>();
+			List<string> suspended = new List<string>();
+			LoadAddInConfiguration(addInFiles, disabled, suspended);
+
+			foreach (AddIn addIn in addIns) {
+				string identity = addIn.Manifest.PrimaryIdentity;
+				if (identity == null)
+					throw new ArgumentException("The AddIn cannot be suspended because it has no identity.");
+
+				foreach (string name in addIn.Manifest.Identities.Keys) {
+					suspended.Remove(name);
+				}
+				if (suspend)
+					suspended.Add(identity);
+				addIn.Suspended = suspend;
+			}
+
+			SaveAddInConfiguration(addInFiles, disabled, suspended);
+		}
+
+		/// <summary>
+		/// Suspends the AddIns of <paramref name="addInTree"/> that the configuration file remembers as suspended. Called at startup
+		/// right after the AddIns are loaded, before anything is built from the tree, so a suspended AddIn stays suspended across
+		/// restarts.
+		/// </summary>
+		public static void ApplySuspendedConfiguration(IAddInTree addInTree)
+		{
+			List<string> suspended = new List<string>();
+			LoadAddInConfiguration(new List<string>(), new List<string>(), suspended);
+			if (suspended.Count == 0)
+				return;
+			foreach (AddIn addIn in addInTree.AddIns) {
+				foreach (string identity in addIn.Manifest.Identities.Keys) {
+					if (suspended.Contains(identity)) {
+						addIn.Suspended = true;
+						break;
+					}
+				}
+			}
+		}
+
+		/// <summary>
 		/// Marks the specified AddIns as disabled (will take effect after
 		/// next application restart).
 		/// </summary>
@@ -389,6 +452,16 @@ namespace ICSharpCode.Core
 		/// <param name="disabledAddIns">Identities of disabled addins are added to this collection.</param>
 		public static void LoadAddInConfiguration(List<string> addInFiles, List<string> disabledAddIns)
 		{
+			LoadAddInConfiguration(addInFiles, disabledAddIns, new List<string>());
+		}
+
+		/// <summary>
+		/// Like <see cref="LoadAddInConfiguration(List{string},List{string})"/>, and the 'addin' of every
+		/// "&lt;Suspend addin='addin identity'&gt;" is added to <paramref name="suspendedAddIns"/>: the AddIns whose
+		/// contributions are switched off (<see cref="AddIn.Suspended"/>) until they are resumed explicitly.
+		/// </summary>
+		public static void LoadAddInConfiguration(List<string> addInFiles, List<string> disabledAddIns, List<string> suspendedAddIns)
+		{
 			if (!File.Exists(configurationFileName))
 				return;
 			using (XmlTextReader reader = new XmlTextReader(configurationFileName)) {
@@ -404,6 +477,11 @@ namespace ICSharpCode.Core
 							if (addIn != null && addIn.Length > 0) {
 								disabledAddIns.Add(addIn);
 							}
+						} else if (reader.Name == "Suspend") {
+							string addIn = reader.GetAttribute("addin");
+							if (addIn != null && addIn.Length > 0) {
+								suspendedAddIns.Add(addIn);
+							}
 						}
 					}
 				}
@@ -418,6 +496,19 @@ namespace ICSharpCode.Core
 		/// <param name="disabledAddIns">List of Identities of disabled addins.</param>
 		public static void SaveAddInConfiguration(List<string> addInFiles, List<string> disabledAddIns)
 		{
+			// This overload does not know about suspended AddIns, but rewrites the whole file: keep them, or enabling or disabling
+			// any AddIn would silently resume every suspended one
+			List<string> suspended = new List<string>();
+			LoadAddInConfiguration(new List<string>(), new List<string>(), suspended);
+			SaveAddInConfiguration(addInFiles, disabledAddIns, suspended);
+		}
+
+		/// <summary>
+		/// Saves the AddIn configuration including the suspended AddIns, in the format expected by
+		/// <see cref="LoadAddInConfiguration(List{string},List{string},List{string})"/>.
+		/// </summary>
+		public static void SaveAddInConfiguration(List<string> addInFiles, List<string> disabledAddIns, List<string> suspendedAddIns)
+		{
 			using (XmlTextWriter writer = new XmlTextWriter(configurationFileName, Encoding.UTF8)) {
 				writer.Formatting = Formatting.Indented;
 				writer.WriteStartDocument();
@@ -429,6 +520,11 @@ namespace ICSharpCode.Core
 				}
 				foreach (string name in disabledAddIns) {
 					writer.WriteStartElement("Disable");
+					writer.WriteAttributeString("addin", name);
+					writer.WriteEndElement();
+				}
+				foreach (string name in suspendedAddIns) {
+					writer.WriteStartElement("Suspend");
 					writer.WriteAttributeString("addin", name);
 					writer.WriteEndElement();
 				}

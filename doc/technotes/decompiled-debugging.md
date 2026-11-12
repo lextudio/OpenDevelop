@@ -156,20 +156,19 @@ build of `Debugger.AddIn` (and building the integration project) puts the packag
 - **Live, by hand** (macOS, DevFlow with a mutation lease): a thread whose whole stack is framework code (`Monitor.Exit`), the case
   `decompiledSourceInfo` could not handle. `od.debug.open-frame` resolved the `Exit_Slowpath` frame in about 24 s including the decompile of
   `System.Private.CoreLib`, the active document was the cached `Monitor.cs`, caret on line 122, the statement the frame executes.
-- **ILSpy disabled** (`DebuggerFeatureIntegrationTests.ExternalFrame_WithIlspyDisabled_DecompilesNothing`): the fixture starts the application
-  with the add-in disabled when the environment variable `OD_TEST_DISABLE_ADDINS` names it (it writes `<config dir>/AddIns.xml`, which the
-  application reads at startup; the application is shared by the assembly, so the variable disables the add-in for the whole run, to be used
-  with a `-method` filter). The test checks `od.addins` reports the add-in disabled, opens the first external frame, and asserts that no
-  file was resolved (an adapter that decompiles by itself would have returned its virtual `decompiled/...` path), the active document is
-  unchanged, there is no `cache/DecompiledSymbols` in the run's config directory, and the adapter's own `SharpIdeSymbolCache` was not written during
-  the run. It skips in an ordinary run and when the bundled SharpDbg does not support `decompileExternalCode`. Verified skipping both ways and
-  passing with the new adapter.
-- **ILSpy suspended at run time** (`ExternalFrame_WithIlspySuspended_DecompilesNothing`): the same claim in an ordinary run, without a restart. `AddIn.Suspended`
-  (ICSharpCode.Core) switches an add-in's contributions off at run time: `Codon.BuildItem`, through which everything in the AddIn tree is built, returns nothing
-  for a suspended add-in's codons, as if their conditions failed. Nothing is unloaded or removed (assemblies stay loaded, what was built earlier stays), it is
-  separate from the persisted, startup-time `Enabled` (whose setter also changes `Action`), and resuming restores the contributions. The symbol provider is looked
-  up in the tree at the moment it is needed, so a suspended ILSpy add-in is absent for this feature at once. DevFlow: `od.addin.suspend identity [suspended]`;
-  `od.addins` reports `suspended`. Unit tests: `AddInSuspensionTests`. The startup variant above remains the proof with the add-in really not loaded.
+- **ILSpy suspended** (`DebuggerFeatureIntegrationTests.ExternalFrame_WithIlspySuspended_DecompilesNothing`): with the ILSpy add-in suspended nothing is decompiled while
+  debugging, by anyone. **Suspending is a run-time state, not a removal**: `AddIn.Suspended` (ICSharpCode.Core) makes `Codon.BuildItem`, through which everything in the
+  AddIn tree is built, return nothing for that add-in's codons, as if their conditions failed. Nothing is unloaded (assemblies stay loaded, what was built earlier stays),
+  it takes effect at once with no restart, and it is separate from the persisted, startup-time `Enabled` (whose setter also changes `Action`). **It is remembered across
+  restarts until the add-in is resumed explicitly**: `AddInManager.Suspend`/`Resume` write a `<Suspend addin='identity'/>` element to the AddIn configuration file
+  (`AddIns.xml`, which `Enable`/`Disable` rewrite without dropping it), and `CoreStartup.RunInitialization` applies it right after the AddIns are loaded, before anything
+  (the services registration included) is built from the tree. What the add-in contributed at startup while it was suspended is only built again after a restart that follows
+  the resume. The symbol provider is looked up in the tree at the moment it is needed, so a suspended ILSpy add-in is absent for this feature at once. DevFlow:
+  `od.addin.suspend identity [suspended]`; `od.addins` reports `suspended`. The test suspends ILSpy, opens the first external frame and asserts that no file was resolved (an
+  adapter that decompiles by itself would have returned its virtual `decompiled/...` path), the active document is unchanged, nothing new was written to the add-in's cache,
+  and the adapter's own `SharpIdeSymbolCache` was not written; it resumes the add-in in a `finally`. It skips when the SharpDbg the application loads does not support
+  `decompileExternalCode`. Unit tests: `AddInSuspensionTests` (the tree) and `AddInSuspensionPersistenceTests` (remembered, still suspended after a simulated restart,
+  `Resume` forgets it, enabling or disabling another add-in keeps it, resuming one leaves the others).
 - Not covered: the Break button itself (a modal dialog that `OD_TEST_MODE` auto-answers; it needs a non-test-mode launch and a real click,
   which a locked screen prevents).
 
