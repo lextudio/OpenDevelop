@@ -2867,6 +2867,73 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true, identity, suspended = addIn.Suspended });
 		}
 
+		[DevFlowAction("od.keybindings.bindings", Description = "List the keyboard bindings installed on the main window: the gesture (display text, key, modifiers) and the type of the command each runs")]
+		public static string KeyBindingsOfTheMainWindow()
+		{
+			var window = System.Windows.Application.Current?.MainWindow;
+			if (window == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No main window" });
+			var bindings = window.InputBindings.OfType<System.Windows.Input.InputBinding>().Select(b => {
+				var gesture = b.Gesture as System.Windows.Input.KeyGesture;
+				return new {
+					gesture = gesture == null ? null : ICSharpCode.Core.Presentation.MenuService.GetDisplayStringForShortcut(gesture),
+					key = gesture?.Key.ToString(),
+					modifiers = gesture?.Modifiers.ToString(),
+					command = b.Command?.GetType().Name
+				};
+			}).ToArray();
+			return JsonSerializer.Serialize(new { success = true, count = bindings.Length, bindings });
+		}
+
+		[DevFlowAction("od.keybindings.invoke", Description = "Run the command bound to a gesture (e.g. F8, Ctrl+Shift+F8) on the main window, by the path a key press takes (its InputBinding): reports whether a binding exists, whether it could execute, and whether it did")]
+		public static string InvokeKeyBinding(string gesture)
+		{
+			var window = System.Windows.Application.Current?.MainWindow;
+			if (window == null)
+				return JsonSerializer.Serialize(new { success = false, error = "No main window" });
+			System.Windows.Input.KeyGesture wanted;
+			try {
+				wanted = ICSharpCode.Core.Presentation.MenuService.ParseShortcut(gesture);
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = "Not a gesture: " + ex.Message });
+			}
+			var binding = window.InputBindings.OfType<System.Windows.Input.InputBinding>().FirstOrDefault(b =>
+				b.Gesture is System.Windows.Input.KeyGesture g && g.Key == wanted.Key && g.Modifiers == wanted.Modifiers);
+			if (binding == null || binding.Command == null)
+				return JsonSerializer.Serialize(new { success = true, bound = false, canExecute = false, executed = false });
+			bool canExecute = binding.Command.CanExecute(null);
+			if (canExecute)
+				binding.Command.Execute(null);
+			return JsonSerializer.Serialize(new { success = true, bound = true, canExecute, executed = canExecute });
+		}
+
+		[DevFlowAction("od.keybindings.overrides", Description = "The user's keyboard shortcut overrides (command key -> gesture, empty meaning no shortcut), as KeyBindings.xml holds them")]
+		public static string KeyBindingOverrides()
+		{
+			return JsonSerializer.Serialize(new { success = true, overrides = ICSharpCode.Core.Presentation.KeyBindingService.Default.Overrides });
+		}
+
+		[DevFlowAction("od.keybindings.set", Description = "Give a command (key such as class:ICSharpCode.SharpDevelop.Project.Commands.Clean) an override; an empty gesture means no shortcut. Applies at once and is saved in KeyBindings.xml")]
+		public static string SetKeyBinding(string commandKey, string gesture)
+		{
+			try {
+				ICSharpCode.Core.Presentation.KeyBindingService.Default.SetOverride(commandKey, gesture);
+			} catch (FormatException ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.Message });
+			}
+			return JsonSerializer.Serialize(new { success = true, commandKey, gesture });
+		}
+
+		[DevFlowAction("od.keybindings.reset", Description = "Remove the override of a command, or of every command when commandKey is empty: the manifest shortcuts apply again")]
+		public static string ResetKeyBinding(string commandKey = "")
+		{
+			if (string.IsNullOrEmpty(commandKey))
+				ICSharpCode.Core.Presentation.KeyBindingService.Default.ResetAll();
+			else
+				ICSharpCode.Core.Presentation.KeyBindingService.Default.ResetOverride(commandKey);
+			return JsonSerializer.Serialize(new { success = true, commandKey });
+		}
+
 		[DevFlowAction("od.debug.output", Description = "Read the Debug output category text (diagnostics)")]
 		public static string GetDebugOutput()
 		{

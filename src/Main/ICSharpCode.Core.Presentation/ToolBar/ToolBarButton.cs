@@ -33,7 +33,7 @@ namespace ICSharpCode.Core.Presentation
 	{
 		readonly Codon codon;
 		readonly object caller;
-		readonly string inputGestureText;
+		string inputGestureText;
 		readonly IEnumerable<ICondition> conditions;
 		
 		public ToolBarButton(UIElement inputBindingOwner, Codon codon, object caller, IReadOnlyCollection<ICondition> conditions)
@@ -51,11 +51,9 @@ namespace ICSharpCode.Core.Presentation
 				this.Name = codon.Properties["name"];
 			}
 
-			if (!string.IsNullOrEmpty(codon.Properties["shortcut"])) {
-				KeyGesture kg = MenuService.ParseShortcut(codon.Properties["shortcut"]);
-				MenuCommand.AddGestureToInputBindingOwner(inputBindingOwner, kg, this.Command, GetFeatureName());
-				this.inputGestureText = MenuService.GetDisplayStringForShortcut(kg);
-			}
+			this.inputGestureText = KeyBindingService.Default.Register(
+				inputBindingOwner, CommandKey.FromCodon(codon), codon, codon.Properties["shortcut"],
+				this.Command, GetFeatureName(), text => { this.inputGestureText = text; UpdateText(); });
 			UpdateText();
 			
 			SetResourceReference(FrameworkElement.StyleProperty, ToolBar.ButtonStyleKey);

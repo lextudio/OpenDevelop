@@ -48,6 +48,7 @@ namespace ICSharpCode.SharpDevelop
 		string icon;
 		string category;
 		string shortcut;
+		string id;
 		
 		AddIn addIn;
 		Type padType;
@@ -66,6 +67,7 @@ namespace ICSharpCode.SharpDevelop
 			if (codon == null)
 				throw new ArgumentNullException("codon");
 			addIn = codon.AddIn;
+			id = codon.Id;
 			shortcut = codon.Properties["shortcut"];
 			category = codon.Properties["category"];
 			icon = codon.Properties["icon"];
@@ -134,6 +136,11 @@ namespace ICSharpCode.SharpDevelop
 		/// <summary>
 		/// Returns the menu shortcut for the view menu item.
 		/// </summary>
+		/// <summary>The id of the &lt;Pad&gt; codon this pad was declared with; null for a pad created from a type.</summary>
+		public string Id {
+			get { return id; }
+		}
+
 		public string Shortcut {
 			get {
 				return shortcut;

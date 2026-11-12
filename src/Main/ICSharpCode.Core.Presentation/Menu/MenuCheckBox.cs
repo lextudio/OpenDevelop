@@ -46,11 +46,9 @@ namespace ICSharpCode.Core.Presentation
 				this.IsChecked = cmd.IsChecked(caller);
 			}
 			
-			if (!string.IsNullOrEmpty(codon.Properties["shortcut"])) {
-				KeyGesture kg = MenuService.ParseShortcut(codon.Properties["shortcut"]);
-				MenuCommand.AddGestureToInputBindingOwner(inputBindingOwner, kg, this.Command, null);
-				this.InputGestureText = MenuService.GetDisplayStringForShortcut(kg);
-			}
+			this.InputGestureText = KeyBindingService.Default.Register(
+				inputBindingOwner, CommandKey.FromCodon(codon), codon, codon.Properties["shortcut"],
+				this.Command, null, text => this.InputGestureText = text);
 		}
 
 		void cmd_IsCheckedChanged(object sender, EventArgs e)

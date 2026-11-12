@@ -461,13 +461,10 @@ namespace ICSharpCode.SharpDevelop.Commands
 						item.Icon = SD.ResourceService.GetImage(padContent.Icon).CreateImage();
 					}
 					item.Command = new BringPadToFrontCommand(padContent);
-					if (!string.IsNullOrEmpty(padContent.Shortcut)) {
-						var kg = Core.Presentation.MenuService.ParseShortcut(padContent.Shortcut);
-						SD.Workbench.MainWindow.InputBindings.Add(
-							new System.Windows.Input.InputBinding(item.Command, kg)
-						);
-						item.InputGestureText = MenuService.GetDisplayStringForShortcut(kg);
-					}
+					// Registered with or without a shortcut: an override can give the pad one
+					item.InputGestureText = Core.Presentation.KeyBindingService.Default.Register(
+						SD.Workbench.MainWindow, Core.Presentation.CommandKey.ForPad(padContent.Id, padContent.Class), padContent,
+						padContent.Shortcut, item.Command, null, text => item.InputGestureText = text);
 					
 					list.Add(item);
 				}

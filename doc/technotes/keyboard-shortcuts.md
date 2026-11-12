@@ -1,6 +1,9 @@
 # Keyboard shortcut overrides (design)
 
-Status: **design, nothing implemented** (2026-11-12). Facts below were read from the code and from the `.addin` manifests on that date.
+Status (2026-11-12): **design; phase 1 is implemented**, phases 2 to 4 are not. Implemented: the command key (`CommandKey`), `KeyBindings.xml` (`KeyBindingsFile`), the resolution, `KeyBindingService`,
+the four installers moved onto it, and the DevFlow actions `od.keybindings.bindings|invoke|overrides|set|reset`. **Not yet:** the `CommandCatalog`, the command-wide default for an item that has no `shortcut`
+of its own (so for now an override applies to every site of a command, but a default is still taken from the item's own attribute), and the Settings page. The sections below say what each part does or will do.
+Facts below were read from the code and from the `.addin` manifests on that date.
 The counts come from a script over the **57 product `.addin` files**: the 79 tracked ones minus the 15 under `samples/` and the 7 test fixtures
 (`*.Tests/TestResources`, `tests/`). The samples are left out on purpose: they carry their own menus (for example `Control|Z` on `Undo` in `SdaBase.addin`)
 that the product does not. Anything marked *proposal* or *open* is not verified. Tracks
@@ -63,7 +66,7 @@ toolbar. Overriding per menu *item* would make the user repeat the change in eac
 | a command class | `class:<full class name>` | `class:ICSharpCode.SharpDevelop.Project.Commands.Build` |
 | a WPF routed command named in `command=` | `routed:<name>` | `routed:Undo` |
 | a pad | `pad:<pad id>` | the `shortcut` of a `<Pad id=...>` codon under `/SharpDevelop/Workbench/Pads` (one in the product today) |
-| an item with neither (a `link=` item that opens a URL) | `item:<tree path>/<id>` | Help > Topics, `Alt+F1`, the only such item with a shortcut |
+| an item with neither (a `link=` item that opens a URL) | `item:<AddIn identity>/<id>` | Help > Topics, `Alt+F1`, the only such item with a shortcut. The tree path of an item is not known where its shortcut is installed, so the AddIn and the id stand in for it |
 
 The class name is stable, human-readable, and the same for every item that runs the command, which is what the data above requires. An item
 that is a `Builder` (a dynamic list) has no identity and cannot have a shortcut, as today. A key that no longer exists after an upgrade
@@ -71,7 +74,7 @@ that is a `Builder` (a dynamic list) has no identity and cannot have a shortcut,
 
 **The effective gesture applies to every site of the command**: the override if there is one (an explicit "none" removes the default),
 otherwise the default from the manifest. Where a command's items differ today (22 commands have the attribute on only some items), the
-service uses the one gesture it finds, so the toolbar button's tooltip and the binding agree. This changes nothing for the defaults.
+service uses the one gesture it finds, so the toolbar button's tooltip and the binding agree. This changes nothing for the defaults. *(Phase 1 implements the override part: an override reaches every site of the command. Taking the default of a command from its other items needs the `CommandCatalog`.)*
 
 Routed commands are different in kind. In the product they are `Undo`, `Redo`, `Cut`, `Copy`, `Paste`, `SelectAll` (main-menu and toolbar items with `command=` and **no**
 `shortcut` attribute: their keys are WPF's built-in `InputGestures` on the command, `Ctrl+Z` in any text box) and `Print` and `Help` (which do carry a `shortcut`). An `InputBinding`
@@ -201,8 +204,12 @@ all strings go through `${res:...}` with English, Simplified and Traditional Chi
 
 ## Phases
 
-1. **Core**: the command key, `CommandCatalog`, `KeyBindings.xml` (read, write, round-trip), the resolution `override ?? default`, `KeyBindingService`, and the four installers
-   moved onto it. No UI. The result is observable through DevFlow (`od.keybindings.*`, below) and a hand-edited file.
+1. **Core** (implemented, except the `CommandCatalog`): the command key, `KeyBindings.xml` (read, write, round-trip, a newer `version` and unknown content kept, an unreadable file kept as `.corrupt`), the resolution
+   `override ?? default`, `KeyBindingService`, and the four installers moved onto it. No UI. Observable through DevFlow and a hand-edited file. How the service works: for every owner it keeps the sites registered on it and
+   DERIVES the bindings it adds from them, so a change removes what it added and adds the new ones; a site is replaced when the same item (its codon) registers again, which is what a context menu does every time it
+   opens, so nothing piles up (the old code added a binding, or wrapped one, on every open); two sites on one gesture are combined as before (the first that can execute runs); bindings other code added are not touched; an
+   override that does not parse is reported and ignored, so the default applies; an item without a shortcut registers too, so an override can give it one (the issue's "Clean"). Still to do in this phase: the
+   `CommandCatalog` and the command-wide default.
 2. **The page**: list, search, details and capture, conflict handling, OK/Cancel semantics, the dialog's default size.
 3. **Import / export, reset all, the unknown-command row**, and the gesture search.
 4. **More scopes**: the editor's own commands (AvalonEdit's built-in editing actions and the add-in's `CustomCommands`), the terminal, designers. They bind inside
@@ -214,7 +221,7 @@ all strings go through `${res:...}` with English, Simplified and Traditional Chi
   resolution (`override`, explicit none, default, two sites of one command); `KeyBindings.xml` round trip including the unknown-key row and a future `version`; gesture parsing and display for
   the culture; conflict detection per scope, including `F2` Rename in eight context-menu paths being no conflict and Workbench vs control being shadowing; the rejected gestures.
 - **Service**: `Register` / `Changed` against real `UIElement`s: the old gesture stops working, the new one runs the command, the `InputGestureText` changes, a collected owner does not leak.
-- **Integration** (one method at a time): DevFlow actions `od.keybindings.set` / `get` / `invoke <gesture>`, where `invoke` finds the `InputBinding` for a gesture on the owner and executes its command
+- **Integration** (one method at a time): DevFlow actions `od.keybindings.set` / `reset` / `overrides` / `bindings` / `invoke <gesture>`, where `invoke` finds the `InputBinding` for a gesture on the owner and executes its command
   **by the path the key takes**, because a real key press needs the key window and a locked screen drops it; then the Settings page through the UI tree (select a row, set a gesture through the
   capture box's action, OK) and the effect on the menu text. A restart journey as for suspension: set, relaunch with the same configuration directory, the override is still applied.
 - Not testable without a real key: the capture box's raw key handling; the manual check is one real chord on a machine with an unlocked screen.
