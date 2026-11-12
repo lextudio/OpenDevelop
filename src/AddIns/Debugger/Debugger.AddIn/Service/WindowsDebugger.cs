@@ -470,10 +470,16 @@ namespace ICSharpCode.SharpDevelop.Services
 			var threads = await CurrentSession.GetThreadsAsync().ConfigureAwait(false);
 			CurrentThread = threads.FirstOrDefault(t => t.Id == e.ThreadId) ?? threads.FirstOrDefault();
 
+			// An exception thrown inside framework code (int.Parse, a collection indexer...) has a top
+			// frame without source, so look at the whole stack and show the first frame that has one:
+			// the user's own line (issue #27). Other stops keep the cheap one-frame request.
+			bool isExceptionStop = e.Reason == "exception";
 			var frames = CurrentThread != null
-				? await CurrentSession.GetStackFramesAsync(CurrentThread.Id, 0, 1).ConfigureAwait(false)
+				? await (isExceptionStop
+					? CurrentSession.GetStackFramesAsync(CurrentThread.Id)
+					: CurrentSession.GetStackFramesAsync(CurrentThread.Id, 0, 1)).ConfigureAwait(false)
 				: Array.Empty<DapStackFrameInfo>();
-			CurrentStackFrame = frames.FirstOrDefault();
+			CurrentStackFrame = isExceptionStop ? SelectExceptionStopFrame(frames) : frames.FirstOrDefault();
 			if (CurrentStackFrame != null) {
 				CurrentSession.ActiveFrameId = CurrentStackFrame.Id;
 			}
@@ -493,12 +499,60 @@ namespace ICSharpCode.SharpDevelop.Services
 				}
 
 				if (shouldBreak) {
-					JumpToCurrentLine();
+					if (ShouldShowFrameDecompiled(isExceptionStop, CurrentStackFrame)) {
+						// No frame of the stack has source (the exception stayed inside framework code):
+						// show the throw site decompiled, as double-clicking the frame in the Call Stack does.
+						OpenFrameAsync(CurrentStackFrame).FireAndForget();
+					} else {
+						JumpToCurrentLine();
+					}
 					RefreshPads();
 				} else {
 					CurrentSession?.Continue();
 				}
 			});
+		}
+
+		/// <summary>
+		/// The frame to show when the debuggee stops on an exception: the first frame that has real source
+		/// (the throw site in the user's code, or the user's call into the framework); failing that the
+		/// first managed frame with a method token, which the ILSpy engine can show decompiled (a native
+		/// transition frame has none); failing that the top frame.
+		/// </summary>
+		public static DapStackFrameInfo SelectExceptionStopFrame(IReadOnlyList<DapStackFrameInfo> frames)
+		{
+			if (frames == null || frames.Count == 0)
+				return null;
+			return frames.FirstOrDefault(HasSourceFile)
+				?? frames.FirstOrDefault(f => f.MethodToken != 0)
+				?? frames[0];
+		}
+
+		/// <summary>
+		/// Whether Break on a stop should show the frame through <see cref="OpenFrameAsync"/> (decompiled)
+		/// instead of opening a file. Decided from the stop reason and the frame only: the exception
+		/// details can be missing (the adapter answered with an error) and must not change it.
+		/// </summary>
+		public static bool ShouldShowFrameDecompiled(bool isExceptionStop, DapStackFrameInfo frame)
+		{
+			return isExceptionStop && frame != null && !HasSourceFile(frame);
+		}
+
+		/// <summary>
+		/// True when the frame's <see cref="DapStackFrameInfo.FilePath"/> is a file on disk. A frame the
+		/// adapter has already decompiled keeps reporting its virtual "decompiled/..." path (with
+		/// <see cref="DapStackFrameInfo.IsResolved"/> true and no <see cref="DapStackFrameInfo.DecompiledSource"/>),
+		/// which must never be opened as a file.
+		/// </summary>
+		public static bool HasSourceFile(DapStackFrameInfo frame)
+		{
+			return frame != null && !string.IsNullOrEmpty(frame.FilePath)
+				&& frame.DecompiledSource == null && !IsDecompiledPath(frame.FilePath);
+		}
+
+		static bool IsDecompiledPath(string path)
+		{
+			return path != null && path.StartsWith("decompiled/", StringComparison.Ordinal);
 		}
 
 		void SessionContinued()
@@ -927,7 +981,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			if (session == null || frame == null)
 				return result;
 
-			if (string.IsNullOrEmpty(frame.FilePath) && !frame.IsResolved) {
+			if (frame.DecompiledSource == null && ((string.IsNullOrEmpty(frame.FilePath) && !frame.IsResolved) || IsDecompiledPath(frame.FilePath))) {
 				try {
 					frame = await session.ResolveStackFrameAsync(frame).ConfigureAwait(true);
 					result.Frame = frame;
@@ -944,7 +998,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			// A decompiled frame also carries the adapter's virtual "decompiled/..." path, so test for
 			// the decompiled source first.
 			if (frame.DecompiledSource == null) {
-				if (!string.IsNullOrEmpty(frame.FilePath))
+				if (HasSourceFile(frame))
 					Instance.JumpToCurrentLine();
 			} else {
 				var navigator = AddInTree.BuildItems<IDecompiledSourceNavigator>(IDecompiledSourceNavigator.AddInTreePath, null, false).FirstOrDefault();
@@ -964,7 +1018,8 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		public void JumpToCurrentLine()
 		{
-			if (CurrentStackFrame == null || string.IsNullOrEmpty(CurrentStackFrame.FilePath))
+			// Never open the adapter's virtual "decompiled/..." path as a file (modal error dialog).
+			if (!HasSourceFile(CurrentStackFrame))
 				return;
 
 			SD.Workbench.MainWindow.Activate();
