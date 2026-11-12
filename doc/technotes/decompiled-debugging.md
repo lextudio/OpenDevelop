@@ -156,10 +156,16 @@ build of `Debugger.AddIn` (and building the integration project) puts the packag
 - **Live, by hand** (macOS, DevFlow with a mutation lease): a thread whose whole stack is framework code (`Monitor.Exit`), the case
   `decompiledSourceInfo` could not handle. `od.debug.open-frame` resolved the `Exit_Slowpath` frame in about 24 s including the decompile of
   `System.Private.CoreLib`, the active document was the cached `Monitor.cs`, caret on line 122, the statement the frame executes.
-- Not covered: a journey with the ILSpy add-in disabled (there is no switch for disabling one add-in in a test run; the invariant is
-  unit-tested at the `DapSession` level and holds by construction, because no provider means `LoadSymbolsAsync(mvid, null)`), and the
-  Break button itself (a modal dialog that `OD_TEST_MODE` auto-answers; it needs a non-test-mode launch and a real click, which a locked
-  screen prevents).
+- **ILSpy disabled** (`DebuggerFeatureIntegrationTests.ExternalFrame_WithIlspyDisabled_DecompilesNothing`): the fixture starts the application
+  with the add-in disabled when the environment variable `OD_TEST_DISABLE_ADDINS` names it (it writes `<config dir>/AddIns.xml`, which the
+  application reads at startup; the application is shared by the assembly, so the variable disables the add-in for the whole run, to be used
+  with a `-method` filter). The test checks `od.addins` reports the add-in disabled, opens the first external frame, and asserts that no
+  file was resolved (an adapter that decompiles by itself would have returned its virtual `decompiled/...` path), the active document is
+  unchanged, there is no `cache/DecompiledSymbols` in the run's config directory, and the adapter's own `SharpIdeSymbolCache` was not written during
+  the run. It skips in an ordinary run and when the bundled SharpDbg does not support `decompileExternalCode`. Verified skipping both ways and
+  passing with the new adapter.
+- Not covered: the Break button itself (a modal dialog that `OD_TEST_MODE` auto-answers; it needs a non-test-mode launch and a real click,
+  which a locked screen prevents).
 
 ## Open questions
 

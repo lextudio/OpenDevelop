@@ -54,6 +54,11 @@ dotnet run --project tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationT
 
 Do not use `dotnet test` for this .NET 10 project.
 
+A test that needs an add-in **absent** cannot disable it at run time (disabling takes effect at startup), and the application is shared by the whole
+assembly. Set `OD_TEST_DISABLE_ADDINS` (comma-separated identities, e.g. `ICSharpCode.ILSpyAddIn`) for a separate run with a `-method` filter: the
+fixture writes `<config dir>/AddIns.xml` before the launch. Such a test skips itself unless the variable names its add-in, so an ordinary run never
+disables anything (see `DebuggerFeatureIntegrationTests.ExternalFrame_WithIlspyDisabled_DecompilesNothing`).
+
 Building `SharpDevelop.csproj` is **not** sufficient on its own. The addins are runtime-discovered
 plugins, not ProjectReferences of the app, so building only the app leaves their `AddIns/...`
 folders empty - and an undeployed addin fails its tests with symptoms that read like product bugs

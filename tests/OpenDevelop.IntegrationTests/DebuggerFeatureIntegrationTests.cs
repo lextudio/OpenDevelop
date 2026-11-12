@@ -228,6 +228,81 @@ public sealed class DebuggerFeatureIntegrationTests
         }
     }
 
+    // doc/technotes/decompiled-debugging.md: the ILSpy add-in supplies the decompiled sources and PDB, so with it disabled NOTHING is decompiled while
+    // debugging, by anyone. The application is shared by the assembly, so this runs on its own with the add-in disabled for that whole run:
+    //   OD_TEST_DISABLE_ADDINS=ICSharpCode.ILSpyAddIn dotnet run --no-build --project tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj -- \
+    //     -class OpenDevelop.IntegrationTests.DebuggerFeatureIntegrationTests -method OpenDevelop.IntegrationTests.DebuggerFeatureIntegrationTests.ExternalFrame_WithIlspyDisabled_DecompilesNothing -parallel none
+    // Skipped in an ordinary run. It also needs a SharpDbg that takes the IDE's symbols (decompileExternalCode): an older one decompiles by itself.
+    [Fact]
+    public async Task ExternalFrame_WithIlspyDisabled_DecompilesNothing()
+    {
+        Assert.SkipUnless(OpenDevelopAppFixture.DisabledAddIns.Contains("ICSharpCode.ILSpyAddIn"),
+            "Run with OD_TEST_DISABLE_ADDINS=ICSharpCode.ILSpyAddIn (see the comment above this test).");
+        Assert.SkipUnless(await AdapterTakesTheIdesSymbolsAsync(), "The SharpDbg the application loads does not support decompileExternalCode; it decompiles by itself.");
+
+        var started = DateTime.UtcNow;
+        var program = ProgramPath;
+        var line = FindLine(program, "var twice = n * 2;");
+
+        // The add-in really is absent
+        var addins = await _app.InvokeAsync("od.addins");
+        var ilspy = Assert.Single(addins.GetProperty("addins").EnumerateArray(),
+            a => a.GetProperty("fileName").GetString()!.EndsWith("ILSpyAddIn.addin", StringComparison.OrdinalIgnoreCase));
+        Assert.False(ilspy.GetProperty("enabled").GetBoolean(), ilspy.ToString());
+
+        await _app.InvokeAsync("od.open-solution", _app.DebugTestProjectPath);
+        await _app.InvokeAsync("od.open-file", program);
+        await _app.InvokeAsync("od.debug.clear-breakpoints");
+        await _app.InvokeAsync("od.debug.set-breakpoint", program, line);
+
+        try
+        {
+            var start = await _app.InvokeAsync("od.debug.start", _app.DebugTestProjectPath, true, 45);
+            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
+
+            // The same path a double-click on the first sourceless frame takes: the adapter asks the IDE for symbols, nobody supplies any
+            var opened = await _app.InvokeAsync("od.debug.open-frame", "external");
+            Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+            var resolvedFile = opened.GetProperty("resolvedFilePath");
+            Assert.True(resolvedFile.ValueKind == JsonValueKind.Null || string.IsNullOrEmpty(resolvedFile.GetString()), opened.ToString());
+            var document = opened.GetProperty("activeDocument").GetString()!;
+            Assert.Equal(program, document);
+            Assert.DoesNotContain("ilspy:", document, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.debug.stop");
+        }
+
+        // No decompiled sources or PDB from the add-in...
+        Assert.False(Directory.Exists(Path.Combine(_app.ConfigDirectory, "cache", "DecompiledSymbols")));
+        // ...and none from the adapter either: it must not have written to its own cache during this run. The path is the adapter's own formula
+        // (sharpdbg ManagedDebugger_FrameSourceInfo.cs: LocalApplicationData/Temp/SharpIdeSymbolCache; on macOS ~/Library/Application Support/Temp/...), computed
+        // here with the same call by the same user. Not existing at all also means nothing was written, so the guard is not a way to skip the claim.
+        var adapterCache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp", "SharpIdeSymbolCache");
+        if (Directory.Exists(adapterCache))
+            Assert.DoesNotContain(Directory.EnumerateFiles(adapterCache, "*", SearchOption.AllDirectories), f => File.GetLastWriteTimeUtc(f) >= started);
+    }
+
+    /// <summary>
+    /// True when the SharpDbg the RUNNING application loads advertises <c>supportsClientSymbols</c> (takes the IDE's symbols). The location is asked
+    /// of the application, not guessed: the Debugger add-in's manifest directory (od.addins) is where its SharpDbg.Application.dll sits, whether
+    /// the application runs from the source tree's AddIns folder or from an installed build (OPENDEVELOP_APP_PATH).
+    /// </summary>
+    async Task<bool> AdapterTakesTheIdesSymbolsAsync()
+    {
+        var addins = await _app.InvokeAsync("od.addins");
+        var debugger = addins.GetProperty("addins").EnumerateArray()
+            .FirstOrDefault(a => a.GetProperty("fileName").GetString()!.EndsWith("Debugger.AddIn.addin", StringComparison.OrdinalIgnoreCase));
+        if (debugger.ValueKind != JsonValueKind.Object)
+            return false;
+        var adapter = Path.Combine(Path.GetDirectoryName(debugger.GetProperty("fileName").GetString()!)!, "SharpDbg.Application.dll");
+        if (!File.Exists(adapter))
+            return false;
+        // A C# string literal is stored as UTF-16 in the assembly
+        return File.ReadAllBytes(adapter).AsSpan().IndexOf(System.Text.Encoding.Unicode.GetBytes("supportsClientSymbols")) >= 0;
+    }
+
     // doc/technotes/debugging.md, "Eval window": dot-completion keeps working once an external frame is open.
     [Fact]
     public async Task ExternalFrame_ConsoleCompletionResolvesInTheNearestUserFrame()

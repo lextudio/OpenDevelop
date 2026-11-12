@@ -170,6 +170,31 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 
     internal string ConfigDirectory => _configDirectory;
 
+    /// <summary>
+    /// Identities of the add-ins this run starts DISABLED, from the environment variable OD_TEST_DISABLE_ADDINS (comma separated, e.g.
+    /// <c>ICSharpCode.ILSpyAddIn</c>). The application is shared by the whole assembly, so the variable disables them for the entire run:
+    /// use it with a <c>-method</c> filter for a test that needs the add-in absent (doc/technotes/decompiled-debugging.md).
+    /// </summary>
+    internal static string[] DisabledAddIns =>
+        (Environment.GetEnvironmentVariable("OD_TEST_DISABLE_ADDINS") ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>
+    /// The application reads <c>&lt;config dir&gt;/AddIns.xml</c> at startup (CoreStartup.ConfigureExternalAddIns) for the list of disabled
+    /// add-ins, so writing it before the launch is how a test starts without one.
+    /// </summary>
+    void WriteDisabledAddIns()
+    {
+        var disabled = DisabledAddIns;
+        if (disabled.Length == 0)
+            return;
+        // No LINQ here: this file is source-linked into the external add-in test projects, which need not import System.Linq
+        var configuration = new System.Xml.Linq.XElement("AddInConfiguration");
+        foreach (var identity in disabled)
+            configuration.Add(new System.Xml.Linq.XElement("Disable", new System.Xml.Linq.XAttribute("addin", identity)));
+        File.WriteAllText(Path.Combine(_configDirectory, "AddIns.xml"), configuration.ToString());
+    }
+
     internal async Task StartWithCleanupOnFailureAsync(Func<Task> start)
     {
         try {
@@ -376,6 +401,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     {
         _appStartedUtc = DateTime.UtcNow;
 		Directory.CreateDirectory(_configDirectory);
+		WriteDisabledAddIns();
         if (!KeepArtifacts)
             await File.WriteAllLinesAsync(Path.Combine(_configDirectory, OwnershipMarker),
                 new[] { OwnershipVersion, Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture) });
