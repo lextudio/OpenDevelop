@@ -23,6 +23,46 @@ public class SurfaceLaunchTests
 	public void Anything_else_is_not_a_port(string? line) => Assert.Null(SurfaceLaunch.TryParsePort(line));
 
 	[Fact]
+	public void The_runtime_not_installed_exit_code_is_explained_and_others_are_not_guessed()
+	{
+		Assert.Equal(unchecked((int)0x80670016), SurfaceLaunch.RuntimeNotInstalledExitCode);
+		string message = SurfaceLaunch.DescribeStartupExit(SurfaceLaunch.RuntimeNotInstalledExitCode);
+		Assert.Contains("Windows App Runtime", message);
+		Assert.Contains(SurfaceLaunch.RuntimeInstallerUrl, message);
+		Assert.Equal("", SurfaceLaunch.DescribeStartupExit(1));
+		Assert.Equal("", SurfaceLaunch.DescribeStartupExit(0));
+	}
+
+	/// <summary>A process that dies with the bootstrapper's code before announcing a port, as on a machine without the runtime.</summary>
+	[Fact]
+	public async Task A_surface_that_exits_with_the_runtime_code_reports_the_actionable_message()
+	{
+		if (!OperatingSystem.IsWindows())
+			Assert.Skip("Needs cmd.exe.");
+		string cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+
+		var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+			() => SurfaceProcessHost.StartAsync(cmd, "/c exit " + SurfaceLaunch.RuntimeNotInstalledExitCode, TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+
+		Assert.Contains("exited before announcing a port", ex.Message);
+		Assert.Contains("Windows App Runtime is not installed", ex.Message);
+	}
+
+	[Fact]
+	public async Task A_surface_that_exits_with_another_code_reports_the_code_without_a_guess()
+	{
+		if (!OperatingSystem.IsWindows())
+			Assert.Skip("Needs cmd.exe.");
+		string cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+
+		var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+			() => SurfaceProcessHost.StartAsync(cmd, "/c exit 7", TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+
+		Assert.Contains("(exit 7)", ex.Message);
+		Assert.DoesNotContain("Windows App Runtime", ex.Message);
+	}
+
+	[Fact]
 	public void Deep_roots_are_rejected_before_launch()
 	{
 		string deep = Path.Combine(Path.GetTempPath(), new string('d', SurfaceLaunch.MaxRootLength));

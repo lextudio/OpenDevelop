@@ -1217,6 +1217,23 @@ their run copies would stay under `%LOCALAPPDATA%\OpenDevelop\surf\run`; each ch
 for its process id, removes that folder on shutdown, and at startup sweeps the id-named folders of processes that no longer exist
 (never a live one's, never a folder whose name is not a process id).
 
+**Usability follow-ups (done after the first commit).**
+
+- *Missing Windows App Runtime.* A surface whose bootstrapper finds no usable runtime exits `0x80670016` before announcing a port.
+  `SurfaceLaunch.DescribeStartupExit` maps exactly that code to an actionable message (install the runtime, with the installer URL and
+  the ARM64 note); `SurfaceProcessHost` waits for the exit code and appends the message to "exited before announcing a port"; other
+  codes are reported as the bare code, never guessed at. Tested with a fake surface (`cmd /c exit <code>`), including through the
+  child's RPC, where the message reaches the IDE side as the `session/open` error. Not tested on a machine that really lacks the
+  runtime (this one has it).
+- *Provisioning progress.* The launch provider now gets a status reporter: it shows "provisioning a host matched to X (the first build
+  takes several minutes, later ones use the cache)…" and then each phase the provisioner announces. Measured in the live IDE against a
+  fresh cache root: `WinUI Surface host: compiling matched host…` for about a minute, then `Rendering…`, then `Rendered by WinUI
+  Surface host (1024×720)` at 67 s.
+- *Choosing the backend without an environment variable.* `RegisterDevFlowActionsCommand` falls back to the string property
+  `WinUIXamlDesigner.Runtime` (`uno`, `microsoft` or `surface`) when `OD_WINUI_RUNTIME` is not set. This is compile-verified only
+  (the IDE's global settings file does not exist in test mode and the user's profile was not modified), and there is no Options page
+  for it yet.
+
 Still not done: the OpenCode review (`build/opencode-review.ps1` needs the OpenCode CLI and its provider auth, which were not on the
 machine; the change was committed without it at the user's explicit request) and ARM64 (this machine is AMD64).
 

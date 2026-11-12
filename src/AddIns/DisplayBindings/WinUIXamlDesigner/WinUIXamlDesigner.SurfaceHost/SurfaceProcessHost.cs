@@ -67,9 +67,16 @@ public sealed class SurfaceProcessHost : IAsyncDisposable
 			int? port = null;
 			while (port == null) {
 				string? line = await process.StandardOutput.ReadLineAsync(timeoutSource.Token).ConfigureAwait(false);
-				if (line == null)
+				if (line == null) {
+					// stdout closed: the process is going away, but its exit code may not be available for a moment.
+					try {
+						await process.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token).ConfigureAwait(false);
+					} catch (OperationCanceledException) { }
+					int? exitCode = process.HasExited ? process.ExitCode : null;
+					string hint = exitCode is int code ? SurfaceLaunch.DescribeStartupExit(code) : "";
 					throw new InvalidOperationException("The surface exited before announcing a port (exit "
-						+ (process.HasExited ? process.ExitCode.ToString() : "?") + ").");
+						+ (exitCode?.ToString() ?? "unknown") + ")." + (hint.Length > 0 ? " " + hint : ""));
+				}
 				port = SurfaceLaunch.TryParsePort(line);
 			}
 

@@ -49,7 +49,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 	readonly string documentFileName;
 	readonly string? hostDllPath;
 	readonly Func<Architecture?, string?>? hostDllPathLocator;
-	readonly Func<string, CancellationToken, Task<DesignHostChildLaunch>>? childLaunchProvider;
+	readonly Func<string, Action<string>, CancellationToken, Task<DesignHostChildLaunch>>? childLaunchProvider;
 	readonly string hostDisplayName;
 	UnoDesignClient client;
 	Task connectTask;
@@ -68,7 +68,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 	/// launched on its own runtime, never inside the designed app's dependency graph.</param>
 	public UnoDesignRuntimeHost(XamlFrameworkContext framework, string documentFileName, string? hostDllPath = null,
 		string? hostDisplayName = null, Func<Architecture?, string?>? hostDllPathLocator = null,
-		Func<string, CancellationToken, Task<DesignHostChildLaunch>>? childLaunchProvider = null)
+		Func<string, Action<string>, CancellationToken, Task<DesignHostChildLaunch>>? childLaunchProvider = null)
 	{
 		this.childLaunchProvider = childLaunchProvider;
 		// The host may be constructed on the UI thread but fed XAML from a background loader
@@ -586,7 +586,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 				// It receives only the app directory (to find the project's DLL) and what the provider supplies.
 				runtimeConfig = "";
 				depsFile = "";
-				var launch = await childLaunchProvider(documentFileName, CancellationToken.None);
+				var launch = await childLaunchProvider(documentFileName, SetStatus, CancellationToken.None);
 				if (launch.Arguments == null)
 				{
 					SetStatus(launch.Error ?? (hostDisplayName + " cannot start."));

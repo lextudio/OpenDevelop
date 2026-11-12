@@ -18,6 +18,10 @@ public sealed class RegisterDevFlowActionsCommand : AbstractCommand
 	/// </summary>
 	public const string RuntimeSelectionVariable = "OD_WINUI_RUNTIME";
 
+	/// <summary>The persisted counterpart of <see cref="RuntimeSelectionVariable"/> (a string property: <c>uno</c>, <c>microsoft</c> or
+	/// <c>surface</c>), used when the variable is not set. There is no Options page for it yet.</summary>
+	public const string RuntimePreferenceProperty = "WinUIXamlDesigner.Runtime";
+
 	const string UnoBootstrap =
 		"ICSharpCode.WinUIXamlDesigner.UnoDesignHost.UnoDesignRuntimeHostBootstrap, ICSharpCode.WinUIXamlDesigner.UnoDesignHost";
 	const string MicrosoftWinUIBootstrap =
@@ -28,6 +32,10 @@ public sealed class RegisterDevFlowActionsCommand : AbstractCommand
 	public override void Run()
 	{
 		var selection = Environment.GetEnvironmentVariable(RuntimeSelectionVariable)?.Trim();
+		// The environment variable wins (tests pin a backend with it); otherwise the stored preference, so the Surface backend
+		// can be chosen without setting an environment variable. Same values, read once at start-up.
+		if (string.IsNullOrEmpty(selection))
+			selection = PropertyService.Get(RuntimePreferenceProperty, string.Empty)?.Trim();
 
 		if (!string.IsNullOrEmpty(selection)
 			&& !string.Equals(selection, "uno", StringComparison.OrdinalIgnoreCase)

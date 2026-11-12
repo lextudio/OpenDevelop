@@ -223,6 +223,22 @@ public class SurfaceChildProcessTests
 		Assert.Contains("--run-root", await process.StandardError.ReadToEndAsync(Ct));
 	}
 
+	/// <summary>The message the user sees when the Windows App Runtime is missing must survive the RPC from the child.</summary>
+	[Fact]
+	public async Task A_missing_runtime_is_reported_to_the_ide_side_with_the_install_hint()
+	{
+		if (!OperatingSystem.IsWindows())
+			Assert.Skip("Needs cmd.exe.");
+		string cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+		await using var child = await Child.StartWithAsync("--surface-exe", cmd, "--surface-args", "/c exit " + SurfaceLaunch.RuntimeNotInstalledExitCode);
+		await child.Call<HostHandshake>("initialize", Token, DesignerProtocol.Version, "s1");
+
+		var ex = await Assert.ThrowsAsync<RemoteInvocationException>(() => child.Call<DesignerSessionState>("session/open", Request("<Page/>", 1)));
+
+		Assert.Contains("Windows App Runtime is not installed", ex.Message);
+		await child.Call<object?>("ping");   // the child survives and can be asked again after the user installs the runtime
+	}
+
 	[Fact]
 	public async Task Real_surface_renders_refuses_edits_and_exports_over_ddp()
 	{

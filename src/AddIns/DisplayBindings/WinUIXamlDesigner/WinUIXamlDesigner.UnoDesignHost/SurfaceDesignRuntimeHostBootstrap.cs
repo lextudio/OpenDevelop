@@ -52,13 +52,20 @@ public static class SurfaceDesignRuntimeHostBootstrap
 		if (framework?.Runtime != XamlRuntimeKind.MicrosoftWinUI || Locate() is not { } layout || !OperatingSystem.IsWindows())
 			return null;
 		return new UnoDesignRuntimeHost(framework, documentFileName, layout.ChildDll, DisplayName, null,
-			(file, cancellationToken) => PrepareAsync(layout.HostSdk, file, cancellationToken));
+			(file, report, cancellationToken) => PrepareAsync(layout.HostSdk, file, report, cancellationToken));
 	}
 
-	static async Task<DesignHostChildLaunch> PrepareAsync(string hostSdk, string documentFileName, CancellationToken cancellationToken)
+	static async Task<DesignHostChildLaunch> PrepareAsync(string hostSdk, string documentFileName, Action<string> report, CancellationToken cancellationToken)
 	{
 		var channel = DesignerOutput.Channel(OutputChannel);
-		void Log(string line) => DesignerOutput.AppendLine(channel, "Surface: " + line);
+		void Log(string line)
+		{
+			DesignerOutput.AppendLine(channel, "Surface: " + line);
+			// The provisioner announces its phases ("PHASE: compiling matched host"); show them, since a first build takes minutes.
+			var phase = line.IndexOf("PHASE:", StringComparison.Ordinal);
+			if (phase >= 0)
+				report(DisplayName + ": " + line[(phase + 6)..].Trim() + "…");
+		}
 		try {
 			var project = SD.ProjectService.FindProjectContainingFile(FileName.Create(documentFileName));
 			if (project == null)
@@ -74,7 +81,7 @@ public static class SurfaceDesignRuntimeHostBootstrap
 			var dotnet = DotNetSdkService.ResolveSdkForProject(project)?.Sdk?.DotnetExecutablePath;
 			if (string.IsNullOrEmpty(dotnet))
 				return new DesignHostChildLaunch(null, DisplayName + " cannot start: no supported .NET SDK is selected. Select one in Tools > Options > .NET SDK.");
-			Log("provisioning a host matched to " + project.Name + " (the first build takes several minutes, later ones use the cache)");
+			report(DisplayName + ": provisioning a host matched to " + project.Name + " (the first build takes several minutes, later ones use the cache)…");
 			var result = await SurfaceProvisionerRunner.RunAsync(
 				new SurfaceProvisionRequest(hostSdk, project.FileName, Path.Combine(root, "cache"), Path.Combine(root, "stg"), dotnet),
 				Log, cancellationToken);
