@@ -1007,7 +1007,12 @@ One-off survey of every `.xaml` in the checkout (build copies excluded):
 "Other" is mostly a layout difference combined with a second one (length differs, 192 of 223) and a
 minority of character references (30). So the first edit of a typical WinUI file rewrites its layout
 (23 of 24 fixtures lose attribute whitespace). The fix is to patch the text instead of re-serializing
-the document; that is a design change to the editor and is not done.
+the document. **Done afterwards:** `WinUIXamlDocumentEditor.PreserveLayout` runs after every edit and puts
+back, from the text before the edit, the declaration, the line ending and the exact start tag of every
+element whose name, attributes and values are unchanged. An edit now changes the edited element's own
+start tag (laid out by the serializer) and nothing else; `EditPreservationTests` covers attribute edit,
+insert, undo, and LF/CRLF sources. Remaining loss: the edited tag itself is reflowed, and two
+identical start tags may swap their layout.
 
 ### 7.4 Close the two protocol gaps that matter
 

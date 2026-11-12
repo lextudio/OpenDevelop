@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using ICSharpCode.SharpDevelop.Designer.Remote;
@@ -745,7 +746,84 @@ sealed class WinUIXamlDocumentEditor
 		redoStack.Clear();
 	}
 
-	void CommitChange() => Text = Serialize(Document);
+	void CommitChange() => Text = PreserveLayout(Text, Serialize(Document));
+
+	// A tag (quoted attribute values are opaque) or a construct that may contain a '<' which is not a tag.
+	const string QuotedRun = "(?:[^<>\"']|\"[^\"]*\"|'[^']*')*";
+	static readonly Regex TokenPattern = new(
+		"<!--.*?-->|<!\\[CDATA\\[.*?\\]\\]>|<\\?.*?\\?>|<[A-Za-z_]" + QuotedRun + ">",
+		RegexOptions.Compiled | RegexOptions.Singleline);
+	static readonly Regex DeclarationPattern = new(@"^\s*<\?xml[^>]*\?>\s*", RegexOptions.Compiled);
+
+	/// <summary>
+	/// Serializing the document wholesale rewrites what the author laid out: attributes on separate lines are joined, <c>&lt;a/&gt;</c>
+	/// becomes <c>&lt;a /&gt;</c>, quotes change, the declaration goes and line endings become the platform's. This puts back, from the
+	/// text before the edit, everything the edit did not touch: the declaration, the line ending, and the exact start tag of every
+	/// element whose name, attributes and values are unchanged. A tag the edit did change keeps the serializer's layout.
+	/// </summary>
+	internal static string PreserveLayout(string previous, string current)
+	{
+		if (string.IsNullOrEmpty(previous) || string.IsNullOrEmpty(current))
+			return current;
+
+		// Start tags of the previous text, by layout-independent key, in document order.
+		var original = new Dictionary<string, Queue<string>>(StringComparer.Ordinal);
+		foreach (Match match in TokenPattern.Matches(previous)) {
+			if (match.Value[1] is '!' or '?')
+				continue;
+			var key = TagKey(match.Value);
+			if (!original.TryGetValue(key, out var queue))
+				original[key] = queue = new Queue<string>();
+			queue.Enqueue(match.Value);
+		}
+
+		var result = TokenPattern.Replace(current, match => {
+			if (match.Value[1] is '!' or '?')
+				return match.Value;
+			return original.TryGetValue(TagKey(match.Value), out var queue) && queue.Count > 0 ? queue.Dequeue() : match.Value;
+		});
+
+		// Line endings: the parser reads CRLF as LF and the writer emits the platform's. Use the source's.
+		bool previousCrlf = previous.Contains("\r\n", StringComparison.Ordinal);
+		if (previous.Contains('\n')) {
+			result = result.Replace("\r\n", "\n");
+			if (previousCrlf)
+				result = result.Replace("\n", "\r\n");
+		}
+
+		var declaration = DeclarationPattern.Match(previous.TrimStart('﻿'));
+		if (declaration.Success && !DeclarationPattern.IsMatch(result))
+			result = declaration.Value + result;
+		return result;
+	}
+
+	// The tag with attribute separators, the empty-element spacing and the quote character made uniform.
+	static string TagKey(string tag)
+	{
+		var sb = new System.Text.StringBuilder(tag.Length);
+		char quote = '\0';
+		bool space = false;
+		foreach (char c in tag) {
+			if (quote != '\0') {
+				sb.Append(c == quote ? '"' : c);
+				if (c == quote)
+					quote = '\0';
+				space = false;
+			} else if (c is '"' or '\'') {
+				quote = c;
+				sb.Append('"');
+				space = false;
+			} else if (char.IsWhiteSpace(c)) {
+				if (!space)
+					sb.Append(' ');
+				space = true;
+			} else {
+				sb.Append(c);
+				space = false;
+			}
+		}
+		return Regex.Replace(sb.ToString(), @"\s*/>$", "/>");
+	}
 
 	public string UniqueName(string controlName)
 	{

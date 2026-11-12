@@ -19,10 +19,6 @@ public class RoundTripTests
 	public sealed record Case(string Name, string Xaml, RoundTripCategory Expected, string? EditFrom = null, string? EditTo = null)
 	{
 		public override string ToString() => Name;
-
-		/// <summary>An edit re-serializes the document, so lines other than the edited one change exactly where the save is lossy in layout.</summary>
-		public bool EditRewritesOtherLines
-			=> Expected is RoundTripCategory.AttributeWhitespace or RoundTripCategory.EmptyElementForm or RoundTripCategory.QuoteStyle;
 	}
 
 	public static IEnumerable<object[]> Cases() => All.Select(c => new object[] { c });
@@ -113,12 +109,12 @@ public class RoundTripTests
 
 		editor.SetAttribute(element, attribute, "Edited");
 
+		// The editor keeps the layout of every tag the edit did not touch (WinUIXamlDocumentEditor.PreserveLayout): apart from the
+		// edited element's own start tag, which the serializer lays out, the text is the source with the one value changed.
 		string minimal = c.Xaml.Replace(c.EditFrom, attribute + "=\"Edited\"");
-		bool minimalEdit = string.Equals(RoundTrip.Lf(editor.Text), RoundTrip.Lf(minimal), StringComparison.Ordinal);
-		Assert.True(minimalEdit == !c.EditRewritesOtherLines,
-			minimalEdit
-				? $"'{c.Name}': the edit changed only the attribute, which used to be impossible for a {c.Expected} document; update the expectation."
-				: $"'{c.Name}': a {c.Expected} document should edit minimally.\nminimal:\n{minimal}\nactual:\n{editor.Text}");
+		static string WithoutEditedTag(string text)
+			=> System.Text.RegularExpressions.Regex.Replace(RoundTrip.Lf(text), "<[A-Za-z][^<>]*x:Name=[\"'](B|T)[\"'][^<>]*>", "@@");
+		Assert.Equal(WithoutEditedTag(minimal), WithoutEditedTag(editor.Text));
 	}
 
 	/// <summary>
