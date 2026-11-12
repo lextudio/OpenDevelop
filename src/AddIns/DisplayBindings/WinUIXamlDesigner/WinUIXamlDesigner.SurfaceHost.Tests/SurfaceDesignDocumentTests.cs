@@ -19,7 +19,7 @@ public class SurfaceDesignDocumentTests
 	}
 
 	static async Task<SurfaceDesignDocument> Open(FakeSurface surface)
-		=> new(await SurfaceConnection.ConnectAsync(await surface.ConnectAsync(), null, Timeout, Ct));
+		=> new(await SurfaceConnection.ConnectAsync(await surface.ConnectAsync(), null, Timeout, Ct)) { BuildTree = false };
 
 	static FakeSurface RenderingSurface(Func<JsonElement, StreamWriter, Task>? onRender = null)
 		=> new(async (m, w) => {

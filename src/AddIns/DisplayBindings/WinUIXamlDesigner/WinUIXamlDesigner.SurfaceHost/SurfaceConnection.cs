@@ -142,23 +142,56 @@ public sealed class SurfaceConnection : IAsyncDisposable
 		}, cancellationToken);
 
 	/// <summary>
-	/// Asks the surface which element is at a design point, for a click on the canvas.
-	///
-	/// The surface only selects in its native-window mode: in the frame mode this client renders with, <c>PickAt</c> finds nothing,
-	/// even on a named button. So a pick is a self-contained excursion under the request gate: <c>EnterNative</c> with the document
-	/// and a fixed 1:1 view (pane space is then design space), <c>SetMode</c> design, <c>PickAt</c>, then <c>ExitNative</c> so
-	/// the next render is a frame again (in native mode <c>UpdateXaml</c> answers with a window handle, not a frame). The native
-	/// window is therefore only built when somebody clicks.
-	///
-	/// A hit is answered with <c>Selected</c> and a miss with silence, which cannot be told from a slow hit by waiting. So the pick is
-	/// followed by a fence: an <c>UpdateXaml</c>, which in native mode re-hosts the page on the same UI thread, in order, and answers
-	/// <c>Hwnd</c>. Whatever <c>Selected</c> came before that <c>Hwnd</c> is the answer; none is a certain miss and returns null, without
-	/// faulting the connection. <paramref name="timeout"/> only bounds how long a stuck surface is waited for (a fence that never
-	/// comes faults the connection).
+	/// Asks the surface which element is at a design point, for a click on the canvas. See <see cref="NativeExcursionAsync"/> for how:
+	/// the surface only selects in its native-window mode, and a hit (<c>Selected</c>) cannot be told from a miss (silence) by
+	/// waiting, so the answer is whatever <c>Selected</c> came before an ordering fence. None is a certain miss and returns null,
+	/// without faulting the connection.
 	/// </summary>
 	public async Task<SurfacePick?> PickAtAsync(
 		string xaml, double width, double height, double scale, double x, double y, TimeSpan timeout,
 		CancellationToken cancellationToken = default)
+	{
+		var picks = await NativeExcursionAsync(xaml, width, height, scale,
+			new[] { new Dictionary<string, object?> { ["type"] = "PickAt", ["x"] = x, ["y"] = y } }, timeout, cancellationToken).ConfigureAwait(false);
+		return picks.FirstOrDefault();
+	}
+
+	/// <summary>
+	/// Selects each of <paramref name="paths"/> (the surface's own tree paths, dot separated: "0" is the root, "0.0" its first child) and
+	/// returns the elements that exist, keyed by path, with their names, types and bounds in design space. A path that resolves to nothing
+	/// is silent, so it is simply absent from the result. This is how a tree with geometry is assembled, because the surface has no message
+	/// that lists one.
+	/// </summary>
+	public async Task<IReadOnlyDictionary<string, SurfacePick>> SelectPathsAsync(
+		string xaml, double width, double height, double scale, IReadOnlyList<string> paths, TimeSpan timeout,
+		CancellationToken cancellationToken = default)
+	{
+		var picks = await NativeExcursionAsync(xaml, width, height, scale,
+			paths.Select(path => new Dictionary<string, object?> { ["type"] = "SelectByPath", ["path"] = path }).ToList(), timeout, cancellationToken).ConfigureAwait(false);
+		var byPath = new Dictionary<string, SurfacePick>(StringComparer.Ordinal);
+		foreach (var pick in picks)
+			if (pick.Path != null)
+				byPath.TryAdd(pick.Path, pick);
+		return byPath;
+	}
+
+	/// <summary>
+	/// Runs <paramref name="requests"/> against the page in the surface's native-window mode and returns every <c>Selected</c> they caused.
+	///
+	/// The surface only selects in native mode: in the frame mode this client renders with, <c>PickAt</c> finds nothing, even on a named
+	/// button. So this is a self-contained excursion under the request gate: <c>EnterNative</c> with the document and a fixed 1:1 view
+	/// (a fitted view scales the pane, and picks and bounds are in pane space), <c>SetMode</c> design, the requests, a fence, then
+	/// <c>ExitNative</c> so the next render is a frame again (in native mode <c>UpdateXaml</c> answers with a window handle, not a frame).
+	/// The native window is only built when something needs it.
+	///
+	/// The fence: a hit is answered with <c>Selected</c> and a miss with silence, which waiting cannot tell from a slow hit. The surface
+	/// handles messages on its UI thread in order, and <c>UpdateXaml</c> in native mode re-hosts the page and answers <c>Hwnd</c>, so
+	/// sending one after the requests means that when its <c>Hwnd</c> arrives every <c>Selected</c> has already been sent.
+	/// <paramref name="timeout"/> only bounds how long a stuck surface is waited for (a fence that never comes faults the connection).
+	/// </summary>
+	async Task<IReadOnlyList<SurfacePick>> NativeExcursionAsync(
+		string xaml, double width, double height, double scale, IReadOnlyList<Dictionary<string, object?>> requests, TimeSpan timeout,
+		CancellationToken cancellationToken)
 	{
 		await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
 		try {
@@ -175,7 +208,6 @@ public sealed class SurfaceConnection : IAsyncDisposable
 					["documentPath"] = null,
 					["paneWidthPx"] = (int)Math.Ceiling(width * scale),
 					["paneHeightPx"] = (int)Math.Ceiling(height * scale),
-					// Not "fit": a fitted view scales the pane (0.91 here), and picks and bounds are in pane space.
 					["view"] = new Dictionary<string, object?> { ["fit"] = false, ["zoom"] = 1.0, ["offsetX"] = 0.0, ["offsetY"] = 0.0 },
 				}).ConfigureAwait(false);
 
@@ -187,18 +219,15 @@ public sealed class SurfaceConnection : IAsyncDisposable
 					if (type == "Error") break;   // the native flag stays set either way, so leave native mode below
 				}
 
-				SurfacePick? pick = null;
-				if (hosted) {
+				var selected = new List<SurfacePick>();
+				if (hosted && requests.Count > 0) {
 					await SendAsync(new Dictionary<string, object?> { ["type"] = "SetMode", ["design"] = true }).ConfigureAwait(false);
-					await SendAsync(new Dictionary<string, object?> { ["type"] = "PickAt", ["x"] = x, ["y"] = y }).ConfigureAwait(false);
-					// The fence. The surface runs messages on its UI thread in order and sends a hit's Selected from there, and in
-					// native mode UpdateXaml re-hosts the page and answers Hwnd. So when this Hwnd arrives, any Selected for the PickAt
-					// has already been sent: a hit is whatever came before it, and silence is a certain miss (no timer to get wrong
-					// under load).
+					foreach (var request in requests)
+						await SendAsync(request).ConfigureAwait(false);
 					await SendAsync(new Dictionary<string, object?> {
 						["type"] = "UpdateXaml", ["xaml"] = xaml, ["sampleData"] = false, ["documentPath"] = null,
 					}).ConfigureAwait(false);
-					pick = await WaitForFenceAsync(timeout, cancellationToken).ConfigureAwait(false);
+					await CollectUntilFenceAsync(selected, timeout, cancellationToken).ConfigureAwait(false);
 				}
 
 				await SendAsync(new Dictionary<string, object?> { ["type"] = "ExitNative" }).ConfigureAwait(false);
@@ -207,34 +236,34 @@ public sealed class SurfaceConnection : IAsyncDisposable
 					if (GetString(doc.RootElement, "type") == "NativeExited")
 						break;
 				}
-				return pick;
+				return selected;
 			} catch (Exception ex) when (ex is not SurfaceConnectionFaultedException && ex is not OperationCanceledException) {
 				fault = ex;
-				throw new SurfaceConnectionFaultedException("The surface connection was lost during a pick.", ex);
+				throw new SurfaceConnectionFaultedException("The surface connection was lost during a native excursion.", ex);
 			}
 		} finally {
 			gate.Release();
 		}
 	}
 
-	/// <summary>Reads until the fence (<c>Hwnd</c>, or an <c>Error</c>) and returns the first <c>Selected</c> seen before it, if any.</summary>
-	async Task<SurfacePick?> WaitForFenceAsync(TimeSpan timeout, CancellationToken cancellationToken)
+	/// <summary>Reads until the fence (<c>Hwnd</c>, or an <c>Error</c>), adding every <c>Selected</c> seen before it to <paramref name="selected"/>.</summary>
+	async Task CollectUntilFenceAsync(List<SurfacePick> selected, TimeSpan timeout, CancellationToken cancellationToken)
 	{
-		SurfacePick? pick = null;
 		while (true) {
 			// A fence that never comes means the surface is stuck or gone: the TimeoutException faults the connection.
 			using var doc = await NextAsync(timeout, cancellationToken).ConfigureAwait(false);
 			var root = doc.RootElement;
 			switch (GetString(root, "type")) {
 				case "Selected":
-					pick ??= new SurfacePick(GetInt(root, "id"), GetString(root, "elementType"), GetNullableString(root, "name"),
-						GetNullableString(root, "path"), GetDouble(root, "x"), GetDouble(root, "y"), GetDouble(root, "w"), GetDouble(root, "h"));
+					selected.Add(new SurfacePick(GetInt(root, "id"), GetString(root, "elementType"), GetNullableString(root, "name"),
+						GetNullableString(root, "path"), GetDouble(root, "x"), GetDouble(root, "y"), GetDouble(root, "w"), GetDouble(root, "h")));
 					break;
 				case "Hwnd" or "Error":
-					return pick;
+					return;
 			}
 		}
 	}
+
 	Task SendAsync(Dictionary<string, object?> message) => writer.WriteLineAsync(JsonSerializer.Serialize(message));
 	async Task<SurfaceRenderResult> RequestAsync(Dictionary<string, object?> message, CancellationToken cancellationToken)
 	{

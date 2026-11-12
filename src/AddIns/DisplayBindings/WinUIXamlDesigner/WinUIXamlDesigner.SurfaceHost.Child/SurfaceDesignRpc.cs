@@ -150,7 +150,10 @@ sealed class SurfaceDesignRpc
 		try {
 			var host = SurfaceProcessHost.StartAsync(exe, arguments, StartTimeout).GetAwaiter().GetResult();
 			Console.Error.WriteLine($"{Runtime}: surface ready (WASDK {host.Connection.Ready.Wasdk})");
-			return new SurfaceDesignDocument(host, run == null ? null : () => DeleteRun(run));
+			return new SurfaceDesignDocument(host, run == null ? null : () => DeleteRun(run)) {
+				// The element tree costs a native-mode excursion per accepted render; OD_SURFACE_TREE=0 turns it off.
+				BuildTree = Environment.GetEnvironmentVariable("OD_SURFACE_TREE") != "0",
+			};
 		} catch {
 			DeleteRun(run);
 			throw;

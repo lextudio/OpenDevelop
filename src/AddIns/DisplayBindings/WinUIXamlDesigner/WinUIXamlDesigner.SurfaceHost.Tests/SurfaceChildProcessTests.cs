@@ -253,6 +253,18 @@ public class SurfaceChildProcessTests
 		var opened = await child.Call<DesignerSessionState>("session/open", Request(xaml, 1));
 		Assert.True(opened.Accepted, opened.Error + "\n" + child.Stderr);
 
+		// The element tree the WinUI canvas works from: assembled from the document's structure and the surface's own selections.
+		var tree = opened.Tree;
+		Assert.NotNull(tree);
+		Assert.Equal("Page", tree.Type);
+		var stack = Assert.Single(tree.Children);
+		Assert.Equal("StackPanel", stack.Type);
+		Assert.Equal(new[] { "Button", "TextBlock" }, stack.Children.Select(c => c.Type).ToArray());
+		var go = stack.Children[0];
+		Assert.Equal(("Go", "0,0"), (go.Name, go.Path));
+		Assert.True(go.Width > 40 && go.Height > 20, $"the button should have real bounds, got {go.Width}x{go.Height}");
+		Assert.True(stack.Children[1].Y >= go.Y + go.Height - 1, "the text block sits below the button");
+
 		var clock = System.Diagnostics.Stopwatch.StartNew();
 		var onButton = await child.Call<DesignerHitTestResult>("design/hit-test", "s1", "d1", 1L, 20.0, 15.0);
 		long firstHitMs = clock.ElapsedMilliseconds;   // this one also pays for the surface's first native window

@@ -1,4 +1,6 @@
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using System.Xml;
+using System.Xml.Linq;
 
 namespace ICSharpCode.WinUIXamlDesigner.SurfaceHost;
 
@@ -53,7 +55,7 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		viewportWidth = viewport.Width; viewportHeight = viewport.Height; viewportScale = viewport.Dpi;
 		var result = await connection.LoadXamlAsync(
 			PrimaryText(snapshot), viewport.Width, viewport.Height, viewport.Dpi, false, null, cancellationToken).ConfigureAwait(false);
-		return Complete(snapshot, result);
+		return await WithTreeAsync(Complete(snapshot, result), snapshot, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>Re-renders a changed document at the viewport the surface already holds.</summary>
@@ -64,7 +66,7 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 			return Rejected(snapshot.SessionId, snapshot.DocumentId, version,
 				$"Stale document version {snapshot.Version}; the surface is at {version}.");
 		var result = await connection.UpdateXamlAsync(PrimaryText(snapshot), false, null, cancellationToken).ConfigureAwait(false);
-		return Complete(snapshot, result);
+		return await WithTreeAsync(Complete(snapshot, result), snapshot, cancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -91,6 +93,91 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		};
 	}
 
+	/// <summary>
+	/// Whether <c>session/open</c> and <c>session/update</c> also return an element <see cref="DesignerSessionState.Tree"/> with bounds.
+	/// The WinUI canvas resolves clicks, selection overlays and drags from that tree, and the surface has no message that lists one, so it
+	/// is assembled with a native-mode excursion per accepted render (about half a second; set OD_SURFACE_TREE=0 in the child to turn it off).
+	/// </summary>
+	public bool BuildTree { get; set; } = true;
+
+	/// <summary>The most elements asked about in one excursion; a larger page gets a tree of its first elements only.</summary>
+	public int MaxTreeElements { get; set; } = 400;
+
+	async Task<DesignerSessionState> WithTreeAsync(DesignerSessionState state, DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken)
+	{
+		if (BuildTree && state.Accepted)
+			state.Tree = await BuildTreeAsync(PrimaryText(snapshot), cancellationToken).ConfigureAwait(false);
+		return state;
+	}
+
+	/// <summary>
+	/// The element tree of <paramref name="xaml"/> with each element's name, type and bounds in design space, or null when nothing resolved.
+	///
+	/// The structure comes from the document: each element that is a child, not a property element (<c>Grid.RowDefinitions</c>), gets the
+	/// surface's own path ("0" for the root, "0.0" for its first child, ...) and is selected in one burst. The shell's node ids are the
+	/// child-index paths the other WinUI hosts use ("" for the root, "0", "0,1"), and it maps a pick back to the source by node type and
+	/// same-type index in tree order, which this structure matches. An element the surface cannot resolve is left out and its children are
+	/// attached to its nearest resolved ancestor.
+	/// </summary>
+	async Task<DesignerElementNode?> BuildTreeAsync(string xaml, CancellationToken cancellationToken)
+	{
+		XDocument document;
+		try {
+			document = XDocument.Parse(xaml);
+		} catch (XmlException) {
+			return null;
+		}
+		if (document.Root == null)
+			return null;
+
+		var candidates = new List<(string SurfacePath, string TreePath, int Parent)>();
+		void Walk(XElement element, string surfacePath, string treePath, int parent)
+		{
+			if (candidates.Count >= MaxTreeElements)
+				return;
+			int self = candidates.Count;
+			candidates.Add((surfacePath, treePath, parent));
+			int child = 0;
+			foreach (var childElement in element.Elements()) {
+				if (childElement.Name.LocalName.Contains('.'))
+					continue;   // a property element (Grid.RowDefinitions, Button.Content): not a child of the visual tree
+				Walk(childElement, surfacePath + "." + child, treePath.Length == 0 ? child.ToString() : treePath + "," + child, self);
+				child++;
+			}
+		}
+		Walk(document.Root, "0", "", -1);
+
+		var picks = await connection.SelectPathsAsync(xaml, viewportWidth, viewportHeight, viewportScale,
+			candidates.Select(c => c.SurfacePath).ToList(), PickTimeout, cancellationToken).ConfigureAwait(false);
+
+		var nodes = new DesignerElementNode?[candidates.Count];
+		for (int i = 0; i < candidates.Count; i++) {
+			if (!picks.TryGetValue(candidates[i].SurfacePath, out var pick))
+				continue;
+			nodes[i] = new DesignerElementNode {
+				Id = candidates[i].TreePath,
+				Path = candidates[i].TreePath,
+				Name = string.IsNullOrEmpty(pick.Name) ? null : pick.Name,
+				Type = pick.ElementType,
+				X = pick.X, Y = pick.Y, Width = pick.Width, Height = pick.Height,
+				IsVisible = true,
+				IsDesignable = true,
+			};
+		}
+		if (nodes[0] is not { } root)
+			return null;
+		for (int i = 1; i < candidates.Count; i++) {
+			if (nodes[i] is not { } node)
+				continue;
+			int parent = candidates[i].Parent;
+			while (parent > 0 && nodes[parent] == null)
+				parent = candidates[parent].Parent;
+			var owner = nodes[Math.Max(parent, 0)] ?? root;
+			node.LayoutMode = DesignerLayoutMode.InferFromContainerType(owner.Type);
+			owner.Children.Add(node);
+		}
+		return root;
+	}
 	/// <summary>An edit request this backend cannot honour; a normal result, with the document version unchanged.</summary>
 	public DesignerSessionState Refuse(string sessionId, string documentId, string operation)
 		=> Rejected(sessionId, documentId, Math.Max(version, 0),

@@ -150,7 +150,7 @@ public class SurfacePickTests
 	{
 		string? nextName = "PrimaryButton";
 		await using var surface = NativeOnlySurface(async w => { if (nextName != "<none>") await Selected(w, nextName); });
-		await using var doc = new SurfaceDesignDocument(await Connect(surface)) { PickTimeout = TimeSpan.FromSeconds(5) };
+		await using var doc = new SurfaceDesignDocument(await Connect(surface)) { PickTimeout = TimeSpan.FromSeconds(5), BuildTree = false };
 		await doc.OpenAsync(Request(640, 400, 1.5), Ct);
 
 		var named = await doc.HitTestAsync(5, 5, Ct);

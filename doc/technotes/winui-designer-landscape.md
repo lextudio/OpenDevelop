@@ -1117,9 +1117,8 @@ inconsistent statuses are never "matched") and the launch rules (port line, shor
 become a `DesignerSessionState` with the PNG frame (`Dpi` = pixels / DIPs), a stale `Version` is refused without touching the
 surface, a render error is a rejected state with a positioned diagnostic while the last good frame stays, and edit RPCs are
 refused as ordinary results (the surface has no document model, so the parent's source model stays the authority).
-`Tree` is null: the surface reports no element tree, so the child sends none. (The Document Outline still works in the IDE:
-it is built from the parent's own source model; see the live run below. What is missing is live element bounds, so selection
-overlays and drag/resize need a surface that reports geometry.) Its tests (`WinUIXamlDesigner.SurfaceHost.Tests`) use an in-process fake surface
+The surface reports no element tree, so the document builds one (`BuildTree`, on by default): see "Element tree with bounds"
+below. The Document Outline works from the parent's own source model either way. Its tests (`WinUIXamlDesigner.SurfaceHost.Tests`) use an in-process fake surface
 (39 pass) and one test that drives the real `Surface.exe` when `OD_SURFACE_EXE`/`OD_SURFACE_ARGS` are set; it passed against
 the matched 2.4.0 host.
 
@@ -1255,12 +1254,36 @@ for its process id, removes that folder on shutdown, and at startup sweeps the i
   - **Only a named element is a hit.** The shell resolves a click by `x:Name`, and the surface's own tree path (`0.0.1`) is not the
     shell's path scheme, so an unnamed element or empty space is reported as a miss and the shell keeps its source-model selection.
   - **The WinUI runtime host does not call `design/hit-test`.** Nothing in the WinUI path uses `IDesignHostHitTesting`; its canvas
-    resolves clicks with `ResolveNameAt` over the session's `Tree` (`DesignerElementNode` bounds), and the Surface child sends no tree. So
-    this method is correct and tested (fake surface, real surface over DDP, and the real `UnoDesignClient`) but **does not by itself
-    enable selecting on the canvas**. That needs the child to supply a `Tree` with bounds: the surface has no "list the tree" message,
-    only per-element `Selected` (via `PickAt`, or `SelectByPath` with a path), so a tree would have to be assembled from the source
-    document's structure plus a burst of selections in native mode, at the cost of a native excursion per refresh.
+    resolves clicks, overlays and drags with `ResolveNameAt` over the session's `Tree` (`DesignerElementNode` bounds). So this method is
+    correct and tested (fake surface, real surface over DDP, and the real `UnoDesignClient`) but is not what drives canvas selection;
+    the tree below is.
   - Verified in the IDE only as far as the client: the IDE runs hidden here, so a real pointer click was not injected.
+
+**Element tree with bounds (what the canvas works from).** The surface has no message that lists a tree, only per-element `Selected`
+(from `PickAt`, or `SelectByPath` with a path). So after each accepted render `SurfaceDesignDocument.BuildTreeAsync` walks the
+document's elements (children only: a property element such as `Grid.RowDefinitions` is skipped, so it neither becomes a node nor
+shifts a sibling's index), gives each the surface's dotted path (`0` root, `0.0` first child, ...) and selects them all in one native
+excursion with the same fence as the pick. What comes back (type, `x:Name`, bounds in design space, thanks to the 1:1 view) becomes
+`DesignerElementNode`s using the other WinUI hosts' ids and paths (`""` for the root, then `"0"`, `"0,1"`), in document order, which
+is what the shell's pick-chain mapping (node type and same-type index in tree order) expects. An element the surface cannot resolve is
+dropped and its children move to the nearest resolved ancestor; a page where nothing resolves gets no tree but is still accepted.
+
+- Measured with the real surface: a burst of 7 paths (3 of them nonexistent) came back as 4 `Selected` before the fence in 433 ms,
+  and `session/open` for the fixture page returns `Page > StackPanel > [Button "Go", TextBlock]` with real bounds.
+- **A/B in the live IDE** (`od.winui-designer.query-element-screen-bounds`, which reads the tree): with the tree on, `PrimaryButton` is
+  98x32, `TitleText` 173x19 and `RootStack` 1024x720 on screen; with `OD_SURFACE_TREE=0` the same session answers `No rendered element
+  named 'PrimaryButton'` (and the other two). So the geometry the canvas needs now exists. A real pointer click and a drag were not
+  injected (the IDE runs hidden here), so selecting by clicking is **not yet exercised end to end**.
+- **Cost:** one native excursion per accepted `session/open` or `session/update`, roughly half a second more per render (the burst
+  above took 433 ms; a first native window is the dearest part). `OD_SURFACE_TREE=0` in the environment turns it off, and
+  `MaxTreeElements` (400) bounds the burst.
+- **The path rule was checked against the real surface** with `Button > Border > TextBlock` (implicit content) next to a `Grid` with a
+  `Grid.RowDefinitions`: all 7 paths resolved to the right elements (`0.0.0`, `0.0.0.0`, `0.0.0.0.0`, then `0.0.1` and `0.0.1.0`, so the
+  property element is not counted and implicit content is a child like any other).
+- **Limits:** elements written inside a property element (`<Button.Content><Border/></Button.Content>`; not probed), template content
+  and generated items (an `ItemsControl`'s rows) are not in the tree, because their surface paths cannot be derived from the markup;
+  they are simply absent, not mislabelled. Elements without an `x:Name` are in the tree (so hit-testing by geometry and the pick chain
+  can see them) but the shell can only name them by type and index.
 
 Still not done: the OpenCode review (`build/opencode-review.ps1` needs the OpenCode CLI and its provider auth, which were not on the
 machine; the change was committed without it at the user's explicit request) and ARM64 (this machine is AMD64).
