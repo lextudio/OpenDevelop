@@ -184,6 +184,17 @@
       "note": "53 tests on Windows x64 when measured locally with every gated test enabled; on a runner the tests that need OD_SURFACE_EXE, OD_SURFACE_HOST_DIR, OD_SURFACE_HOST_SDK/OD_SURFACE_PROJECT (a built surface, a provisioned host, the unpacked package) skip, so what runs is the fake-surface, child-process, launch and provisioner-result suites. The child test launches `dotnet` and the IDE-client test links the standalone UnoDesignClient (MicrosoftHost.Remote). Building it restores LeXtudio.WinUISurface from the lextudio_github feed (the SurfaceHost.Child project's package reference). Starts as observe."
     },
     {
+      "id": "winui-document-tests",
+      "batch": 1,
+      "lane": "unit",
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.WinUIXamlDocument.Tests/OpenDevelop.WinUIXamlDocument.Tests.csproj",
+      "target": "tests/OpenDevelop.WinUIXamlDocument.Tests/bin/Debug/net10.0/OpenDevelop.WinUIXamlDocument.Tests.dll",
+      "measuredSeconds": 3,
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe", "linux-arm64": "observe" },
+      "note": "WinUI source round-trip measurement (pure managed, links WinUIXamlDocumentEditor). 42 tests on Windows x64; the line-ending expectation is platform-aware."
+    },
+    {
       "id": "xamldom-tests-librewpf",
       "batch": 1,
       "lane": "unit",

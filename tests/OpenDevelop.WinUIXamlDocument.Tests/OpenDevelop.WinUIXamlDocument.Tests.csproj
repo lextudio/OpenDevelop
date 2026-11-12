@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Measures the WinUI designer's source edit model (WinUIXamlDocumentEditor, an XDocument over the XAML text): does an edit-free
+       parse and save give the source back, and what does one attribute edit change besides that attribute. The editor class is
+       source-linked, the way the Microsoft WPF XamlDom host links XamlDom, because it lives in the add-in assembly, which needs the
+       whole IDE to load. See doc/technotes/winui-designer-landscape.md section 7.3. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- The linked editor is not nullable-annotated: annotations only, no flow warnings. -->
+    <Nullable>annotations</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>OpenDevelop.WinUIXamlDocument.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\AddIns\DisplayBindings\WinUIXamlDesigner\WinUIXamlDesigner.AddIn\WinUIXamlDocumentEditor.cs"
+             Link="Linked\WinUIXamlDocumentEditor.cs" />
+    <PackageReference Include="xunit.v3" />
+    <ProjectReference Include="..\..\src\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
+    <!-- The measured baseline of the real files, updated on purpose (OD_UPDATE_BASELINE=1), never by accident. -->
+    <None Include="real-files-baseline.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

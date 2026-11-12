@@ -987,6 +987,28 @@ owns its model, so prove it:
 Acceptance evidence: an unedited Gallery page saves back unchanged, and the difference list is
 enforced in both directions.
 
+**Results (2026-11, `tests/OpenDevelop.WinUIXamlDocument.Tests`).** The editor class is source-linked
+into a pure-managed test project. Synthetic cases (42 tests) and the baseline
+`real-files-baseline.txt` (every `tests/fixtures` `.xaml`, checked in both directions;
+`OD_UPDATE_BASELINE=1` rewrites it on purpose) measure an edit-free parse and save. The editor holds an
+`XDocument` and re-serializes it wholesale, so the answer is: the model is faithful, the layout is not.
+Preserved: text, comments, entities (`&gt;`), `<a></a>`, trailing newline. Lost: attribute line breaks
+and multi-space separation (joined by single spaces), `<a/>` spacing, single quotes, the XML
+declaration, and LF becomes the platform line ending (a separate flag in the analysis).
+
+One-off survey of every `.xaml` in the checkout (build copies excluded):
+
+| Set | Files | Identical | Attribute whitespace | Empty-element form | Other | Not loadable |
+|---|---|---|---|---|---|---|
+| all | 1499 | 512 (34%) | 503 | 257 | 223 | 4 |
+| WinUI-relevant (xamlstudio + fixtures) | 60 | 9 (15%) | 40 | 0 | 11 | 0 |
+| `src/` WPF | 944 | 493 (52%) | 235 | 104 | 109 | 3 |
+
+"Other" is mostly a layout difference combined with a second one (length differs, 192 of 223) and a
+minority of character references (30). So the first edit of a typical WinUI file rewrites its layout
+(23 of 24 fixtures lose attribute whitespace). The fix is to patch the text instead of re-serializing
+the document; that is a design change to the editor and is not done.
+
 ### 7.4 Close the two protocol gaps that matter
 
 DDP v70 already has document ids, versions, stale rejection and authentication. Add:
