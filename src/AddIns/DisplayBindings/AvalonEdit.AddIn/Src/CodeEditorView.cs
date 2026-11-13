@@ -90,6 +90,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			this.TextArea.TextView.VisualLinesChanged += CodeEditorView_VisualLinesChanged;
 			
 			SetupTabSnippetHandler();
+			EditorKeyBindings.Attach(this.TextArea);
 		}
 
 		void CodeEditorView_VisualLinesChanged(object sender, EventArgs e)

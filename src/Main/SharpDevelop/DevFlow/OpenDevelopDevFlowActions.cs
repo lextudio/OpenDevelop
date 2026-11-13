@@ -2916,7 +2916,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.keybindings.catalog", Description = "The commands that can have a keyboard shortcut (the AddIn tree's items grouped by command): key, name, manifest default, item count, routed or not")]
 		public static string KeyBindingCatalog()
 		{
-			var catalog = ICSharpCode.Core.Presentation.CommandCatalog.Build(SD.AddInTree.AddIns);
+			var catalog = ICSharpCode.Core.Presentation.CommandCatalog.Build(SD.AddInTree.AddIns, ICSharpCode.Core.Presentation.ExternalCommands.All());
 			var service = ICSharpCode.Core.Presentation.KeyBindingService.Default;
 			return JsonSerializer.Serialize(new {
 				success = true,

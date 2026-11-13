@@ -392,4 +392,39 @@ public sealed class KeyboardShortcutsModelTests : IDisposable
 		model.Assign(row.Key, "Ctrl+Shift+D");
 		Assert.Equal("Ctrl+Shift+D", model.BuildOverrides()["editor:EditingCommands.DeleteNextWord"]);
 	}
+
+	[Fact]
+	public void TheRegistry_AsksEveryProvider_SkipsOneThatThrows_AndAFirstKeyWins()
+	{
+		var registry = new ExternalCommandRegistry();
+		registry.Register(() => new[] { new ExternalCommand("editor:A", "A one", "Text editor", "Text editor", "F2") });
+		registry.Register(() => throw new InvalidOperationException("broken provider"));
+		registry.Register(() => new[] { new ExternalCommand("editor:A", "A two", "Text editor", "Text editor", "F3"), new ExternalCommand("editor:B", "B", "Text editor", "Text editor", null) });
+
+		var all = registry.All();
+		Assert.Equal(new[] { "editor:A", "editor:A", "editor:B" }, all.Select(c => c.Key));
+
+		var catalog = CommandCatalog.Build(new AddIn[0], all);
+		Assert.Equal(new[] { "A one", "B" }, catalog.Select(e => e.DisplayName)); // the first of two providers with the same key wins
+		Assert.Equal("F2", catalog.First(e => e.Key == "editor:A").DefaultGesture);
+	}
+
+	[Fact]
+	public void AnExternalCommand_NeedsAKeyAScopeAndAGroup()
+	{
+		Assert.Throws<ArgumentException>(() => new ExternalCommand("", "n", "g", "s", null));
+		Assert.Throws<ArgumentException>(() => new ExternalCommand("editor:A", "n", "g", null!, null));
+		Assert.Throws<ArgumentException>(() => new ExternalCommand("editor:A", "n", "", "s", null));
+	}
+
+	[Theory]
+	[InlineData("BoxSelectDownByLine", "Box Select Down By Line")]
+	[InlineData("Backspace", "Backspace")]
+	[InlineData("MoveToLineEnd", "Move To Line End")]
+	[InlineData("IMEConvert", "IME Convert")]
+	[InlineData("", "")]
+	public void AFrameworkCommandsName_IsMadeReadable(string name, string expected)
+	{
+		Assert.Equal(expected, ExternalCommand.Humanize(name));
+	}
 }

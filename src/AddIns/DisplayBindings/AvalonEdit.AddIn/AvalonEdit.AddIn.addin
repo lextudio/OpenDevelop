@@ -35,6 +35,12 @@
 		<Include id="DefaultEditor" path="/SharpDevelop/ViewContent/TextEditor/ContextMenu"/>
 	</Path>
 	
+	<!-- The editor's own commands (EditingCommands and the caret movements) for the Keyboard page of the Options dialog -->
+	<Path name = "/SharpDevelop/Autostart">
+		<Class id    = "RegisterEditorKeyCommands"
+		       class = "ICSharpCode.AvalonEdit.AddIn.RegisterEditorKeyCommandsCommand"/>
+	</Path>
+
 	<Path name = "/SharpDevelop/Services">
 		<Service id="ICSharpCode.SharpDevelop.Editor.IEditorControlService"
 		         class="ICSharpCode.AvalonEdit.AddIn.AvalonEditorControlService"/>
