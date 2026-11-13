@@ -11010,10 +11010,10 @@ Press Esc to cancel this operation.</value>
     <value>Reassign</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.ConflictWith" xml:space="preserve">
-    <value>{0} is also used by "{1}" ({2}).</value>
+    <value>{0} is also used by {1}.</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.Shadows" xml:space="preserve">
-    <value>{0} is also used by "{1}" in another scope; the control wins while it has focus.</value>
+    <value>{0} is also used by {1} in another scope; the control wins while it has focus.</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.Workbench" xml:space="preserve">
     <value>Workbench</value>
@@ -11056,5 +11056,8 @@ Press Esc to cancel this operation.</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.Export.Failed" xml:space="preserve">
     <value>The file could not be written: {0}</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.AndMore" xml:space="preserve">
+    <value>and {0} more</value>
   </data>
 </root>

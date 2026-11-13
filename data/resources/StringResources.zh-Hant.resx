@@ -10616,10 +10616,10 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
     <value>重新指派</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.ConflictWith" xml:space="preserve">
-    <value>{0} 也被「{1}」使用({2})。</value>
+    <value>{0} 也被 {1} 使用。</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.Shadows" xml:space="preserve">
-    <value>{0} 也被另一範圍中的「{1}」使用；控制項取得焦點時以控制項為準。</value>
+    <value>{0} 也被另一範圍中的 {1} 使用；控制項取得焦點時以控制項為準。</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.Workbench" xml:space="preserve">
     <value>工作台</value>
@@ -10662,5 +10662,8 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.Export.Failed" xml:space="preserve">
     <value>無法寫入該檔案：{0}</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.AndMore" xml:space="preserve">
+    <value>等另外 {0} 個</value>
   </data>
 </root>

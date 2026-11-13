@@ -241,14 +241,23 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 			}
 			bool changed = !string.Equals(check.Gesture, view.Row.Gesture, StringComparison.OrdinalIgnoreCase);
 			if (check.Conflicts.Count > 0) {
-				ShortcutRow other = check.Conflicts[0];
-				Say(string.Format(Text("ConflictWith}"), check.Gesture, other.Name, other.Group));
+				Say(string.Format(Text("ConflictWith}"), check.Gesture, Describe(check.Conflicts)));
 				reassignButton.Visibility = Visibility.Visible;
 				return;
 			}
 			if (check.Shadows.Count > 0)
-				Say(string.Format(Text("Shadows}"), check.Gesture, check.Shadows[0].Name));
+				Say(string.Format(Text("Shadows}"), check.Gesture, Describe(check.Shadows)));
 			assignButton.IsEnabled = changed;
+		}
+
+		/// <summary>"Name" (Group), up to three of them, then "and N more": who holds a gesture.</summary>
+		string Describe(IReadOnlyList<ShortcutRow> owners)
+		{
+			const int shown = 3;
+			string text = string.Join(", ", owners.Take(shown).Select(r => "\"" + r.Name + "\" (" + new RowView(model, r).GroupName + ")"));
+			if (owners.Count > shown)
+				text += " " + string.Format(Text("AndMore}"), owners.Count - shown);
+			return text;
 		}
 
 		void Say(string message)
