@@ -53,6 +53,7 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		var snapshot = request.Snapshot;
 		var viewport = request.Viewport ?? new DesignerViewport { Width = 1280, Height = 720 };
 		viewportWidth = viewport.Width; viewportHeight = viewport.Height; viewportScale = viewport.Dpi;
+		connection.DescribeFrames = BuildTree;
 		var result = await connection.LoadXamlAsync(
 			PrimaryText(snapshot), viewport.Width, viewport.Height, viewport.Dpi, false, null, cancellationToken,
 			CompiledTypeFor(PrimaryText(snapshot))).ConfigureAwait(false);
@@ -111,6 +112,13 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 	{
 		if (connection.IsNativeLive)
 			return new DesignerHitTestResult { Hit = false };   // the native window takes the clicks itself
+		if (lastFrameTree != null) {
+			// Answered from the described frame: no round trip at all.
+			var at = DeepestAt(lastFrameTree, x, y);
+			return at?.Name is { Length: > 0 } hitName
+				? new DesignerHitTestResult { Hit = true, ComponentName = hitName, ComponentType = at.Type, Chain = new List<string> { hitName } }
+				: new DesignerHitTestResult { Hit = false };
+		}
 		var pick = await connection.PickAtAsync(lastXaml, viewportWidth, viewportHeight, viewportScale, x, y, PickTimeout, cancellationToken).ConfigureAwait(false);
 		if (pick?.Name is not { Length: > 0 } name)
 			return new DesignerHitTestResult { Hit = false };
@@ -135,8 +143,54 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 	async Task<DesignerSessionState> WithTreeAsync(DesignerSessionState state, DesignerDocumentSnapshot snapshot, CancellationToken cancellationToken)
 	{
 		if (BuildTree && state.Accepted)
-			state.Tree = await BuildTreeAsync(PrimaryText(snapshot), cancellationToken).ConfigureAwait(false);
+			state.Tree = lastFrameTree != null
+				? TreeFromFrame(lastFrameTree)   // the surface described the frame it just rendered: no native-mode excursion
+				: await BuildTreeAsync(PrimaryText(snapshot), cancellationToken).ConfigureAwait(false);
 		return state;
+	}
+
+	/// <summary>The element tree the surface reported with the last accepted frame (a surface with <c>describe</c>), else null.</summary>
+	IReadOnlyList<SurfaceTreeNode>? lastFrameTree;
+
+	/// <summary>
+	/// The shell's element tree from a described frame. Surface paths ("0", "0.1", "0.1.0") become the shell's child-index ids ("", "1",
+	/// "1,0"); each node's parent is its path minus the last segment.
+	/// </summary>
+	static DesignerElementNode? TreeFromFrame(IReadOnlyList<SurfaceTreeNode> frameTree)
+	{
+		var byPath = new Dictionary<string, DesignerElementNode>(StringComparer.Ordinal);
+		DesignerElementNode? root = null;
+		foreach (var item in frameTree) {
+			if (!item.Path.StartsWith("0", StringComparison.Ordinal))
+				continue;
+			string treePath = item.Path.Length <= 2 ? "" : item.Path.Substring(2).Replace('.', ',');
+			var node = new DesignerElementNode {
+				Id = treePath, Path = treePath, Name = item.Name, Type = item.Type,
+				X = item.X, Y = item.Y, Width = item.Width, Height = item.Height, IsVisible = true, IsDesignable = true,
+			};
+			byPath[item.Path] = node;
+			if (item.Path == "0") {
+				root = node;
+				continue;
+			}
+			int cut = item.Path.LastIndexOf('.');
+			if (cut > 0 && byPath.TryGetValue(item.Path.Substring(0, cut), out var parent)) {
+				node.LayoutMode = DesignerLayoutMode.InferFromContainerType(parent.Type);
+				parent.Children.Add(node);
+			}
+		}
+		return root;
+	}
+
+	/// <summary>The deepest described element containing the design point (frame DIPs), or null.</summary>
+	static SurfaceTreeNode? DeepestAt(IReadOnlyList<SurfaceTreeNode> frameTree, double x, double y)
+	{
+		SurfaceTreeNode? best = null;
+		foreach (var node in frameTree)
+			if (node.Width > 0 && node.Height > 0 && x >= node.X && y >= node.Y && x < node.X + node.Width && y < node.Y + node.Height
+				&& (best == null || node.Path.Length > best.Path.Length))
+				best = node;
+		return best;
 	}
 
 	/// <summary>
@@ -278,6 +332,7 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 
 		var frame = result.Frame!;
 		lastPng = frame.Png;
+		lastFrameTree = frame.Tree;
 		lastXaml = PrimaryText(snapshot);
 		version = snapshot.Version;
 		var ok = new DesignerSessionState {

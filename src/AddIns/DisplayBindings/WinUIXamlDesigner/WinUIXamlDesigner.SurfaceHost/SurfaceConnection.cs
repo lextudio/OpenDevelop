@@ -8,7 +8,11 @@ namespace ICSharpCode.WinUIXamlDesigner.SurfaceHost;
 public sealed record SurfaceReady(int Protocol, int MinProtocol, IReadOnlyList<string> Caps, string Wasdk);
 
 /// <summary>A rendered frame. <see cref="DipWidth"/>/<see cref="DipHeight"/> are the display size; the PNG may be larger.</summary>
-public sealed record SurfaceFrame(int Width, int Height, int DipWidth, int DipHeight, byte[] Png);
+/// <summary>A rendered frame. <see cref="Tree"/> is set when the surface was asked to describe it (<c>describe</c>): the authored elements with paths and bounds in frame DIPs.</summary>
+public sealed record SurfaceFrame(int Width, int Height, int DipWidth, int DipHeight, byte[] Png, IReadOnlyList<SurfaceTreeNode>? Tree = null);
+
+/// <summary>One authored element of a described frame. <see cref="Path"/> uses the surface's scheme ("0" the root, "0.1" its second child).</summary>
+public sealed record SurfaceTreeNode(string Path, string Type, string? Name, double X, double Y, double Width, double Height);
 
 /// <summary>A surface error. <see cref="Line"/>/<see cref="Column"/> are positions in the XAML that was sent.</summary>
 public sealed record SurfaceError(string Phase, string Message, int? Line, int? Column, bool NotDesignable);
@@ -155,12 +159,20 @@ public sealed class SurfaceConnection : IAsyncDisposable
 	/// <paramref name="compiledType"/> null leaves the field out (the surface keeps its current setting); a type name makes the surface create
 	/// that class from the user assembly (the compiled page, <c>{x:Bind}</c> included) and "" turns that off again.
 	/// </summary>
-	static Dictionary<string, object?> WithCompiledType(Dictionary<string, object?> message, string? compiledType)
+	Dictionary<string, object?> WithCompiledType(Dictionary<string, object?> message, string? compiledType)
 	{
 		if (compiledType != null)
 			message["compiledType"] = compiledType;
+		if (DescribeFrames)
+			message["describe"] = true;
 		return message;
 	}
+
+	/// <summary>
+	/// Ask for each frame's element tree (<see cref="SurfaceFrame.Tree"/>): paths and bounds read from the laid-out page in frame mode, so
+	/// no native-mode excursion is needed. A surface that predates <c>describe</c> ignores the field and sends no tree.
+	/// </summary>
+	public bool DescribeFrames { get; set; }
 
 	/// <summary>
 	/// Asks the surface which element is at a design point, for a click on the canvas. See <see cref="NativeExcursionAsync"/> for how:
@@ -485,7 +497,18 @@ public sealed class SurfaceConnection : IAsyncDisposable
 		int width = GetInt(root, "width");
 		int height = GetInt(root, "height");
 		return new SurfaceFrame(width, height, GetInt(root, "dipWidth", width), GetInt(root, "dipHeight", height),
-			Convert.FromBase64String(GetString(root, "data")));
+			Convert.FromBase64String(GetString(root, "data")), ParseTree(root));
+	}
+
+	static IReadOnlyList<SurfaceTreeNode>? ParseTree(JsonElement root)
+	{
+		if (!root.TryGetProperty("tree", out var tree) || tree.ValueKind != JsonValueKind.Array)
+			return null;
+		var nodes = new List<SurfaceTreeNode>(tree.GetArrayLength());
+		foreach (var n in tree.EnumerateArray())
+			nodes.Add(new SurfaceTreeNode(GetString(n, "path"), GetString(n, "type"), GetNullableString(n, "name"),
+				GetDouble(n, "x"), GetDouble(n, "y"), GetDouble(n, "w"), GetDouble(n, "h")));
+		return nodes;
 	}
 
 	static SurfaceError ParseError(JsonElement root)
