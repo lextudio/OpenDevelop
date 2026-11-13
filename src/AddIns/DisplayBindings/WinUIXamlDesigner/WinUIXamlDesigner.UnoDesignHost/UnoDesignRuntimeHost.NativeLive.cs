@@ -33,10 +33,12 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlNativeLive
 					return Result(false, reply.Message ?? "the renderer stayed on snapshots");
 				nativeWindow = (nint)reply.Hwnd;
 				string placed = Place(nativeWindow);
+				surface.LayoutUpdated += OnCanvasLayout;   // follow scroll, zoom and resize of the canvas
 				return Result(true, placed);
 			}
 			if (nativeWindow == 0)
 				return Result(false, "not native");
+			surface.LayoutUpdated -= OnCanvasLayout;
 			Detach(nativeWindow);
 			nativeWindow = 0;
 			var left = client.NativeLiveAsync(false).GetAwaiter().GetResult();
@@ -44,9 +46,18 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlNativeLive
 		} catch (Exception e) {
 			// A lost renderer: drop the window handle and fall back to the last snapshot.
 			LoggingService.Warn("WinUI native-live failed", e);
+			surface.LayoutUpdated -= OnCanvasLayout;
 			if (nativeWindow != 0) { Detach(nativeWindow); nativeWindow = 0; }
 			return Result(false, "the renderer was lost; showing the last snapshot (" + e.GetBaseException().Message + ")");
 		}
+	}
+
+	(int X, int Y, int W, int H) lastPlacement;
+
+	void OnCanvasLayout(object sender, EventArgs e)
+	{
+		if (nativeWindow != 0 && IsWindow(nativeWindow))
+			Place(nativeWindow);
 	}
 
 	string Result(bool native, string message)
@@ -77,6 +88,11 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlNativeLive
 		ScreenToClient(main, ref origin);
 		int width = (int)Math.Round(frame.Width), height = (int)Math.Round(frame.Height);
 
+		// LayoutUpdated fires often; only touch the window when its rectangle actually changed.
+		if (lastPlacement == (origin.X, origin.Y, width, height) && GetParent(hwnd) == main)
+			return "unchanged";
+		lastPlacement = (origin.X, origin.Y, width, height);
+
 		int cloak = 0;
 		DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, ref cloak, sizeof(int));   // the renderer keeps its window cloaked and off-screen
 		SetParent(hwnd, main);
@@ -99,6 +115,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlNativeLive
 	struct POINT { public int X, Y; }
 
 	[DllImport("user32.dll")] static extern bool IsWindow(nint hwnd);
+	[DllImport("user32.dll")] static extern nint GetParent(nint hwnd);
 	[DllImport("user32.dll")] static extern nint SetParent(nint child, nint parent);
 	[DllImport("user32.dll")] static extern bool ScreenToClient(nint hwnd, ref POINT point);
 	[DllImport("user32.dll")] static extern bool ShowWindow(nint hwnd, int command);

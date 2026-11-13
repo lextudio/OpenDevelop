@@ -1018,9 +1018,15 @@ IDE main window with `SetParent`, and `SetWindowPos`es it over the canvas, clipp
 window at the canvas, and a desktop capture shows the live page with the surface's own zoom chrome inside
 the pane and nothing over the other panes; `off` returns to the snapshot; `on` again reuses the window; killing
 `Surface.exe` while native, then `off`, answers "The native window was lost; showing the last snapshot." and the
-designer still reports a rendered preview. **Not done:** following scroll/zoom/resize of the canvas
-while native (the window is placed once), DPI scaling, keyboard focus hand-off, and a toolbar button
-(only the DevFlow action toggles it).
+designer still reports a rendered preview. The window follows the canvas (`LayoutUpdated` re-places it when
+its rectangle changes): maximizing the IDE moved it from 402x94 to 1024x375 at the new canvas position, as a
+desktop capture confirmed. **Not done:** DPI scaling, keyboard focus hand-off, and a toolbar button (only the
+DevFlow action toggles it).
+
+Measured regression while doing this: passing an unpackaged WinExe project's managed `.dll` as `--user-dll` (instead of
+its unloadable `.exe` apphost) loaded its WinAppSDK bootstrap auto-initializer into the surface, and the designer
+showed `COMException` for the plain fixture page. The bootstrap now skips the assembly when
+`WindowsPackageType=None` and `WindowsAppSdkBootstrapInitialize` is not `false`, and says so in the output.
 
 ### 7.3 Treat WinUI source round-trip as the moat
 

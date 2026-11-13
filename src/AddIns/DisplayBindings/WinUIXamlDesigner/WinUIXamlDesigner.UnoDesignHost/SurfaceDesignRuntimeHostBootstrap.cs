@@ -98,6 +98,17 @@ public static class SurfaceDesignRuntimeHostBootstrap
 			if (userDll != null && userDll.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
 				&& File.Exists(Path.ChangeExtension(userDll, ".dll")))
 				userDll = Path.ChangeExtension(userDll, ".dll");
+			// Measured: an unpackaged app whose WinAppSDK bootstrap auto-initializer is on runs that initializer as a module initializer
+			// when the surface loads its assembly, and from then on every XAML object in the surface fails with COMException 0x8001010E
+			// (plain markup included). Such an assembly is not loaded; the page still renders from its markup.
+			var msbuild = project as ICSharpCode.SharpDevelop.Project.MSBuildBasedProject;
+			bool unpackaged = string.Equals(msbuild?.GetEvaluatedProperty("WindowsPackageType"), "None", StringComparison.OrdinalIgnoreCase);
+			bool autoInitializer = !string.Equals(msbuild?.GetEvaluatedProperty("WindowsAppSdkBootstrapInitialize"), "false", StringComparison.OrdinalIgnoreCase);
+			if (!string.IsNullOrEmpty(userDll) && File.Exists(userDll) && unpackaged && autoInitializer) {
+				Log("not loading " + Path.GetFileName(userDll) + ": its WinAppSDK bootstrap auto-initializer would break the preview host "
+					+ "(set WindowsAppSdkBootstrapInitialize=false and WindowsAppSdkUndockedRegFreeWinRTInitialize=false to preview its own types)");
+				userDll = null;
+			}
 			if (!string.IsNullOrEmpty(userDll) && File.Exists(userDll))
 				arguments += " --surface-args " + Quote("--user-dll " + Quote(userDll));
 			// Opt-in: real {x:Bind} values from the project's last build. OD_WINUI_COMPILED=1 or the stored property.
