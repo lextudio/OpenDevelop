@@ -3,7 +3,7 @@
         x:Class="ICSharpCode.SharpDevelop.Gui.TreeViewOptionsDialog"
         Height="540"
         Width="760"
-        MinHeight="260"
+        MinHeight="440"
         MinWidth="480"
         WindowStartupLocation="CenterOwner"
         Style="{x:Static core:GlobalStyles.DialogWindowStyle}">
@@ -31,8 +31,8 @@
 				
 				<TreeView.ItemTemplate>
 					<HierarchicalDataTemplate ItemsSource="{Binding Children}">
-						<StackPanel Orientation="Horizontal" Margin="-16 0 0 0">
-							<Image Source="{Binding Image}" Width="16" Height="16" />
+						<StackPanel Orientation="Horizontal">
+							<Image Source="{Binding Image}" Width="16" Height="16" Margin="0 0 4 0" />
 							<TextBlock Text="{Binding Title}" />
 						</StackPanel>
 					</HierarchicalDataTemplate>

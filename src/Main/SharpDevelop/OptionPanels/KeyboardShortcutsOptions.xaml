@@ -8,7 +8,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="1*" MinHeight="120" />
+            <RowDefinition Height="1*" MinHeight="100" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -47,10 +47,10 @@
             <ListView.View>
                 <GridView>
                     <GridViewColumn Width="20" DisplayMemberBinding="{Binding Mark}" />
-                    <GridViewColumn Header="{core:Localize Dialog.Options.IDEOptions.Keyboard.Column.Command}" Width="190" DisplayMemberBinding="{Binding Name}" />
-                    <GridViewColumn Header="{core:Localize Dialog.Options.IDEOptions.Keyboard.Column.Shortcut}" Width="120" DisplayMemberBinding="{Binding Shortcut}" />
-                    <GridViewColumn Header="{core:Localize Dialog.Options.IDEOptions.Keyboard.Column.Default}" Width="100" DisplayMemberBinding="{Binding Default}" />
-                    <GridViewColumn Header="{core:Localize Dialog.Options.IDEOptions.Keyboard.Column.Scope}" Width="110" DisplayMemberBinding="{Binding ScopeName}" />
+                    <GridViewColumn Header="{core:Localize Dialog.Options.IDEOptions.Keyboard.Column.Command}" Width="170" DisplayMemberBinding="{Binding Name}" />
+                    <GridViewColumn Header="{core:Localize Dialog.Options.IDEOptions.Keyboard.Column.Shortcut}" Width="110" DisplayMemberBinding="{Binding Shortcut}" />
+                    <GridViewColumn Header="{core:Localize Dialog.Options.IDEOptions.Keyboard.Column.Default}" Width="95" DisplayMemberBinding="{Binding Default}" />
+                    <GridViewColumn Header="{core:Localize Dialog.Options.IDEOptions.Keyboard.Column.Scope}" Width="100" DisplayMemberBinding="{Binding ScopeName}" />
                 </GridView>
             </ListView.View>
         </ListView>

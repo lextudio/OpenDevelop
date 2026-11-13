@@ -17,7 +17,7 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 	/// The Keyboard page: a working copy of the shortcuts (<see cref="KeyboardShortcutsModel"/>) that is written through the
 	/// <see cref="KeyBindingService"/> only when the dialog's OK is pressed. doc/technotes/keyboard-shortcuts.md.
 	/// </summary>
-	partial class KeyboardShortcutsOptions : OptionPanel
+	partial class KeyboardShortcutsOptions : OptionPanel, IFillsOptionPanelHeight
 	{
 		const string ResourcePrefix = "${res:Dialog.Options.IDEOptions.Keyboard.";
 
@@ -71,6 +71,13 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 				model.Commit(KeyBindingService.Default);
 			return base.SaveOptions();
 		}
+
+		/// <summary>
+		/// The height the page needs, measured at the default dialog size: the parts that do not shrink (description, search, details, buttons, margins) are about 160 px
+		/// and the list gives way down to its MinHeight of 100 px. Some headroom is added for wrapped text (translated strings, narrow dialog). Below this the dialog scrolls
+		/// the whole page; the dialog's own MinHeight keeps that from happening in practice.
+		/// </summary>
+		public double MinimumContentHeight { get { return 320; } }
 
 		RowView Selected { get { return commandList.SelectedItem as RowView; } }
 
