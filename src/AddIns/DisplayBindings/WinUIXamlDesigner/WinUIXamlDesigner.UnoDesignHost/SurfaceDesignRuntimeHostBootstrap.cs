@@ -31,6 +31,8 @@ public static class SurfaceDesignRuntimeHostBootstrap
 {
 	const string DisplayName = "WinUI Surface host";
 	const string OutputChannel = "WinUI Designer";
+	/// <summary>Stored boolean (no Options page yet): render x:Class pages from the project's last build. See <c>--compiled-pages</c>.</summary>
+	public const string CompiledPagesProperty = "WinUIXamlDesigner.CompiledPages";
 
 	public static void Register() => WinUIXamlRuntimeHostRegistry.Register(Create);
 
@@ -94,6 +96,12 @@ public static class SurfaceDesignRuntimeHostBootstrap
 			var userDll = project.OutputAssemblyFullPath?.ToString();
 			if (!string.IsNullOrEmpty(userDll) && File.Exists(userDll))
 				arguments += " --surface-args " + Quote("--user-dll " + Quote(userDll));
+			// Opt-in: real {x:Bind} values from the project's last build. OD_WINUI_COMPILED=1 or the stored property.
+			if (Environment.GetEnvironmentVariable("OD_WINUI_COMPILED") == "1" || PropertyService.Get(CompiledPagesProperty, false)) {
+				arguments += " --compiled-pages";
+				Log("compiled pages are on: pages with x:Class render from the last build of " + project.Name
+					+ " (the project must set WindowsAppSdkBootstrapInitialize=false and WindowsAppSdkUndockedRegFreeWinRTInitialize=false)");
+			}
 			return new DesignHostChildLaunch(arguments, null);
 		} catch (OperationCanceledException) {
 			throw;

@@ -14,6 +14,9 @@ static class Program
 			Console.Error.WriteLine($"{SurfaceDesignRpc.Runtime}: pass either --surface-exe, or --host-dir together with --run-root.");
 			return 2;
 		}
+		// --compiled-pages: render a document with x:Class as the project's compiled page (see SurfaceDesignDocument.UseCompiledPages).
+		if (Array.IndexOf(args, "--compiled-pages") >= 0)
+			Environment.SetEnvironmentVariable("OD_SURFACE_COMPILED", "1");
 		var rpc = new SurfaceDesignRpc(surfaceExe, Argument(args, "--surface-args") ?? "", hostDirectory, runRoot);
 		// DesignerChildHost owns the transport, ready line and exit-code policy; a vanished parent ends the
 		// wait so no surface process outlives the IDE.
