@@ -220,7 +220,10 @@ public sealed class NewProjectDialogIntegrationTests
                 tree = await _app.GetUITreeAsync();
                 var text = tree.ToString();
                 if (text.Contains("NewProjectWindow") && text.Contains("Project name:") && text.Contains("Template options:"))
-                    return;
+                {
+                    if (AssertListsStayAboveButtonRow(tree))
+                        return;
+                }
             }
             Assert.Fail("New Solution dialog did not expose its project-name and template-option controls. UI tree: " + tree);
         }
@@ -229,6 +232,32 @@ public sealed class NewProjectDialogIntegrationTests
             var closed = await _app.InvokeAsync("od.new-solution-dialog.close");
             Assert.True(closed.GetProperty("closed").GetBoolean());
         }
+    }
+
+    // (Create/Cancel is the lowest button row.) The template list and category tree are bounded by the dialog (so they scroll) and end above the Create/Cancel row.
+    static bool AssertListsStayAboveButtonRow(JsonElement tree)
+    {
+        double? listsBottom = null, buttonsTop = null;
+        void Walk(JsonElement n, bool inDialog)
+        {
+            if (n.ValueKind == JsonValueKind.Array) { foreach (var c in n.EnumerateArray()) Walk(c, inDialog); return; }
+            if (n.ValueKind != JsonValueKind.Object) return;
+            var type = n.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
+            inDialog |= type != null && type.Contains("NewProjectWindow");
+            if (inDialog && type != null && n.TryGetProperty("bounds", out var b) && b.ValueKind == JsonValueKind.Object)
+            {
+                var top = b.GetProperty("y").GetDouble();
+                var bottom = top + b.GetProperty("height").GetDouble();
+                if (type == "ListView" || type == "TreeView") listsBottom = Math.Max(listsBottom ?? bottom, bottom);
+                else if (type == "Button") buttonsTop = Math.Max(buttonsTop ?? top, top);
+            }
+            foreach (var p in n.EnumerateObject()) Walk(p.Value, inDialog);
+        }
+        Walk(tree, false);
+        // Bounds are null until the dialog has been laid out: report "not measurable yet" so the caller polls again.
+        if (!listsBottom.HasValue || !buttonsTop.HasValue) return false;
+        Assert.True(listsBottom <= buttonsTop + 1, $"Template list/category tree bottom {listsBottom} overlaps the button row at {buttonsTop}.");
+        return true;
     }
 
     async Task WaitForWindowAsync(string windowType)

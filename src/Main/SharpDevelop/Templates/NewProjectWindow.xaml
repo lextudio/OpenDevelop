@@ -56,18 +56,20 @@
 
     <Grid Grid.Row="4" Margin="0,4,0,8">
       <Grid.ColumnDefinitions><ColumnDefinition Width="210" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-      <StackPanel Grid.Column="0">
+      <Grid Grid.Column="0">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
         <Label Content="{core:Localize Dialog.NewProject.ProjectTypeLabel}" Target="{Binding ElementName=CategoryTree}" Padding="0,0,0,4" />
-        <TreeView x:Name="CategoryTree" ToolTip="{core:Localize Dialog.NewProject.ProjectTypeToolTip}"
+        <TreeView x:Name="CategoryTree" Grid.Row="1" ToolTip="{core:Localize Dialog.NewProject.ProjectTypeToolTip}"
+                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                   SelectedItemChanged="OnCategoryChanged" />
-      </StackPanel>
+      </Grid>
       <Grid Grid.Column="2">
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <Grid><Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="160" /></Grid.ColumnDefinitions>
           <TextBox x:Name="SearchBox" ToolTip="{core:Localize Dialog.NewProject.SearchToolTip}" TextChanged="OnSearchChanged" />
           <ComboBox x:Name="LanguageBox" Grid.Column="1" Margin="8,0,0,0" ToolTip="{core:Localize Dialog.NewProject.LanguageToolTip}" SelectionChanged="OnLanguageChanged" />
         </Grid>
-        <ListView x:Name="TemplateList" Grid.Row="1" SelectionMode="Single" SelectionChanged="OnSelectionChanged" Margin="0,6,0,6">
+        <ListView x:Name="TemplateList" Grid.Row="1" SelectionMode="Single" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="OnSelectionChanged" Margin="0,6,0,6">
           <ListView.ItemTemplate><DataTemplate><StackPanel><TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" /><TextBlock Text="{Binding Description}" Foreground="{DynamicResource MutedForeground}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" /></StackPanel></DataTemplate></ListView.ItemTemplate>
         </ListView>
         <Border Grid.Row="2" BorderBrush="Gray" BorderThickness="1" Padding="7">

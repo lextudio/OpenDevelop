@@ -69,6 +69,10 @@ namespace ICSharpCode.SharpDevelop.Templates
         NewProjectWindow(TemplateDiscoveryService service, string defaultLocation, bool createNewSolution)
         {
             InitializeComponent();
+            // Keep the window inside the work area (e.g. 150% DPI; primary monitor), so the lists scroll instead of being clipped.
+            var workArea = SystemParameters.WorkArea;
+            MaxHeight = workArea.Height;
+            MaxWidth = workArea.Width;
             _service = service ?? throw new ArgumentNullException(nameof(service));
             _defaultLocation = defaultLocation ?? throw new ArgumentNullException(nameof(defaultLocation));
             _createNewSolution = createNewSolution;
