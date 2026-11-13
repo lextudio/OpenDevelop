@@ -800,53 +800,58 @@ namespace OpenDevelop.Terminal
 			if (session == null)
 				return false;
 			bool command = (modifiers & ModifierKeys.Windows) != 0;
-			bool chord = command || modifiers == (ModifierKeys.Control | ModifierKeys.Shift); // Cmd+C/V, Ctrl+Shift+C/V
-			if (chord && key == Key.C) {
-				CopySelection();
-				return HasSelection || command;
-			}
-			if (chord && (key == Key.OemPlus || key == Key.Add)) {
-				TerminalSettings.Zoom(1);
-				return true;
-			}
-			if (chord && (key == Key.OemMinus || key == Key.Subtract)) {
-				TerminalSettings.Zoom(-1);
-				return true;
-			}
-			if (chord && (key == Key.D0 || key == Key.NumPad0)) {
-				TerminalSettings.Zoom(0);
-				return true;
-			}
-			if (chord && key == Key.F) {
-				FindRequested?.Invoke();
-				return true;
-			}
-			if (chord && key == Key.V) {
-				PasteFromClipboard();
-				return true;
-			}
-			if (command && modifiers == ModifierKeys.Windows && key == Key.A && OperatingSystem.IsMacOS()) { // Cmd+A selects the whole screen, as the menu's Select All does
-				if (snapshot != null)
-					SelectRange(0, 0, snapshot.Columns - 1, snapshot.Rows - 1);
-				return true;
-			}
-			if (command && modifiers == ModifierKeys.Windows && key == Key.K && OperatingSystem.IsMacOS()) { // Cmd+K clears, as in VS Code on macOS
-				session.Clear();
-				ClearSelection();
-				return true;
-			}
-			if (modifiers == ModifierKeys.Shift && (key == Key.PageUp || key == Key.PageDown) && !session.IsAlternateScreen) { // Shift+PageUp/Down page through the scrollback
-				Scroll(key == Key.PageUp ? -Math.Max(1, session.Rows - 1) : Math.Max(1, session.Rows - 1));
-				return true;
-			}
-			if (modifiers == ModifierKeys.Shift && (key == Key.Home || key == Key.End) && !session.IsAlternateScreen) { // Shift+Home/End jump to the top/bottom of the scrollback
-				if (key == Key.Home)
-					Scroll(-int.MaxValue);
-				else {
+			switch (TerminalShortcuts.Match(key, modifiers, OperatingSystem.IsMacOS(), ICSharpCode.Core.Presentation.KeyBindingService.Default.Overrides)) {
+				case TerminalShortcut.Copy:
+					CopySelection();
+					return HasSelection || command;
+				case TerminalShortcut.ZoomIn:
+					TerminalSettings.Zoom(1);
+					return true;
+				case TerminalShortcut.ZoomOut:
+					TerminalSettings.Zoom(-1);
+					return true;
+				case TerminalShortcut.ZoomReset:
+					TerminalSettings.Zoom(0);
+					return true;
+				case TerminalShortcut.Find:
+					FindRequested?.Invoke();
+					return true;
+				case TerminalShortcut.Paste:
+					PasteFromClipboard();
+					return true;
+				case TerminalShortcut.SelectAll: // selects the whole screen, as the menu's Select All does
+					if (snapshot != null)
+						SelectRange(0, 0, snapshot.Columns - 1, snapshot.Rows - 1);
+					return true;
+				case TerminalShortcut.Clear: // as in VS Code on macOS
+					session.Clear();
 					ClearSelection();
-					session.ScrollToBottom();
-				}
-				return true;
+					return true;
+				case TerminalShortcut.ScrollPageUp: // page through the scrollback; on the alternate screen the key goes to the program
+					if (!session.IsAlternateScreen) {
+						Scroll(-Math.Max(1, session.Rows - 1));
+						return true;
+					}
+					break;
+				case TerminalShortcut.ScrollPageDown:
+					if (!session.IsAlternateScreen) {
+						Scroll(Math.Max(1, session.Rows - 1));
+						return true;
+					}
+					break;
+				case TerminalShortcut.ScrollToTop: // jump to the top of the scrollback
+					if (!session.IsAlternateScreen) {
+						Scroll(-int.MaxValue);
+						return true;
+					}
+					break;
+				case TerminalShortcut.ScrollToBottom:
+					if (!session.IsAlternateScreen) {
+						ClearSelection();
+						session.ScrollToBottom();
+						return true;
+					}
+					break;
 			}
 			if (session.HasExited) {
 				// Nothing is listening any more: a key (other than a bare modifier) dismisses the finished terminal.

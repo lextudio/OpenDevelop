@@ -27,6 +27,9 @@
     <!-- The integration tests' dotnetup SDK provider is pure process/file-system logic; link it so
          its version filter and signature verdicts are tested here, offline, without booting the IDE. -->
     <Compile Include="..\OpenDevelop.IntegrationTests\DotnetupSdkProvider.cs" Link="Dotnetup\DotnetupSdkProvider.cs" />
+    <!-- The terminal's shortcut matching is pure; linking the source avoids the Terminal project's native libghostty payload. -->
+    <Compile Include="..\..\src\AddIns\Misc\Terminal\Project\Src\TerminalShortcuts.cs" Link="Terminal\TerminalShortcuts.cs" />
+    <Compile Include="..\..\src\AddIns\DisplayBindings\DesignerCanvas\DesignerShortcuts.cs" Link="Designer\DesignerShortcuts.cs" />
   </ItemGroup>
 
   <ItemGroup>

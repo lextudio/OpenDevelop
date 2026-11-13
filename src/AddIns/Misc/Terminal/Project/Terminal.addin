@@ -122,5 +122,8 @@
 		       class = "OpenDevelop.Terminal.RegisterTerminalServicesCommand"/>
 		<Class id    = "TerminalRegisterDevFlowActionsCommand"
 		       class = "OpenDevelop.Terminal.RegisterDevFlowActionsCommand"/>
+		<!-- The terminal's own shortcuts (copy, paste, find, zoom, scrollback) for the Keyboard page of the Options dialog -->
+		<Class id    = "TerminalRegisterKeyCommands"
+		       class = "OpenDevelop.Terminal.RegisterTerminalKeyCommandsCommand"/>
 	</Path>
 </AddIn>

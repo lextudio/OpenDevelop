@@ -4,4 +4,9 @@
     <Import assembly="ICSharpCode.DesignerCanvas.dll" />
     <Import assembly=":ICSharpCode.Designer.Presentation" />
   </Runtime>
+  <!-- The design surface's own shortcuts (undo, redo, delete, rename) for the Keyboard page of the Options dialog -->
+  <Path name = "/SharpDevelop/Autostart">
+    <Class id    = "RegisterDesignerKeyCommands"
+           class = "ICSharpCode.SharpDevelop.Designer.Surface.RegisterDesignerKeyCommandsCommand"/>
+  </Path>
 </AddIn>

@@ -1769,34 +1769,27 @@ public class DesignSurface : DesignerCanvas
 			e.Handled = true;
 			return;
 		}
-		// Undo/redo shortcuts (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z) forward to the shell's history.
-		if (HandlesUndoRedoKeys && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+		// Undo, redo, delete and rename: the shortcuts of the Keyboard page (Ctrl+Z, Ctrl+Y/Ctrl+Shift+Z, Delete and F2 until the user changes them)
+		switch (DesignerShortcuts.Match(e.Key, Keyboard.Modifiers, ICSharpCode.Core.Presentation.KeyBindingService.Default.Overrides))
 		{
-			if (e.Key == Key.Z && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
-			{
+			case DesignerShortcut.Undo when HandlesUndoRedoKeys:
+				// forward to the shell's history
 				UndoRedoRequested?.Invoke(this, true);
 				e.Handled = true;
 				return;
-			}
-			if (e.Key == Key.Y || (e.Key == Key.Z && Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)))
-			{
+			case DesignerShortcut.Redo when HandlesUndoRedoKeys:
 				UndoRedoRequested?.Invoke(this, false);
 				e.Handled = true;
 				return;
-			}
-		}
-		// Delete removes the selection, through the same command the context menu raises.
-		if (e.Key == Key.Delete && selectionName != null)
-		{
-			ContextCommandRequested?.Invoke(this, ("delete", selectionName));
-			e.Handled = true;
-			return;
-		}
-		if (e.Key == Key.F2 && selectionName != null && RenameRequested != null)
-		{
-			RenameRequested.Invoke(this, selectionName);
-			e.Handled = true;
-			return;
+			case DesignerShortcut.Delete when selectionName != null:
+				// removes the selection, through the same command the context menu raises
+				ContextCommandRequested?.Invoke(this, ("delete", selectionName));
+				e.Handled = true;
+				return;
+			case DesignerShortcut.Rename when selectionName != null && RenameRequested != null:
+				RenameRequested.Invoke(this, selectionName);
+				e.Handled = true;
+				return;
 		}
 		// The canvas itself owns keyboard focus while no inline editor is active. Tab navigates the
 		// snapshot's primary selection rather than leaving the design surface for the next shell
