@@ -54,8 +54,31 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		var viewport = request.Viewport ?? new DesignerViewport { Width = 1280, Height = 720 };
 		viewportWidth = viewport.Width; viewportHeight = viewport.Height; viewportScale = viewport.Dpi;
 		var result = await connection.LoadXamlAsync(
-			PrimaryText(snapshot), viewport.Width, viewport.Height, viewport.Dpi, false, null, cancellationToken).ConfigureAwait(false);
+			PrimaryText(snapshot), viewport.Width, viewport.Height, viewport.Dpi, false, null, cancellationToken,
+			CompiledTypeFor(PrimaryText(snapshot))).ConfigureAwait(false);
 		return await WithTreeAsync(Complete(snapshot, result), snapshot, cancellationToken).ConfigureAwait(false);
+	}
+
+	/// <summary>
+	/// Render the compiled page (the project's last build, so real <c>{x:Bind}</c> values) instead of the editor text, for a document whose
+	/// root names its class with <c>x:Class</c>. Needs the surface started with the project's built assembly (<c>--user-dll</c>). The
+	/// compiled page does not follow edits until the project is rebuilt. Off by default: a document without <c>x:Class</c> always uses its text.
+	/// </summary>
+	public bool UseCompiledPages { get; set; }
+
+	static readonly XNamespace XamlNs = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+	/// <summary>The <c>x:Class</c> of <paramref name="xaml"/>'s root when compiled pages are on, "" (turn it off) when they are on but the
+	/// document has none, null (field omitted) when they are off.</summary>
+	string? CompiledTypeFor(string xaml)
+	{
+		if (!UseCompiledPages)
+			return null;
+		try {
+			return XDocument.Parse(xaml).Root?.Attribute(XamlNs + "Class")?.Value ?? "";
+		} catch (XmlException) {
+			return "";
+		}
 	}
 
 	/// <summary>Re-renders a changed document at the viewport the surface already holds.</summary>
@@ -68,7 +91,8 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		if (version >= 0 && snapshot.Version < version)
 			return Rejected(snapshot.SessionId, snapshot.DocumentId, version,
 				$"Stale document version {snapshot.Version}; the surface is at {version}.");
-		var result = await connection.UpdateXamlAsync(PrimaryText(snapshot), false, null, cancellationToken).ConfigureAwait(false);
+		var result = await connection.UpdateXamlAsync(PrimaryText(snapshot), false, null, cancellationToken,
+			CompiledTypeFor(PrimaryText(snapshot))).ConfigureAwait(false);
 		return await WithTreeAsync(Complete(snapshot, result), snapshot, cancellationToken).ConfigureAwait(false);
 	}
 

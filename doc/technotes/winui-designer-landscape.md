@@ -969,8 +969,20 @@ compiler run, their PRI) before each preview, and (3) a rule for edits: the comp
 preview changes, or falls back to the placeholder render. That conflicts with live editing, which is why it
 is an opt-in "compiled preview" of a saved, built page rather than a replacement renderer. It is a change
 to our `lextudio/WinAppVSCE` fork (message, page activation, error mapping) plus a provisioner build
-step, and the acceptance test needs a Gallery-style page with `{x:Bind}` and a user build, which this
-machine can run but which is a project of its own. Not started.
+step, and the acceptance test needs a Gallery-style page with `{x:Bind}` and a user build.
+
+**Measured (2026-11).** The surface half is built in the fork (`e397491`, not yet published as a package): an
+optional `compiledType` on `LoadXaml`/`UpdateXaml`/`EnterNative` makes the surface create that class from the
+`--user-dll` assembly. On a matched 2.4.0 host, a page with `Text="{x:Bind Greeting}"` and `{x:Bind Count}`
+renders `BOUND VALUE 42` and `7`, not placeholders. Client side: `SurfaceDesignDocument.UseCompiledPages`
+(root `x:Class` becomes `compiledType`, "" when absent) and child env `OD_SURFACE_COMPILED=1`; tests: fake surface
+(field sent only when on) and a gated real-surface test (`OD_SURFACE_EXE`, `OD_SURFACE_ARGS` with `--user-dll`).
+Findings: (1) a WinUI project whose own unpackaged WinAppSDK bootstrap initializer is on breaks the host once
+its assembly loads: every XAML object, even plain markup, fails with `0x8001010E`; set
+`WindowsAppSdkBootstrapInitialize` and `WindowsAppSdkUndockedRegFreeWinRTInitialize` to `false`. (2) The
+compiled page is the last build, not the buffer. **Not done:** publishing the fork package and bumping the pin,
+finding the project's built assembly in the IDE and passing `--user-dll`, a rebuild trigger on edit, and the
+setting that turns it on.
 
 ### 7.2 Do not replace the snapshot canvas with native embedding
 

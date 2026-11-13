@@ -130,8 +130,8 @@ public sealed class SurfaceConnection : IAsyncDisposable
 	/// <summary>Loads a document (the first of a session, or when the viewport changes) and returns its frame or error.</summary>
 	public Task<SurfaceRenderResult> LoadXamlAsync(
 		string xaml, double width, double height, double scale, bool sampleData, string? documentPath,
-		CancellationToken cancellationToken = default)
-		=> RequestAsync(new Dictionary<string, object?> {
+		CancellationToken cancellationToken = default, string? compiledType = null)
+		=> RequestAsync(WithCompiledType(new Dictionary<string, object?> {
 			["type"] = "LoadXaml",
 			["xaml"] = xaml,
 			["width"] = width,
@@ -139,17 +139,28 @@ public sealed class SurfaceConnection : IAsyncDisposable
 			["scale"] = scale,
 			["sampleData"] = sampleData,
 			["documentPath"] = documentPath,
-		}, cancellationToken);
+		}, compiledType), cancellationToken);
 
 	/// <summary>Replaces the document, keeping the saved viewport.</summary>
 	public Task<SurfaceRenderResult> UpdateXamlAsync(
-		string xaml, bool sampleData, string? documentPath, CancellationToken cancellationToken = default)
-		=> RequestAsync(new Dictionary<string, object?> {
+		string xaml, bool sampleData, string? documentPath, CancellationToken cancellationToken = default, string? compiledType = null)
+		=> RequestAsync(WithCompiledType(new Dictionary<string, object?> {
 			["type"] = "UpdateXaml",
 			["xaml"] = xaml,
 			["sampleData"] = sampleData,
 			["documentPath"] = documentPath,
-		}, cancellationToken);
+		}, compiledType), cancellationToken);
+
+	/// <summary>
+	/// <paramref name="compiledType"/> null leaves the field out (the surface keeps its current setting); a type name makes the surface create
+	/// that class from the user assembly (the compiled page, <c>{x:Bind}</c> included) and "" turns that off again.
+	/// </summary>
+	static Dictionary<string, object?> WithCompiledType(Dictionary<string, object?> message, string? compiledType)
+	{
+		if (compiledType != null)
+			message["compiledType"] = compiledType;
+		return message;
+	}
 
 	/// <summary>
 	/// Asks the surface which element is at a design point, for a click on the canvas. See <see cref="NativeExcursionAsync"/> for how:

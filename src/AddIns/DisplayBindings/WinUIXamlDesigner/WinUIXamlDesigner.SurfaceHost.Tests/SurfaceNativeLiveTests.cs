@@ -106,6 +106,25 @@ public class SurfaceNativeLiveTests
 	}
 
 	[Fact]
+	public async Task Compiled_pages_send_the_root_class_only_when_switched_on()
+	{
+		const string Classed = "<Page x:Class=\"App.Main\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\"/>";
+		var sent = new List<string?>();
+		await using var surface = Surface((type, w) => Task.FromResult(false));
+		await using var conn = await Connect(surface);
+		await using var document = new SurfaceDesignDocument(conn) { BuildTree = false };
+
+		await document.OpenAsync(Request(1, Classed), Ct);                    // off: the field is left out
+		document.UseCompiledPages = true;
+		await document.UpdateAsync(Request(2, Classed), Ct);                  // on, with x:Class: the class
+		await document.UpdateAsync(Request(3, Page), Ct);                     // on, without: "" turns it off
+		foreach (var m in surface.Received)
+			sent.Add(m.RootElement.TryGetProperty("compiledType", out var v) ? v.GetString() : null);
+
+		Assert.Equal(new string?[] { null /* Hello */, null /* LoadXaml */, "App.Main", "" }, sent);
+	}
+
+	[Fact]
 	public async Task A_surface_that_cannot_enter_native_mode_leaves_the_document_on_snapshots()
 	{
 		await using var surface = Surface(async (type, w) => {

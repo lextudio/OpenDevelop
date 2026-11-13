@@ -156,6 +156,9 @@ sealed class SurfaceDesignRpc
 			return new SurfaceDesignDocument(host, run == null ? null : () => DeleteRun(run)) {
 				// The element tree costs a native-mode excursion per accepted render; OD_SURFACE_TREE=0 turns it off.
 				BuildTree = Environment.GetEnvironmentVariable("OD_SURFACE_TREE") != "0",
+				// OD_SURFACE_COMPILED=1: render a document with x:Class as the project's compiled page (real {x:Bind} values; the last
+				// build, not the buffer). It needs --user-dll in the surface arguments and a project that keeps its own bootstrap out.
+				UseCompiledPages = Environment.GetEnvironmentVariable("OD_SURFACE_COMPILED") == "1",
 			};
 		} catch {
 			DeleteRun(run);
