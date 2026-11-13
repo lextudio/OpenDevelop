@@ -18,11 +18,16 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="1*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBox x:Name="searchBox" Grid.Column="0" Margin="0,0,6,0"
                      AutomationProperties.Name="{core:Localize Dialog.Options.IDEOptions.Keyboard.Search}"
-                     TextChanged="SearchChanged" />
-            <ComboBox x:Name="filterBox" Grid.Column="1" Width="130" SelectedIndex="0"
+                     TextChanged="SearchChanged" PreviewKeyDown="SearchKeyDown" />
+            <CheckBox x:Name="gestureSearchBox" Grid.Column="1" Margin="0,0,6,0" VerticalAlignment="Center"
+                      Content="{core:Localize Dialog.Options.IDEOptions.Keyboard.SearchByShortcut}"
+                      ToolTip="{core:Localize Dialog.Options.IDEOptions.Keyboard.SearchByShortcut.Tooltip}"
+                      Checked="GestureSearchChanged" Unchecked="GestureSearchChanged" />
+            <ComboBox x:Name="filterBox" Grid.Column="2" Width="130" SelectedIndex="0"
                       AutomationProperties.Name="{core:Localize Dialog.Options.IDEOptions.Keyboard.Filter.All}"
                       SelectionChanged="FilterChanged">
                 <ComboBoxItem Tag="All" Content="{core:Localize Dialog.Options.IDEOptions.Keyboard.Filter.All}" />

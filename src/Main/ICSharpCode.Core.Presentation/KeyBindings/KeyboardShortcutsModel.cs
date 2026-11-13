@@ -8,7 +8,7 @@ namespace ICSharpCode.Core.Presentation
 	/// <summary>One row of the Keyboard page: a command and the shortcut it has in the working copy.</summary>
 	public sealed class ShortcutRow
 	{
-		internal ShortcutRow(CommandCatalogEntry entry)
+		internal ShortcutRow(CommandCatalogEntry entry, IReadOnlyDictionary<string, string> groupLabels)
 		{
 			Entry = entry;
 			Key = entry.Key;
@@ -18,6 +18,8 @@ namespace ICSharpCode.Core.Presentation
 			Locations = entry.ItemPaths.Distinct().ToList();
 			Scope = KeyboardShortcutsModel.ScopeOf(entry.ItemPaths);
 			Group = KeyboardShortcutsModel.GroupOf(entry.ItemPaths);
+			string label;
+			GroupName = groupLabels != null && groupLabels.TryGetValue(Group, out label) ? label : Group;
 		}
 
 		internal CommandCatalogEntry Entry { get; private set; }
@@ -42,6 +44,20 @@ namespace ICSharpCode.Core.Presentation
 
 		/// <summary>The heading the page groups the command under (a main menu, "Toolbars", "Pads", a control's name).</summary>
 		public string Group { get; private set; }
+
+		/// <summary>The heading to show: the label of the main menu when the model knows it (translated), else <see cref="Group"/>.</summary>
+		public string GroupName { get; private set; }
+	}
+
+	/// <summary>What a capture box does with a key press.</summary>
+	public enum CaptureKeyAction
+	{
+		/// <summary>Not a shortcut here: Tab leaves the box and Esc closes the dialog (alone), so the page stays usable from the keyboard.</summary>
+		PassThrough,
+		/// <summary>Backspace or Delete (alone): empty the box.</summary>
+		Clear,
+		/// <summary>Anything else: it is swallowed, and shown as a chord once it is one (see <see cref="KeyboardShortcutsModel.FormatChord"/>).</summary>
+		Capture
 	}
 
 	/// <summary>Why a gesture cannot be assigned, and who already has it.</summary>
@@ -90,12 +106,13 @@ namespace ICSharpCode.Core.Presentation
 		readonly Dictionary<string, string> initialOverrides;
 
 		/// <param name="catalog">The commands.</param>
+		/// <param name="groupLabels">Main menu id -> its label, to name the groups; null shows the ids.</param>
 		/// <param name="overrides">The overrides on disk now (command key -> gesture, empty = none); keys the catalog does not know are kept untouched.</param>
-		public KeyboardShortcutsModel(IReadOnlyList<CommandCatalogEntry> catalog, IReadOnlyDictionary<string, string> overrides)
+		public KeyboardShortcutsModel(IReadOnlyList<CommandCatalogEntry> catalog, IReadOnlyDictionary<string, string> overrides, IReadOnlyDictionary<string, string> groupLabels = null)
 		{
 			if (catalog == null)
 				throw new ArgumentNullException("catalog");
-			rows = catalog.Select(e => new ShortcutRow(e)).ToList();
+			rows = catalog.Select(e => new ShortcutRow(e, groupLabels)).ToList();
 			byKey = rows.ToDictionary(r => r.Key);
 			initialOverrides = overrides == null ? new Dictionary<string, string>() : overrides.ToDictionary(p => p.Key, p => p.Value);
 			foreach (ShortcutRow row in rows) {
@@ -128,6 +145,25 @@ namespace ICSharpCode.Core.Presentation
 			} catch (Exception ex) when (ex is NotSupportedException || ex is ArgumentException || ex is FormatException) {
 				return null;
 			}
+		}
+
+		/// <summary>What a capture box (the shortcut box or the shortcut search) does with this key and the modifiers held.</summary>
+		public static CaptureKeyAction ClassifyCaptureKey(Key key, ModifierKeys modifiers)
+		{
+			if (modifiers == ModifierKeys.None) {
+				if (key == Key.Tab || key == Key.Escape)
+					return CaptureKeyAction.PassThrough;
+				if (key == Key.Back || key == Key.Delete)
+					return CaptureKeyAction.Clear;
+			}
+			return CaptureKeyAction.Capture;
+		}
+
+		/// <summary>Whether two texts are the same gesture (Control|F8, Ctrl+F8 and ctrl+f8 are); false when either is not a gesture. What the shortcut search compares.</summary>
+		public static bool SameGesture(string a, string b)
+		{
+			string x = Normalize(a);
+			return x != null && string.Equals(x, Normalize(b), StringComparison.OrdinalIgnoreCase);
 		}
 
 		public static string ScopeOf(IEnumerable<string> paths)

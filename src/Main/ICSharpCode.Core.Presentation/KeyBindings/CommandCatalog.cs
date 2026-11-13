@@ -96,6 +96,27 @@ namespace ICSharpCode.Core.Presentation
 			};
 		}
 
+		/// <summary>The labels of the main menu's top-level menus (id -> label, mnemonics removed), for naming the groups of the Keyboard page.</summary>
+		public static IReadOnlyDictionary<string, string> MainMenuLabels(IEnumerable<AddIn> addIns)
+		{
+			var result = new Dictionary<string, string>();
+			foreach (AddIn addIn in addIns) {
+				if (addIn.Action != AddInAction.Enable || addIn.Suspended)
+					continue;
+				ExtensionPath path;
+				if (!addIn.Paths.TryGetValue(MainMenuPath, out path))
+					continue;
+				foreach (Codon codon in path.Codons) {
+					string label = codon.Properties["label"];
+					if (codon.Name == "MenuItem" && !string.IsNullOrEmpty(codon.Id) && !string.IsNullOrWhiteSpace(label) && !result.ContainsKey(codon.Id))
+						result[codon.Id] = StripMnemonic(StringParser.Parse(label));
+				}
+			}
+			return result;
+		}
+
+		public const string MainMenuPath = "/SharpDevelop/Workbench/MainMenu";
+
 		/// <summary>The shortcut a command has in the manifests: what an item without a <c>shortcut</c> of its own takes.</summary>
 		public static IReadOnlyDictionary<string, string> DefaultGestures(IEnumerable<AddIn> addIns)
 		{

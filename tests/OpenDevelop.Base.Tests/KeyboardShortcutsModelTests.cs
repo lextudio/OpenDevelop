@@ -211,4 +211,46 @@ public sealed class KeyboardShortcutsModelTests : IDisposable
 		Assert.Equal("class:Foo.Rebuild", Assert.Single(model.ConflictsOf(model.Find("class:Foo.Clean")!)).Key);
 		Assert.Empty(model.ConflictsOf(model.Find("class:Foo.Build")!));
 	}
+
+	[Fact]
+	public void AMainMenuGroup_IsNamedByTheMenusLabel_WhenTheModelKnowsIt()
+	{
+		var model = new KeyboardShortcutsModel(Catalog(), new Dictionary<string, string>(), new Dictionary<string, string> { ["Build"] = "Generate" });
+		Assert.Equal("Build", model.Find("class:Foo.Build")!.Group);
+		Assert.Equal("Generate", model.Find("class:Foo.Build")!.GroupName);
+		Assert.Equal("ProjectBrowser", model.Find("class:Foo.Rename")!.GroupName); // not a main menu: the name stays
+		Assert.Equal("Build", Model().Find("class:Foo.Build")!.GroupName); // no labels: the id
+	}
+
+	[Fact]
+	public void TheShortcutSearch_MatchesTheSameGestureWhateverItsSpelling()
+	{
+		Assert.True(KeyboardShortcutsModel.SameGesture("Control|F8", "Ctrl+F8"));
+		Assert.True(KeyboardShortcutsModel.SameGesture("ctrl+f8", "Ctrl+F8"));
+		Assert.False(KeyboardShortcutsModel.SameGesture("Ctrl+F8", "Ctrl+Shift+F8"));
+		Assert.False(KeyboardShortcutsModel.SameGesture("Banana", "Banana"));
+		Assert.False(KeyboardShortcutsModel.SameGesture("Ctrl+F8", null));
+		// the chain of the search box: a key chord -> its text -> the rows that have exactly it
+		var model = Model();
+		string chord = KeyboardShortcutsModel.FormatChord(System.Windows.Input.Key.F8, System.Windows.Input.ModifierKeys.Control)!;
+		Assert.Equal("class:Foo.Build", Assert.Single(model.Rows, r => KeyboardShortcutsModel.SameGesture(chord, r.Gesture) && r.Scope == KeyboardShortcutsModel.WorkbenchScope).Key);
+	}
+
+	[Theory]
+	[InlineData(System.Windows.Input.Key.Tab, System.Windows.Input.ModifierKeys.None, CaptureKeyAction.PassThrough)]
+	[InlineData(System.Windows.Input.Key.Escape, System.Windows.Input.ModifierKeys.None, CaptureKeyAction.PassThrough)]
+	[InlineData(System.Windows.Input.Key.Back, System.Windows.Input.ModifierKeys.None, CaptureKeyAction.Clear)]
+	[InlineData(System.Windows.Input.Key.Delete, System.Windows.Input.ModifierKeys.None, CaptureKeyAction.Clear)]
+	[InlineData(System.Windows.Input.Key.Escape, System.Windows.Input.ModifierKeys.Control, CaptureKeyAction.Capture)]
+	[InlineData(System.Windows.Input.Key.Tab, System.Windows.Input.ModifierKeys.Shift, CaptureKeyAction.Capture)]
+	[InlineData(System.Windows.Input.Key.Delete, System.Windows.Input.ModifierKeys.Alt, CaptureKeyAction.Capture)]
+	[InlineData(System.Windows.Input.Key.F8, System.Windows.Input.ModifierKeys.None, CaptureKeyAction.Capture)]
+	public void TheCaptureBox_LeavesTabAndEscAlone_ClearsOnBackspace_AndCapturesTheRest(
+		System.Windows.Input.Key key, System.Windows.Input.ModifierKeys modifiers, CaptureKeyAction expected)
+	{
+		Assert.Equal(expected, KeyboardShortcutsModel.ClassifyCaptureKey(key, modifiers));
+		// Esc with a modifier is a real chord
+		if (key == System.Windows.Input.Key.Escape && modifiers != System.Windows.Input.ModifierKeys.None)
+			Assert.Equal("Ctrl+Esc", KeyboardShortcutsModel.FormatChord(key, modifiers));
+	}
 }

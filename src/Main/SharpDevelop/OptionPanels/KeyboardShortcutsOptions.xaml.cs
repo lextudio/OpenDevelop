@@ -30,9 +30,19 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 			public ShortcutRow Row { get; private set; }
 			public string Name { get { return Row.Name; } }
 			public string Group { get { return Row.Group; } }
+			public string GroupName {
+				get {
+					switch (Row.Group) {
+						case "Toolbars": return Text("Group.Toolbars}");
+						case "Pads": return Text("Group.Pads}");
+						case "Tools": return Text("Group.Tools}");
+						default: return Row.GroupName;
+					}
+				}
+			}
 			public string Shortcut { get { return Row.Gesture ?? Text("None}"); } }
 			public string Default { get { return Row.DefaultGesture ?? ""; } }
-			public string ScopeName { get { return Row.IsRouted ? Text("BuiltIn}") : Row.Scope == KeyboardShortcutsModel.WorkbenchScope ? Text("Workbench}") : Row.Group; } }
+			public string ScopeName { get { return Row.IsRouted ? Text("BuiltIn}") : Row.Scope == KeyboardShortcutsModel.WorkbenchScope ? Text("Workbench}") : GroupName; } }
 			public bool HasConflict { get { return model.ConflictsOf(Row).Count > 0; } }
 			public string Mark { get { return HasConflict ? "!" : Row.IsCustomized ? "*" : ""; } }
 
@@ -56,10 +66,13 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 		public KeyboardShortcutsOptions()
 		{
 			InitializeComponent();
-			model = new KeyboardShortcutsModel(CommandCatalog.Build(SD.AddInTree.AddIns), KeyBindingService.Default.Overrides);
+			var addIns = SD.AddInTree.AddIns;
+			model = new KeyboardShortcutsModel(CommandCatalog.Build(addIns), KeyBindingService.Default.Overrides, CommandCatalog.MainMenuLabels(addIns));
 			views = model.Rows.Select(r => new RowView(model, r)).ToList();
 			collection = CollectionViewSource.GetDefaultView(views);
-			collection.GroupDescriptions.Add(new PropertyGroupDescription("Group"));
+			collection.GroupDescriptions.Add(new PropertyGroupDescription("GroupName"));
+			collection.SortDescriptions.Add(new SortDescription("GroupName", ListSortDirection.Ascending));
+			collection.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending));
 			collection.Filter = Accept;
 			commandList.ItemsSource = collection;
 			ShowDetails();
@@ -92,7 +105,11 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 			string query = searchBox.Text == null ? "" : searchBox.Text.Trim();
 			if (query.Length == 0)
 				return true;
-			return Contains(view.Name, query) || Contains(view.Group, query) || Contains(view.Row.Gesture, query) || Contains(view.Row.Key, query);
+			if (gestureSearchBox.IsChecked == true) {
+				// the text is a chord: show the commands that use exactly it ("who owns Ctrl+B?")
+				return KeyboardShortcutsModel.SameGesture(query, view.Row.Gesture);
+			}
+			return Contains(view.Name, query) || Contains(view.GroupName, query) || Contains(view.Row.Gesture, query) || Contains(view.Row.Key, query);
 		}
 
 		static bool Contains(string text, string query)
@@ -104,6 +121,32 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 		{
 			if (collection != null)
 				collection.Refresh();
+		}
+
+		void GestureSearchChanged(object sender, RoutedEventArgs e)
+		{
+			searchBox.Text = "";
+			if (collection != null)
+				collection.Refresh();
+		}
+
+		/// <summary>In shortcut-search mode the next chord typed into the search box becomes the query (Tab alone still leaves the box).</summary>
+		void SearchKeyDown(object sender, KeyEventArgs e)
+		{
+			if (gestureSearchBox.IsChecked != true)
+				return;
+			Key key = e.Key == Key.System ? e.SystemKey : e.Key;
+			CaptureKeyAction action = KeyboardShortcutsModel.ClassifyCaptureKey(key, Keyboard.Modifiers);
+			if (action == CaptureKeyAction.PassThrough)
+				return;
+			e.Handled = true;
+			if (action == CaptureKeyAction.Clear)
+				searchBox.Text = "";
+			else {
+				string chord = KeyboardShortcutsModel.FormatChord(key, Keyboard.Modifiers);
+				if (chord != null)
+					searchBox.Text = chord;
+			}
 		}
 
 		void FilterChanged(object sender, SelectionChangedEventArgs e)
@@ -166,10 +209,14 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 		void CaptureKeyDown(object sender, KeyEventArgs e)
 		{
 			Key key = e.Key == Key.System ? e.SystemKey : e.Key;
-			// Tab (alone) leaves the box, so the page stays usable from the keyboard
-			if (key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None)
+			CaptureKeyAction action = KeyboardShortcutsModel.ClassifyCaptureKey(key, Keyboard.Modifiers);
+			if (action == CaptureKeyAction.PassThrough)
 				return;
 			e.Handled = true;
+			if (action == CaptureKeyAction.Clear) {
+				captureBox.Text = "";
+				return;
+			}
 			string chord = KeyboardShortcutsModel.FormatChord(key, Keyboard.Modifiers);
 			if (chord == null)
 				return;

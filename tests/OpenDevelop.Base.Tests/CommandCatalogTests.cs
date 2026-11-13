@@ -24,6 +24,11 @@ public sealed class CommandCatalogTests
     <MenuItem id='Dyn' type='Builder' class='Foo.ABuilder'/>
     <Separator id='Sep'/>
   </Path>
+  <Path name='/SharpDevelop/Workbench/MainMenu'>
+    <MenuItem id='Build' label='&amp;Build' type='Menu'/>
+    <MenuItem id='Edit' label='_Edit' type='Menu'/>
+    <Condition name='Ownership' owner='nobody'><MenuItem id='Xml' label='_XML' type='Menu'/></Condition>
+  </Path>
   <Path name='/Test/Toolbar'>
     <ToolbarItem id='BuildButton' label='Build' class='Foo.BuildCommand'/>
     <ToolbarItem id='Combo' type='Custom' class='Foo.CustomControl'/>
@@ -114,10 +119,21 @@ public sealed class CommandCatalogTests
 		}
 	}
 
+	[Fact]
+	public void TheMainMenuLabels_NameTheTopLevelMenusWithoutMnemonics()
+	{
+		var labels = CommandCatalog.MainMenuLabels(new[] { Load() });
+		Assert.Equal("Build", labels["Build"]);
+		Assert.Equal("Edit", labels["Edit"]);
+		Assert.Equal("XML", labels["Xml"]); // a menu declared inside a Condition is a codon of the same path
+		Assert.Empty(CommandCatalog.MainMenuLabels(new[] { Load(suspended: true) }));
+	}
+
 	sealed class CountingCommand : ICommand
 	{
 		public event EventHandler? CanExecuteChanged { add { } remove { } }
 		public bool CanExecute(object? parameter) => true;
 		public void Execute(object? parameter) { }
 	}
+
 }

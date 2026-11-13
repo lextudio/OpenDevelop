@@ -10627,4 +10627,19 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
   <data name="Dialog.Options.IDEOptions.Keyboard.ResetAllQuestion" xml:space="preserve">
     <value>移除所有快速鍵變更並還原預設值？</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Group.Toolbars" xml:space="preserve">
+    <value>工具列</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Group.Pads" xml:space="preserve">
+    <value>窗格</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Group.Tools" xml:space="preserve">
+    <value>工具</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.SearchByShortcut" xml:space="preserve">
+    <value>依快速鍵</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.SearchByShortcut.Tooltip" xml:space="preserve">
+    <value>在搜尋方塊中按下快速鍵，列出使用它的命令。</value>
+  </data>
 </root>

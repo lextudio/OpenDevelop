@@ -11021,4 +11021,19 @@ Press Esc to cancel this operation.</value>
   <data name="Dialog.Options.IDEOptions.Keyboard.ResetAllQuestion" xml:space="preserve">
     <value>Remove every keyboard shortcut change and go back to the defaults?</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Group.Toolbars" xml:space="preserve">
+    <value>Toolbars</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Group.Pads" xml:space="preserve">
+    <value>Pads</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Group.Tools" xml:space="preserve">
+    <value>Tools</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.SearchByShortcut" xml:space="preserve">
+    <value>By shortcut</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.SearchByShortcut.Tooltip" xml:space="preserve">
+    <value>Press a shortcut in the search box to list the commands that use it.</value>
+  </data>
 </root>
