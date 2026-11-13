@@ -291,4 +291,78 @@ public sealed class KeyboardShortcutsModelTests : IDisposable
 		Assert.Equal("class:Gone.Two", Assert.Single(service.Overrides).Key);
 		Assert.Equal("class:Gone.Two", Assert.Single(new KeyBindingService(file, _ => { }).Overrides).Key);
 	}
+
+	[Fact]
+	public void Import_ShowsWhatWouldChange_AndAppliesItOnlyWhenAsked()
+	{
+		var model = Model();
+		var preview = model.PreviewImport(new Dictionary<string, string> {
+			["class:Foo.Clean"] = "Ctrl+Shift+F9",   // a new shortcut
+			["class:Foo.Rebuild"] = "",              // removed
+			["class:Foo.Build"] = "Control|F8",      // the same as it is: no change
+			["class:Foo.Fold"] = "Banana",           // not a gesture
+			["class:Gone.One"] = "F11",              // a command that is not here
+			["routed:Print"] = "Ctrl+Q"              // built in
+		});
+
+		Assert.Equal(new[] { "class:Foo.Clean", "class:Foo.Rebuild" }, preview.Changes.Select(c => c.Row.Key));
+		Assert.Equal("class:Foo.Fold", Assert.Single(preview.Invalid));
+		Assert.Equal(2, preview.Skipped);
+		Assert.Empty(preview.Conflicts);
+		Assert.Null(model.Find("class:Foo.Clean")!.Gesture); // nothing changed yet
+
+		model.ApplyImport(preview);
+		Assert.Equal("Ctrl+Shift+F9", model.Find("class:Foo.Clean")!.Gesture);
+		Assert.Null(model.Find("class:Foo.Rebuild")!.Gesture);
+		Assert.Equal("Ctrl+F8", model.Find("class:Foo.Build")!.Gesture); // untouched: the file is merged
+	}
+
+	[Fact]
+	public void Import_WarnsAboutConflictsItWouldCreate()
+	{
+		var model = Model();
+		var preview = model.PreviewImport(new Dictionary<string, string> { ["class:Foo.Clean"] = "Ctrl+F8" }); // Build has it
+		Assert.Equal(new[] { "class:Foo.Build", "class:Foo.Clean" }, preview.Conflicts.Select(r => r.Key).OrderBy(k => k));
+	}
+
+	[Fact]
+	public void Export_WritesTheWorkingCopysOverrides_ThatAnotherCopyCanImport()
+	{
+		string file = Path.Combine(directory, "export.xml");
+		var model = Model();
+		model.Assign("class:Foo.Clean", "Ctrl+Shift+F9");
+		model.Assign("class:Foo.Rebuild", "");
+		model.Export(file);
+
+		var read = KeyBindingsFile.Load(file);
+		Assert.Equal("Ctrl+Shift+F9", read.Overrides["class:Foo.Clean"]);
+		Assert.Equal("", read.Overrides["class:Foo.Rebuild"]);
+
+		var other = Model();
+		other.ApplyImport(other.PreviewImport(read.Overrides));
+		Assert.Equal("Ctrl+Shift+F9", other.Find("class:Foo.Clean")!.Gesture);
+		Assert.Null(other.Find("class:Foo.Rebuild")!.Gesture);
+	}
+
+	[Fact]
+	public void Import_DoesNotCountAConflictThatIsAlreadyThere()
+	{
+		var model = Model(new() { ["class:Foo.Clean"] = "Alt+F8" }); // Clean and Rebuild already share Alt+F8
+		var preview = model.PreviewImport(new Dictionary<string, string> { ["class:Foo.Clean"] = "Alt+F8", ["class:Foo.Rebuild"] = "Alt|F8" }); // the file only restates it
+		Assert.Empty(preview.Changes);
+		Assert.Empty(preview.Conflicts);
+	}
+
+	[Fact]
+	public void Import_RefusesWhatTheAssignmentRefuses()
+	{
+		var model = Model();
+		var preview = model.PreviewImport(new Dictionary<string, string> {
+			["class:Foo.Clean"] = "Alt+F4",   // reserved by the system
+			["class:Foo.Rebuild"] = "Ctrl+P",  // held by the built-in Print
+			["class:Foo.Fold"] = "F7"          // fine
+		});
+		Assert.Equal("class:Foo.Fold", Assert.Single(preview.Changes).Row.Key);
+		Assert.Equal(new[] { "class:Foo.Clean", "class:Foo.Rebuild" }, preview.Invalid.OrderBy(k => k));
+	}
 }

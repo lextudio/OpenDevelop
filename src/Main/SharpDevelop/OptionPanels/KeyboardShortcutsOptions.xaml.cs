@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows;
+using System.IO;
 using System.Windows.Automation;
+using Microsoft.Win32;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
@@ -293,10 +295,17 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 				return;
 			change(view);
 			captureBox.Text = "";
+			RefreshAll();
+		}
+
+		/// <summary>Shows the working copy again: every row, the filter, the details of the selected row and the unknown overrides. Needs no selection.</summary>
+		void RefreshAll()
+		{
 			foreach (RowView each in views)
 				each.Refresh();
 			collection.Refresh();
 			ShowDetails();
+			ShowUnknown();
 		}
 
 		void AssignClick(object sender, RoutedEventArgs e)
@@ -325,8 +334,49 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 		{
 			if (MessageService.AskQuestion(ResourcePrefix + "ResetAllQuestion}")) {
 				model.ResetAll();
-				Apply(v => { });
-				ShowUnknown();
+				captureBox.Text = "";
+				RefreshAll();
+			}
+		}
+
+		const string FileFilter = "KeyBindings (*.xml)|*.xml|*.*|*.*";
+
+		void ExportClick(object sender, RoutedEventArgs e)
+		{
+			var dialog = new SaveFileDialog { Filter = FileFilter, FileName = "KeyBindings.xml", DefaultExt = ".xml", OverwritePrompt = true };
+			if (dialog.ShowDialog() != true)
+				return;
+			try {
+				model.Export(dialog.FileName);
+			} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException) {
+				MessageService.ShowError(string.Format(Text("Export.Failed}"), ex.Message));
+			}
+		}
+
+		/// <summary>Reads a file, shows what it would change and the conflicts it would create, and merges it into the working copy when the user agrees.</summary>
+		void ImportClick(object sender, RoutedEventArgs e)
+		{
+			var dialog = new OpenFileDialog { Filter = FileFilter, CheckFileExists = true };
+			if (dialog.ShowDialog() != true)
+				return;
+			string problem = null;
+			KeyBindingsFile file = KeyBindingsFile.Load(dialog.FileName, message => problem = problem ?? message);
+			if (problem != null && file.Overrides.Count == 0) {
+				MessageService.ShowError(string.Format(Text("Import.Failed}"), problem));
+				return;
+			}
+			ImportPreview preview = model.PreviewImport(file.Overrides);
+			string summary = string.Format(Text("Import.Summary}"), preview.Changes.Count, preview.Skipped, preview.Invalid.Count, preview.Conflicts.Count);
+			if (problem != null)
+				summary += "\n" + problem; // e.g. a file of a newer version: part of it is not understood and is dropped
+			if (preview.Changes.Count == 0) {
+				MessageService.ShowMessage(summary);
+				return;
+			}
+			if (MessageService.AskQuestion(summary + "\n\n" + Text("Import.Question}"))) {
+				model.ApplyImport(preview);
+				captureBox.Text = "";
+				RefreshAll();
 			}
 		}
 	}

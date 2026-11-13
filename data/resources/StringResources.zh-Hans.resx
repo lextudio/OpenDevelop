@@ -10645,4 +10645,22 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="Dialog.Options.IDEOptions.Keyboard.Unknown.Header" xml:space="preserve">
     <value>未加载命令的快捷键 ({0})</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Import" xml:space="preserve">
+    <value>导入...</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Export" xml:space="preserve">
+    <value>导出...</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Import.Summary" xml:space="preserve">
+    <value>该文件将更改 {0} 个快捷键。未导入：{1} 个（命令不可用或为内置命令），{2} 个（不是有效的快捷键）。导入后有 {3} 个命令会与其他命令共用快捷键。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Import.Question" xml:space="preserve">
+    <value>要导入吗？点击“确定”后生效。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Import.Failed" xml:space="preserve">
+    <value>无法读取该文件：{0}</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Export.Failed" xml:space="preserve">
+    <value>无法写入该文件：{0}</value>
+  </data>
 </root>

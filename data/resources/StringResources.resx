@@ -11039,4 +11039,22 @@ Press Esc to cancel this operation.</value>
   <data name="Dialog.Options.IDEOptions.Keyboard.Unknown.Header" xml:space="preserve">
     <value>Shortcuts of commands that are not loaded ({0})</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Import" xml:space="preserve">
+    <value>Import...</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Export" xml:space="preserve">
+    <value>Export...</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Import.Summary" xml:space="preserve">
+    <value>The file changes {0} shortcut(s). Not imported: {1} for commands that are not available or built in, {2} that are not valid shortcuts. {3} command(s) would then share a shortcut with another command.</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Import.Question" xml:space="preserve">
+    <value>Import them? The changes apply when you press OK.</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Import.Failed" xml:space="preserve">
+    <value>The file could not be read: {0}</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Export.Failed" xml:space="preserve">
+    <value>The file could not be written: {0}</value>
+  </data>
 </root>

@@ -60,6 +60,39 @@ namespace ICSharpCode.Core.Presentation
 		public string Gesture { get; private set; }
 	}
 
+	/// <summary>One shortcut an import would change.</summary>
+	public sealed class ImportChange
+	{
+		internal ImportChange(ShortcutRow row, string oldGesture, string newGesture) { Row = row; OldGesture = oldGesture; NewGesture = newGesture; }
+
+		public ShortcutRow Row { get; private set; }
+		public string OldGesture { get; private set; }
+
+		/// <summary>The gesture the file gives the command; null for "no shortcut".</summary>
+		public string NewGesture { get; private set; }
+	}
+
+	/// <summary>What importing a file would do, before anything is changed.</summary>
+	public sealed class ImportPreview
+	{
+		internal ImportPreview(IReadOnlyList<ImportChange> changes, int skipped, IReadOnlyList<string> invalid, IReadOnlyList<ShortcutRow> conflicts)
+		{
+			Changes = changes; Skipped = skipped; Invalid = invalid; Conflicts = conflicts;
+		}
+
+		/// <summary>The commands whose shortcut would change.</summary>
+		public IReadOnlyList<ImportChange> Changes { get; private set; }
+
+		/// <summary>Entries for commands this installation does not have, and built-in (routed) commands: not imported.</summary>
+		public int Skipped { get; private set; }
+
+		/// <summary>Command keys whose gesture in the file the page would refuse to assign (not a keyboard shortcut, reserved by the system, held by a built-in command): not imported.</summary>
+		public IReadOnlyList<string> Invalid { get; private set; }
+
+		/// <summary>Commands that would share a gesture with another command of the same scope after the import (they are not refused: the page shows them under Conflicts).</summary>
+		public IReadOnlyList<ShortcutRow> Conflicts { get; private set; }
+	}
+
 	/// <summary>What a capture box does with a key press.</summary>
 	public enum CaptureKeyAction
 	{
@@ -353,6 +386,62 @@ namespace ICSharpCode.Core.Presentation
 			} catch (Exception ex) when (ex is NotSupportedException || ex is ArgumentException || ex is FormatException) {
 				return null;
 			}
+		}
+
+		/// <summary>
+		/// What importing these overrides (command key -> gesture, empty = none) would change in the working copy. The file is MERGED: commands it does not mention keep
+		/// what they have. Nothing is changed here.
+		/// </summary>
+		public ImportPreview PreviewImport(IReadOnlyDictionary<string, string> imported)
+		{
+			if (imported == null)
+				throw new ArgumentNullException("imported");
+			var changes = new List<ImportChange>();
+			var invalid = new List<string>();
+			var planned = new Dictionary<ShortcutRow, string>();
+			var changed = new HashSet<ShortcutRow>();
+			int skipped = 0;
+			foreach (var pair in imported) {
+				ShortcutRow row = Find(pair.Key);
+				if (row == null || row.IsRouted) {
+					skipped++;
+					continue;
+				}
+				// the rules of an assignment on the page: a gesture it would refuse (not a shortcut, reserved by the system, held by a built-in command) is not imported
+				if (!Check(pair.Key, pair.Value).IsValid) {
+					invalid.Add(pair.Key);
+					continue;
+				}
+				string gesture = string.IsNullOrWhiteSpace(pair.Value) ? null : Normalize(pair.Value);
+				planned[row] = gesture;
+				if (!string.Equals(row.Gesture, gesture, StringComparison.OrdinalIgnoreCase)) {
+					changes.Add(new ImportChange(row, row.Gesture, gesture));
+					changed.Add(row);
+				}
+			}
+			// conflicts as they would be after the import
+			Func<ShortcutRow, string> after = r => { string g; return planned.TryGetValue(r, out g) ? g : r.Gesture; };
+			var conflicts = rows.Where(r => after(r) != null && rows.Any(o => o != r && o.Scope == r.Scope && string.Equals(after(o), after(r), StringComparison.OrdinalIgnoreCase)
+			                                                              && (changed.Contains(r) || changed.Contains(o)))).ToList();
+			return new ImportPreview(changes, skipped, invalid, conflicts);
+		}
+
+		/// <summary>Applies a preview to the working copy (OK writes it, Cancel drops it).</summary>
+		public void ApplyImport(ImportPreview preview)
+		{
+			if (preview == null)
+				throw new ArgumentNullException("preview");
+			foreach (ImportChange change in preview.Changes)
+				change.Row.Gesture = change.NewGesture;
+		}
+
+		/// <summary>Writes the overrides of the working copy to a file in the format of KeyBindings.xml.</summary>
+		public void Export(string path)
+		{
+			var file = new KeyBindingsFile();
+			foreach (var pair in BuildOverrides())
+				file.Set(pair.Key, pair.Value);
+			file.Save(path);
 		}
 
 		/// <summary>Whether the working copy differs from what is on disk.</summary>

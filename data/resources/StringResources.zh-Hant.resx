@@ -10645,4 +10645,22 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
   <data name="Dialog.Options.IDEOptions.Keyboard.Unknown.Header" xml:space="preserve">
     <value>未載入命令的快速鍵 ({0})</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Import" xml:space="preserve">
+    <value>匯入...</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Export" xml:space="preserve">
+    <value>匯出...</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Import.Summary" xml:space="preserve">
+    <value>該檔案將變更 {0} 個快速鍵。未匯入：{1} 個（命令不可用或為內建命令），{2} 個（不是有效的快速鍵）。匯入後有 {3} 個命令會與其他命令共用快速鍵。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Import.Question" xml:space="preserve">
+    <value>要匯入嗎？按下「確定」後生效。</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Import.Failed" xml:space="preserve">
+    <value>無法讀取該檔案：{0}</value>
+  </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Export.Failed" xml:space="preserve">
+    <value>無法寫入該檔案：{0}</value>
+  </data>
 </root>
