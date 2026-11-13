@@ -1520,3 +1520,11 @@ in-process re-parse, no restart). Real `{x:Bind}` is a hot-reload problem, not a
 `compiledType` message is left in the surface (unused by OpenDevelop), and the one reusable finding stays in the bootstrap: a project
 whose own WinAppSDK bootstrap auto-initializer is on must not have its assembly loaded into the surface (every XAML object then fails
 with `0x8001010E`).
+
+**Move and resize on the Surface runtime (verified in the IDE, 2026-11).** The shell's drag-to-source mapping
+(`ApplyElementBounds`: Canvas.Left/Top or Margin by alignment, Width/Height) is runtime-agnostic and runs from the bounds the described
+frame supplies. `od.winui-designer.nudge` moved the selected button by +20,+10 (screen bounds 488,372 -> 508,382) through a Margin
+edit followed by a re-render, and the new `od.winui-designer.resize` (the commit a handle drag ends in) took it from 98x32 to
+200x48; the Surface refuses `design/set-bounds`, so a resize is a full re-render, which is still immediate (no host restart). A resize
+used to write Width and Height as two undo steps; they are now one, and one Undo restores both. Real pointer drags on the canvas are
+still unverified (the IDE runs hidden here; the actions exercise the same commit path).

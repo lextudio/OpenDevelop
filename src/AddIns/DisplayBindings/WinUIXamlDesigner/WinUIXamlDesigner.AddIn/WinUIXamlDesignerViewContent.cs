@@ -863,6 +863,24 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		status.Text = moved ? (undo ? "Undone" : "Redone") : "Nothing to " + (undo ? "undo" : "redo");
 	}
 
+	/// <summary>
+	/// Resizes the selected element to <paramref name="width"/> x <paramref name="height"/> design units through the same commit a
+	/// bottom-right handle drag ends in (<see cref="OnElementDragCommittedOnSurface"/>): a source edit of Width and Height, sent to the
+	/// renderer incrementally when it supports that and as a full re-render otherwise. A test hook, like <see cref="NudgeSelection"/>.
+	/// </summary>
+	public string ResizeSelection(double width, double height)
+	{
+		var targets = SelectedElementBounds;
+		if (targets.Count != 1)
+			return targets.Count == 0 ? "Nothing selected" : "Select one element to resize";
+		var t = targets[0];
+		OnElementDragCommittedOnSurface(this, new ElementDragInfo {
+			Name = t.Name, StartX = t.X, StartY = t.Y, StartWidth = t.Width, StartHeight = t.Height,
+			EndX = t.X, EndY = t.Y, EndWidth = width, EndHeight = height,
+		});
+		return $"resized {t.Name} from {t.Width:0.#}x{t.Height:0.#} to {width:0.#}x{height:0.#}";
+	}
+
 	/// <summary>Nudges the selected element(s) by the given design-unit delta as a source edit.</summary>
 	public string NudgeSelection(double dx, double dy)
 	{
@@ -1678,8 +1696,12 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		var sizeChanged = Math.Abs(sizeDeltaX) > 0.01 || Math.Abs(sizeDeltaY) > 0.01;
 		if (sizeChanged)
 		{
-			editor.SetAttribute(element, "Width", ((int)Math.Round(info.EndWidth)).ToString(CultureInfo.InvariantCulture));
-			editor.SetAttribute(element, "Height", ((int)Math.Round(info.EndHeight)).ToString(CultureInfo.InvariantCulture));
+			// One undoable edit for both, so a single Undo restores the size rather than just the height.
+			editor.TryMutate(() => {
+				element.SetAttributeValue("Width", ((int)Math.Round(info.EndWidth)).ToString(CultureInfo.InvariantCulture));
+				element.SetAttributeValue("Height", ((int)Math.Round(info.EndHeight)).ToString(CultureInfo.InvariantCulture));
+				return true;
+			});
 		}
 		// design/set-bounds only ever applies Width/Height directly (plus Canvas.Left/Top when
 		// the parent happens to be a Canvas); this codebase positions everything through Margin,

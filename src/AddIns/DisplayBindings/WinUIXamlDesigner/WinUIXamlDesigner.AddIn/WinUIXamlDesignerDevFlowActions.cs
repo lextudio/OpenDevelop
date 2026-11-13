@@ -891,6 +891,17 @@ public static class WinUIXamlDesignerDevFlowActions
 		return JsonSerializer.Serialize(new { success = true, result });
 	}
 
+	[DevFlowAction("od.winui-designer.resize",
+		Description = "Resize the single selected element to width,height design units as a source edit (the commit a handle drag ends in)")]
+	public static string Resize(double width, double height)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var result = view.ResizeSelection(width, height);
+		return JsonSerializer.Serialize(new { success = true, result });
+	}
+
 	[DevFlowAction("od.winui-designer.reparent",
 		Description = "Move a named element under another container element as a source edit (outline re-parent)")]
 	public static string Reparent(string name, string targetContainer)
