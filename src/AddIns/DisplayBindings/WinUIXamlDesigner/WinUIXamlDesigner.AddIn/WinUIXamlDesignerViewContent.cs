@@ -133,6 +133,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public PropertyContainer PropertyContainer => propertyContainer;
 
 	public string SelectedElementName { get; private set; }
+	/// <summary>Where the last Toolbox drop was authored (the container plus the Grid cell, Canvas
+	/// position or child index it resolved to), for the DevFlow hook's result. Null before any
+	/// drop in this view.</summary>
+	public string LastDropPlacement { get; private set; }
 	public bool CanUndo => commands.CanExecute("Undo");
 	public bool CanRedo => commands.CanExecute("Redo");
 	// IUndoHandler (routed from the workbench window's ApplicationCommands.Undo/Redo bindings,
@@ -163,6 +167,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public bool SelectComponentTrayItem(string id) => previewHost.SelectComponentTrayItem(id);
 
 	public Rect? QueryElementScreenBounds(string name) => previewHost.QueryElementScreenBounds(name);
+	/// <summary>The element's bounds in DESIGN units - the space a Toolbox drop point is
+	/// expressed in (see <see cref="InsertFromToolbox(string, string, (double X, double Y)?)"/>).</summary>
+	public (double X, double Y, double Width, double Height)? QueryElementBounds(string name) => previewHost.QueryElementBounds(name);
 	public string DescribeElementState(string name) => previewHost.DescribeElementState(name);
 
 	public IReadOnlyList<(string Group, IReadOnlyList<string> States, string CurrentState)> GetVisualStateGroups()
@@ -445,16 +452,52 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	/// Toolbox insertion. <paramref name="containerName"/> is the x:Name of the element to insert
 	/// into; null targets the root, matching a drop onto empty design-surface space.
 	/// </summary>
-	// The only two toolbox items that are genuine multi-child panels (see WinUIXamlToolbox's own
-	// item list) - everything else (Button, TextBlock, Border, ...) has at most one child slot, so
-	// dropping "onto" one of them is aiming at its container, not asking to become its own content.
-	static readonly HashSet<string> PanelElementNames = new(StringComparer.Ordinal) { "Grid", "StackPanel" };
-
 	public string InsertFromToolbox(string controlName, string containerName)
 	{
 		var container = containerName == null ? null : editor.FindElement(containerName);
 		if (containerName != null && container == null)
 			throw new InvalidOperationException("No element named '" + containerName + "' to insert into.");
+		return InsertFromToolboxCore(controlName, container);
+	}
+
+	/// <summary>
+	/// A Toolbox drop that ended at a design-surface point (design units, the space
+	/// <c>QueryElementBounds</c> and the described frame use). The point decides both the container
+	/// (the innermost measured Grid/StackPanel/Canvas under it, when no container is named) and the
+	/// layout the element is authored with: <c>Grid.Row</c>/<c>Grid.Column</c> from the measured
+	/// tracks, <c>Canvas.Left</c>/<c>Canvas.Top</c>, or the StackPanel child index. It remains one
+	/// source edit, so one Undo removes the element and its placement together.
+	/// </summary>
+	public string InsertFromToolbox(string controlName, string containerName, (double X, double Y)? designPoint)
+	{
+		// Source-only components (flyouts, menu items) have no surface geometry to be dropped
+		// onto: their target is the selection, so a point would be a guess.
+		if (designPoint == null || IsSourceComponentControl(controlName))
+			return InsertFromToolbox(controlName, containerName);
+
+		var point = designPoint.Value;
+		var container = ResolveDropContainerAt(containerName, point.X, point.Y);
+		var placement = DropPlacementAt(container, point.X, point.Y);
+		LastDropPlacement = placement.Description;
+		var name = CommitInsertion(controlName, container, placement.Attributes, placement.Before);
+		status.Text = placement.Description;
+		return name;
+	}
+
+	/// <summary>The Toolbox items that exist only in source (a flyout's host is the selection, not
+	/// a point on the surface).</summary>
+	static bool IsSourceComponentControl(string controlName)
+		=> controlName is "ContextFlyout" or "Flyout" or "CommandBarFlyout"
+			or "MenuFlyoutItem" or "ToggleMenuFlyoutItem" or "MenuFlyoutSubItem";
+
+	/// <summary>The containers a drop can be authored into. Everything else (Button, TextBlock,
+	/// Border, ...) has at most one child slot, so dropping "onto" one of them aims at its
+	/// container, not at becoming its own content.</summary>
+	static bool IsDropContainerElement(XElement element)
+		=> element != null && WinUIXamlDropPlacement.IsDropContainer(element.Name.LocalName);
+
+	string InsertFromToolboxCore(string controlName, XElement container)
+	{
 		if (string.Equals(controlName, "ContextFlyout", StringComparison.Ordinal))
 		{
 			if (container == null)
@@ -521,9 +564,19 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		// into it, which the WinUI compiler rejects outright ("Member '$content' cannot contain
 		// multiple values"). Walk up to the nearest actual panel so the drop lands as a sibling
 		// near where the user aimed, matching what a real design surface does.
-		while (container != null && !PanelElementNames.Contains(container.Name.LocalName))
+		while (container != null && !IsDropContainerElement(container))
 			container = container.Parent;
-		var inserted = editor.Insert(controlName, container);
+		return CommitInsertion(controlName, container, null, null);
+	}
+
+	/// <summary>Lands an insertion as one source edit and selects the new element. A named
+	/// container keeps the incremental render path (design/add-element) when the new element is
+	/// appended; a positioned StackPanel insert has to go through the full reparse, because
+	/// design/add-element can only append and the authored order must win.</summary>
+	string CommitInsertion(string controlName, XElement container,
+		IReadOnlyList<(string Attribute, string Value)> attributes, XElement before)
+	{
+		var inserted = editor.Insert(controlName, container, before, attributes);
 		var name = (string)inserted.Attribute(WinUIXamlDocumentEditor.NameDirective);
 		// design/add-element needs a named Panel to attach into; a drop onto the document root
 		// (container == null, or the root panel simply has no x:Name) has nothing to address, so
@@ -531,7 +584,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		// exact x:Name and XAML editor.Insert() already produced - the same "editor decides, RPC
 		// mirrors" split used by design/set-property and design/set-bounds.
 		var containerElementName = container == null ? null : (string)container.Attribute(WinUIXamlDocumentEditor.NameDirective);
-		if (containerElementName != null)
+		if (containerElementName != null && before == null)
 		{
 			var itemXaml = inserted.ToString();
 			ApplyDocumentChange(xaml => previewHost.TryAddElement(containerElementName, itemXaml, xaml));
@@ -542,6 +595,78 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		}
 		SelectElement(name);
 		return name;
+	}
+
+	/// <summary>
+	/// The source container a drop at a design point lands in: an explicitly named container (or
+	/// the nearest panel above it) wins, then the innermost measured container under the point,
+	/// then the document root - the same "drop on empty space" fallback a non-positioned insert
+	/// has always had.
+	/// </summary>
+	XElement ResolveDropContainerAt(string containerName, double x, double y)
+	{
+		var named = string.IsNullOrEmpty(containerName) ? null : editor.FindElement(containerName);
+		if (!string.IsNullOrEmpty(containerName) && named == null)
+			throw new InvalidOperationException("No element named '" + containerName + "' to insert into.");
+		var container = named;
+		while (container != null && !IsDropContainerElement(container))
+			container = container.Parent;
+		if (container != null)
+			return container;
+		if (FindDropContainerNode(previewHost.ElementTree, x, y) is { Name: { Length: > 0 } measuredName }
+			&& editor.FindElement(measuredName) is { } measured && IsDropContainerElement(measured))
+			return measured;
+		return null;
+	}
+
+	/// <summary>
+	/// The placement a drop at a design point is authored with, from the measured frame facts: the
+	/// Grid cell from its measured tracks, the Canvas offset, or the StackPanel child index.
+	/// Anything the host did not measure leaves the element appended with no layout rather than at
+	/// a guessed position.
+	/// </summary>
+	(IReadOnlyList<(string Attribute, string Value)> Attributes, XElement Before, string Description)
+		DropPlacementAt(XElement container, double x, double y)
+	{
+		if (container == null)
+			return (null, null, "appended to the document root");
+		var name = (string)container.Attribute(WinUIXamlDocumentEditor.NameDirective);
+		if (name == null)
+			return (null, null, "appended to the document root");
+		var node = FindRuntimeNode(previewHost.ElementTree, name, out var ambiguous);
+		if (node == null || ambiguous)
+			return (null, null, "appended to " + name);
+
+		switch (container.Name.LocalName)
+		{
+			case "Grid":
+			{
+				var (rows, columns) = GridGuides(name);
+				if (WinUIXamlDropPlacement.GridCell(x, y, node.X, node.Y, node.Width, node.Height, Tracks(rows), Tracks(columns)) is not { } cell)
+					break;
+				return (WinUIXamlDropPlacement.GridCellAttributes(cell.Row, cell.Column), null,
+					$"{name}: Grid.Row={cell.Row} Grid.Column={cell.Column}");
+			}
+			case "Canvas":
+			{
+				if (!(node.Width > 0) || !(node.Height > 0))
+					break;
+				var (left, top) = WinUIXamlDropPlacement.CanvasPosition(x, y, node.X, node.Y);
+				return (WinUIXamlDropPlacement.CanvasPositionAttributes(left, top), null,
+					$"{name}: Canvas.Left={left:0.##} Canvas.Top={top:0.##}");
+			}
+			case "StackPanel":
+			{
+				var horizontal = string.Equals((string)container.Attribute("Orientation"), "Horizontal", StringComparison.Ordinal);
+				var children = node.Children
+					.Where(child => child.IsDesignable)
+					.Select(child => new DropChildBounds(child.X, child.Y, child.Width, child.Height))
+					.ToList();
+				var index = WinUIXamlDropPlacement.StackIndex(x, y, horizontal, children);
+				return (null, ContentChildAt(container, index), $"{name}: child index {index}");
+			}
+		}
+		return (null, null, "appended to " + name);
 	}
 
 	static bool IsMenuFlyoutContainer(XElement element)
@@ -1430,6 +1555,67 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		return hasAmbiguity ? null : match;
 	}
 
+	/// <summary>The one designable node with this x:Name, or null when absent or ambiguous (a name
+	/// is only namescope-local, so two template instances can share it).</summary>
+	static DesignerElementNode? FindRuntimeNode(DesignerElementNode? node, string name, out bool ambiguous)
+	{
+		DesignerElementNode? match = null;
+		var hasAmbiguity = false;
+		void Visit(DesignerElementNode? current)
+		{
+			if (current == null || hasAmbiguity) return;
+			if (current.IsDesignable && string.Equals(current.Name, name, StringComparison.Ordinal)) {
+				if (match != null) { hasAmbiguity = true; return; }
+				match = current;
+			}
+			foreach (var child in current.Children)
+				Visit(child);
+		}
+		Visit(node);
+		ambiguous = hasAmbiguity;
+		return hasAmbiguity ? null : match;
+	}
+
+	/// <summary>
+	/// The innermost measured drop container under a design point. The deepest container wins so a
+	/// drop inside a nested Grid lands in the inner Grid; an unnamed panel cannot be addressed as
+	/// a source target, so the nearest named container above it wins instead. Null when the point
+	/// is over no named container at all (the caller then uses the root, as before).
+	/// </summary>
+	static DesignerElementNode? FindDropContainerNode(DesignerElementNode? node, double x, double y)
+	{
+		if (node == null || !node.IsDesignable || !node.IsVisible)
+			return null;
+		if (!(node.Width > 0) || !(node.Height > 0)
+			|| x < node.X || y < node.Y || x >= node.X + node.Width || y >= node.Y + node.Height)
+			return null;
+		foreach (var child in node.Children)
+			if (FindDropContainerNode(child, x, y) is { } nested)
+				return nested;
+		return WinUIXamlDropPlacement.IsDropContainer(node.Type) && !string.IsNullOrEmpty(node.Name) ? node : null;
+	}
+
+	/// <summary>Measured boundary offsets as the (offset, size) track list the placement math
+	/// expects; the last boundary closes the final track.</summary>
+	static IReadOnlyList<DropTrack> Tracks(double[] boundaries)
+	{
+		if (boundaries == null || boundaries.Length < 2)
+			return Array.Empty<DropTrack>();
+		var tracks = new List<DropTrack>(boundaries.Length - 1);
+		for (var index = 0; index + 1 < boundaries.Length; index++)
+			tracks.Add(new DropTrack(boundaries[index], boundaries[index + 1] - boundaries[index]));
+		return tracks;
+	}
+
+	/// <summary>The source child a StackPanel drop index refers to: content elements only
+	/// (<c>StackPanel.Resources</c> and other property elements are not children). Null when the
+	/// index is past the last child, which means "append".</summary>
+	static XElement ContentChildAt(XElement container, int index)
+	{
+		var children = container.Elements().Where(element => !element.Name.LocalName.Contains('.')).ToList();
+		return index >= 0 && index < children.Count ? children[index] : null;
+	}
+
 	/// <summary>Converts track start offsets into the boundary list the shared raster canvas
 	/// expects: every explicit track start followed by the measured Grid far edge.</summary>
 	static double[] GridGuideBoundaries(IReadOnlyList<DesignerGridTrackInfo> tracks)
@@ -1980,15 +2166,16 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	/// <summary>
 	/// A real Toolbox drag ends here. It goes through exactly the same insertion path as the
-	/// programmatic one, so a drop cannot diverge from what the rest of the designer does.
+	/// programmatic one, so a drop cannot diverge from what the rest of the designer does - the
+	/// drop point included, which is what authors the Grid cell or Canvas offset.
 	/// </summary>
-	void OnControlDroppedOnSurface(object sender, (string ControlName, string ContainerName) drop)
+	void OnControlDroppedOnSurface(object sender, (string ControlName, string ContainerName, double X, double Y) drop)
 	{
 		var tool = WinUIXamlToolbox.Instance.FindItem(drop.ControlName);
 		if (tool == null)
 			return;
 		try {
-			InsertFromToolbox(tool.Name, drop.ContainerName);
+			InsertFromToolbox(tool.Name, drop.ContainerName, (drop.X, drop.Y));
 		} catch (Exception exception) {
 			status.Text = "Drop failed: " + exception.Message;
 		}

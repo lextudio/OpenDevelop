@@ -27,6 +27,7 @@ Dates are 2026-11.
 | Layout metadata (package 0.4.0): margin, parent kind, Grid row/col/span and tracks, Canvas position, z-index, orientation | `FrameLayout` -> `GridTracks`, `LayoutInsets`, `ZIndex` | real-surface probe of Grid, Canvas, StackPanel |
 | Property catalog: the renderer's full property list per element in the Properties pad | `DescribeElement`, `design/describe-properties`, `WinUIXamlElementPropertyAdapter` | IDE: about 70 properties for a Button, enum and boolean dropdowns, an edit through the pad |
 | Move and resize as source edits | `ApplyElementBounds`; hooks `nudge`, `resize` | IDE: +20,+10 move, 98x32 -> 200x48 resize, one Undo restores |
+| Toolbox drop at a point: the measured Grid cell (`Grid.Row`/`Grid.Column`), `Canvas.Left`/`Top`, or the StackPanel child index, as one source edit | `WinUIXamlDropPlacement`, `WinUIXamlDocumentEditor.Insert(..., before, attached)`, hook `drop` | 60 tests; IDE: a Button dropped at (600,400) in `DropGrid` authored `Grid.Row="1" Grid.Column="1"`, at (30,20) in `DropCanvas` authored `Canvas.Left="30" Canvas.Top="20"`, one Undo each |
 | Edits keep the author's layout (declaration, line endings, untouched tags) | `WinUIXamlDocumentEditor.PreserveLayout` | 47 tests, `tests/OpenDevelop.WinUIXamlDocument.Tests` |
 | Native-live window over the canvas (opt-in), follows the canvas, falls back to the last snapshot if the renderer dies | `UnoDesignRuntimeHost.NativeLive.cs`, `od.winui-designer.native-live` | IDE: on, off, on, killed renderer, window follows maximize |
 | Guard: a project whose own WinAppSDK bootstrap initializer is on is not loaded into the surface | `SurfaceDesignRuntimeHostBootstrap` | measured: otherwise every XAML object fails with `0x8001010E` |
@@ -42,11 +43,16 @@ Each step ends with a committed change, tests where the code has an executable s
 9299). A step is not done until it has been seen in the IDE.
 
 1. **Push the stack.** Rebase on `origin/master`, rerun the two test projects, push on the owner's word. (7 local commits today.)
-2. **Toolbox drop onto the canvas.** Insert a control at a point using the new layout facts: Grid cell from `GridTracks`, Canvas
-   coordinates, StackPanel index from child order. The insert already exists as a source edit (`WinUIXamlDocumentEditor.Insert`);
-   the missing piece is turning a design point into a container and position. Hook: a `drop` DevFlow action beside `nudge`/`resize`.
-   Done when: dropping a Button at a point in a Grid cell sets `Grid.Row`/`Grid.Column`, on a Canvas sets `Canvas.Left`/`Top`, and
-   one Undo removes it.
+2. **Toolbox drop onto the canvas.** Done. `WinUIXamlDropPlacement` turns a design point into the
+   layout, and `WinUIXamlDocumentEditor.Insert(control, container, before, attached)` writes the
+   element, its attached properties and (for a StackPanel) its source position as one history entry.
+   The container is the innermost measured Grid/StackPanel/Canvas under the point (a named one when
+   the hook names it); only non-default Grid cells are written, and the DevFlow hook is `drop`
+   (`controlName, x, y, containerName`), with `query-element-bounds` reporting the design-unit space
+   its point is in. Done when: dropping a Button at a point in a Grid cell sets `Grid.Row`/`Grid.Column`,
+   on a Canvas sets `Canvas.Left`/`Top`, and one Undo removes it. Verified in the IDE on the Surface
+   backend, in `tests/fixtures/WinUIDesignerFixture/Microsoft/DropPage.xaml`; the unit tests pin the
+   same rule and the undo step.
 3. **Real pointer verification.** The IDE runs hidden in this environment, so pointer drags were never exercised. Run the same
    move, resize and drop journeys with a visible IDE and real input (the integration suite's pointer rules in `AGENTS.md`), and
    record which of the action-driven checks the pointer path confirms or contradicts.
@@ -73,6 +79,9 @@ Out of scope for now: visual states and storyboards, template editing, a data-bi
   swap layout. The corpus baseline (`real-files-baseline.txt`) makes any change visible.
 - **Unverified here.** Real pointer input, high DPI and focus behaviour, the `design/set-bounds` incremental path (the Surface refuses it,
   so resize is a full re-render), and anything on macOS/Linux (the Surface is Windows-only).
+- **The Surface host advertises no toolbox catalog**, so its Toolbox pad stays empty and a real drag cannot start there; the `drop`
+  hook therefore falls back to the control type name when the pad is empty, and still requires the pad to offer the control when it
+  has rows. A real drag journey needs a backend whose child reports a catalog.
 - **Process.** Commits so far skipped the `build/opencode-review.ps1` review at the owner's instruction; CI results are ignored for now.
   ARM64 is not a priority.
 

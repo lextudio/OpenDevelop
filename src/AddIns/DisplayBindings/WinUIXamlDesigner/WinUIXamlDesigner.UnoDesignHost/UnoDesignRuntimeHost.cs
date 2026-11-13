@@ -1739,6 +1739,8 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 
 	public (double X, double Y) DesignToSurfacePoint(double x, double y) => canvas.DesignToSurfacePoint(x, y);
 
+	public (double X, double Y) SurfaceToDesignPoint(double x, double y) => canvas.SurfaceToDesignPoint(x, y);
+
 	public (double X, double Y) DesignToScreenPoint(double x, double y) => canvas.DesignToScreenPoint(x, y);
 
 	public (double Width, double Height)? GetDesignSize()

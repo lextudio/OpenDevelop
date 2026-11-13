@@ -919,6 +919,14 @@ public sealed class DesignSurfaceController : IDisposable
 		return (point.X, point.Y);
 	}
 
+	/// <summary>Surface-local DIPs (the space a drop event reports) to design units, through the
+	/// same <see cref="DesignSurface.ToDesignPoint"/> every pointer gesture uses.</summary>
+	public (double X, double Y) SurfaceToDesignPoint(double x, double y)
+	{
+		var point = dispatcher.Invoke(() => Surface.ToDesignPoint(new Point(x, y)));
+		return (point.X, point.Y);
+	}
+
 	public (double X, double Y) DesignToScreenPoint(double x, double y)
 	{
 		var point = dispatcher.Invoke(() => Surface.SurfacePointToScreen(x, y));

@@ -101,6 +101,18 @@ sealed class WinUIXamlDocumentEditor
 	/// a document-unique x:Name so that selection, Properties and tests have a stable handle on it.
 	/// </summary>
 	public XElement Insert(string controlName, XElement container)
+		=> Insert(controlName, container, null, null);
+
+	/// <summary>
+	/// Inserts a new standard control under <paramref name="container"/> with the placement a drop
+	/// resolved: <paramref name="before"/> is the sibling the new element must precede (null
+	/// appends, which is what every toolbox insert did before placement existed) and
+	/// <paramref name="attached"/> holds the attached properties that placement needs
+	/// (<c>Grid.Row</c>, <c>Canvas.Left</c>). Element, attributes and child index are one history
+	/// entry, so one Undo removes the whole drop.
+	/// </summary>
+	public XElement Insert(string controlName, XElement container, XElement before,
+		IReadOnlyList<(string Attribute, string Value)> attached)
 	{
 		if (Document?.Root == null)
 			throw new InvalidOperationException("The document has no root to insert into.");
@@ -111,10 +123,38 @@ sealed class WinUIXamlDocumentEditor
 		// rather than carrying its own xmlns - the same shape a hand-written page has.
 		var element = new XElement(Document.Root.GetDefaultNamespace() + controlName);
 		element.SetAttributeValue(NameDirective, UniqueName(controlName));
+		if (attached != null)
+			foreach (var (attribute, value) in attached)
+				element.SetAttributeValue(attribute, value);
 		AddDefaultContent(element, controlName);
-		container.Add(element);
+		// Keep the authored layout: a new element goes on its own line, at the indentation its
+		// siblings already use, instead of abutting the previous tag (append) or the element it
+		// precedes. A single-line container keeps the previous behaviour.
+		var indentation = ChildIndentation(container, before);
+		if (before != null && before.Parent == container) {
+			before.AddBeforeSelf(element);
+			if (indentation != null)
+				before.AddBeforeSelf(new XText(indentation));
+		} else if (indentation != null && container.LastNode is XText trailing && string.IsNullOrWhiteSpace(trailing.Value)) {
+			trailing.AddBeforeSelf(element);
+			element.AddBeforeSelf(new XText(indentation));
+		} else {
+			container.Add(element);
+		}
 		CommitChange();
 		return element;
+	}
+
+	/// <summary>The whitespace (line break plus indentation) a new child needs so it sits on its
+	/// own line like its siblings, copied from the whitespace that already precedes the sibling it
+	/// goes before - or from the last sibling when appending. Null when the container is laid out
+	/// on one line (nothing to copy).</summary>
+	static string ChildIndentation(XElement container, XElement before)
+	{
+		var reference = before ?? container.Elements().LastOrDefault();
+		return reference?.PreviousNode is XText whitespace && whitespace.Value.Contains('\n')
+			? whitespace.Value.Substring(whitespace.Value.LastIndexOf('\n'))
+			: null;
 	}
 
 	/// <summary>Adds a named MenuFlyout through a source control's ContextFlyout property.

@@ -457,11 +457,12 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	}
 
 	/// <summary>
-	/// Raised when a Toolbox item is dropped on the design surface, with the control to create and
-	/// the x:Name of the container it was dropped into (null for the root). Resolving the container
-	/// here - from the real drop point - is what makes a drag land where the user aimed.
+	/// Raised when a Toolbox item is dropped on the design surface, with the control to create,
+	/// the x:Name of the container it was dropped into (null for the root) and the DESIGN-space
+	/// drop point the placement reads. Resolving the container here - from the real drop point -
+	/// is what makes a drag land where the user aimed.
 	/// </summary>
-	public event EventHandler<(string ControlName, string ContainerName)> ControlDropped;
+	public event EventHandler<(string ControlName, string ContainerName, double X, double Y)> ControlDropped;
 
 	void OnDragOver(object sender, DragEventArgs e)
 	{
@@ -488,9 +489,18 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 		// document root instead of the container the user visibly aimed at.
 		var point = (runtime?.WpfSurface ?? Content as UIElement) is UIElement surface ? e.GetPosition(surface) : e.GetPosition(this);
 		var container = ResolveNameAt(new System.Numerics.Vector2((float)point.X, (float)point.Y));
-		ControlDropped?.Invoke(this, (controlName, container));
+		// The container above comes from the runtime's own hit-test (surface DIPs); the placement
+		// needs the same space the described frame and QueryElementBounds report, which is the
+		// design space, so a zoomed or panned surface authors the right cell/offset.
+		var design = SurfaceToDesignPoint(point.X, point.Y) ?? (point.X, point.Y);
+		ControlDropped?.Invoke(this, (controlName, container, design.X, design.Y));
 		e.Handled = true;
 	}
+
+	/// <summary>A surface-local point (the space <c>e.GetPosition(surface)</c> reports) in DESIGN
+	/// units, or null when the runtime cannot convert (no viewport capability).</summary>
+	public (double X, double Y)? SurfaceToDesignPoint(double x, double y)
+		=> (runtime as IWinUIXamlDesignView)?.SurfaceToDesignPoint(x, y);
 
 	public XamlFrameworkContext Framework { get; }
 	public bool HasRenderedPreview => runtime?.HasRenderedPreview == true;
@@ -912,6 +922,9 @@ public interface IWinUIXamlDesignView
 	void FitView();
 	/// <summary>Design-space point to surface-local DIPs, honoring the viewport.</summary>
 	(double X, double Y) DesignToSurfacePoint(double x, double y);
+	/// <summary>Surface-local DIPs to a DESIGN-space point (the inverse the drop path needs: a
+	/// drag reports its position on the control, while placement reads the described frame).</summary>
+	(double X, double Y) SurfaceToDesignPoint(double x, double y);
 	/// <summary>A DESIGN-space point (the same space <c>QueryElementBounds</c>/<c>nodesByName</c>
 	/// report element positions in) to real screen coordinates, for driving synthetic pointer
 	/// input at a named element - honors the current viewport/zoom/scroll via

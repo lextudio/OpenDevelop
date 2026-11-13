@@ -188,6 +188,32 @@ public static class WinUIXamlDesignerDevFlowActions
 		}
 	}
 
+	[DevFlowAction("od.winui-designer.drop", Description = "Drop a Toolbox control at a design point (x, y in design units, the space query-element-bounds reports) in the active WinUI/Uno designer: the point picks the container and the layout it is authored with (Grid.Row/Grid.Column from the measured tracks, Canvas.Left/Top, or the StackPanel child index), landed as one undoable source edit")]
+	public static string Drop(string controlName, double x, double y, string containerName = "")
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+
+		// Same shared Toolbox item lookup as toolbox-insert, so a drop cannot pass while the pad
+		// lists another framework's controls. The Surface backend advertises no toolbox catalog,
+		// so its pad is legitimately empty and the hook names the control type directly; the real
+		// drag path always starts from a populated pad (WinUIXamlHost.OnDrop).
+		var tool = WinUIXamlToolbox.Instance.FindItem(controlName);
+		if (tool == null && WinUIXamlToolbox.Instance.ItemCount > 0)
+			return Failure("Toolbox has no item named '" + controlName + "'");
+		var control = tool?.Name ?? controlName;
+
+		try {
+			var insertedName = view.InsertFromToolbox(control, string.IsNullOrEmpty(containerName) ? null : containerName, (x, y));
+			return JsonSerializer.Serialize(new {
+				success = true, insertedName, selectedName = view.SelectedElementName, placement = view.LastDropPlacement, x, y
+			});
+		} catch (Exception exception) {
+			return Failure(exception.Message);
+		}
+	}
+
 	[DevFlowAction("od.winui-designer.delete", Description = "Delete the currently selected element in the active WinUI/Uno designer as a XAML source edit")]
 	public static string Delete()
 	{
@@ -392,6 +418,28 @@ public static class WinUIXamlDesignerDevFlowActions
 			height = bounds.Height,
 			centerX = bounds.X + bounds.Width / 2,
 			centerY = bounds.Y + bounds.Height / 2
+		});
+	}
+
+	[DevFlowAction("od.winui-designer.query-element-bounds", Description = "Get a named element's bounds in DESIGN units - the space a Toolbox drop point (od.winui-designer.drop x y) is expressed in; independent of zoom and pan")]
+	public static string QueryElementBounds(string name)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var bounds = view.QueryElementBounds(name);
+		if (bounds == null)
+			return Failure("No rendered element named '" + name + "'");
+		var box = bounds.Value;
+		return JsonSerializer.Serialize(new {
+			success = true,
+			name,
+			x = box.X,
+			y = box.Y,
+			width = box.Width,
+			height = box.Height,
+			centerX = box.X + box.Width / 2,
+			centerY = box.Y + box.Height / 2
 		});
 	}
 
