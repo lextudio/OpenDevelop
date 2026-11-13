@@ -984,6 +984,13 @@ compiled page is the last build, not the buffer. **Not done:** publishing the fo
 finding the project's built assembly in the IDE and passing `--user-dll`, a rebuild trigger on edit, and the
 setting that turns it on.
 
+**Verified in OpenDevelop itself (2026-11).** With `OD_WINUI_COMPILED=1`, opening `BindPage.xaml` of a scratch
+project showed `BOUND VALUE 42` and `7` in the designer (exported PNG). After changing the property in code,
+the DevFlow action `od.winui-designer.rebuild-compiled` built the project through `SD.BuildService`, ended the
+design child, and the shared host recovery restarted it and re-rendered: the designer then showed `REBUILT 99`.
+The restart is needed because the surface loads the project's assembly once per process. The action is a manual
+trigger; running it automatically on save is not wired.
+
 ### 7.2 Do not replace the snapshot canvas with native embedding
 
 The bitmap snapshot is why OpenDevelop can support five runtimes, recover from a native crash, and
