@@ -10,11 +10,11 @@
          the sharpdbg repository's own workflow (publish-opendevelop-packages.yml). The debugger add-in used
          to build that project from source on every build; it now restores this package and copies the
          adapter out, like the other lextudio packages below. -->
-    <SharpDbgCliVersion>1.0.0-lextudio.42442298700.1</SharpDbgCliVersion>
+    <SharpDbgCliVersion>1.0.0-lextudio.43343602033.1</SharpDbgCliVersion>
     <!-- lextudio's SharpDbg Android debug agents (three NativeAOT ABIs) plus the license and SBOM
          metadata OpenDevelop redistributes with them. Built once by the same sharpdbg workflow, so
          no OpenDevelop job needs the .NET 11 preview SDK, the Android workload or an NDK. -->
-    <SharpDbgAndroidAgentVersion>1.0.0-lextudio.42442298700.1</SharpDbgAndroidAgentVersion>
+    <SharpDbgAndroidAgentVersion>1.0.0-lextudio.43343602033.1</SharpDbgAndroidAgentVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="AltCover" Version="9.0.102" />
