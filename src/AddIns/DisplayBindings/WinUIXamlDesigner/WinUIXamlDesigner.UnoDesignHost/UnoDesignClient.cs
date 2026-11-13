@@ -292,6 +292,14 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		return result;
 	}
 
+	/// <summary>
+	/// <c>design/native-live</c> (only the Surface child implements it): switch the document to the renderer's own window, or back.
+	/// Entering returns the window handle; leaving (or a lost renderer) returns the snapshot to show and a message.
+	/// </summary>
+	public Task<DesignerNativeLiveReply> NativeLiveAsync(bool enabled, CancellationToken cancellationToken = default)
+		=> connection.InvokeAsync<DesignerNativeLiveReply>("design/native-live",
+			new { sessionId = SessionId, documentId = DocumentId, enabled, current = (DesignerDocumentRequest?)null }, cancellationToken);
+
 	public Task<string> ExportPngAsync(string path, CancellationToken cancellationToken = default)
 		=> connection.InvokeAsync<string>("design/export-png",
 			new { sessionId = SessionId, documentId = DocumentId, path }, cancellationToken);
@@ -438,4 +446,18 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 			Capabilities = Handshake.Capabilities;
 		}
 	}
+}
+
+/// <summary>The reply of the Surface child's <c>design/native-live</c> (its twin is <c>SurfaceNativeLiveReply</c> in the child).</summary>
+public sealed class DesignerNativeLiveReply
+{
+	public bool Native { get; set; }
+	public long Hwnd { get; set; }
+	public int PixelWidth { get; set; }
+	public int PixelHeight { get; set; }
+	public double DipWidth { get; set; }
+	public double DipHeight { get; set; }
+	public double Scale { get; set; } = 1;
+	public DesignerSessionState? State { get; set; }
+	public string? Message { get; set; }
 }

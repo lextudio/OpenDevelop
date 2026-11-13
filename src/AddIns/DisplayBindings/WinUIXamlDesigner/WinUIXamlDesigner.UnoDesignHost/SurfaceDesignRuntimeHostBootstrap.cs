@@ -94,6 +94,10 @@ public static class SurfaceDesignRuntimeHostBootstrap
 
 			var arguments = "--host-dir " + Quote(result.HostDirectory) + " --run-root " + Quote(Path.Combine(root, "run"));
 			var userDll = project.OutputAssemblyFullPath?.ToString();
+			// A WinExe project's output is the apphost; the managed assembly the surface must load sits beside it as a .dll.
+			if (userDll != null && userDll.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+				&& File.Exists(Path.ChangeExtension(userDll, ".dll")))
+				userDll = Path.ChangeExtension(userDll, ".dll");
 			if (!string.IsNullOrEmpty(userDll) && File.Exists(userDll))
 				arguments += " --surface-args " + Quote("--user-dll " + Quote(userDll));
 			// Opt-in: real {x:Bind} values from the project's last build. OD_WINUI_COMPILED=1 or the stored property.

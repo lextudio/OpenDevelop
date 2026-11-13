@@ -737,6 +737,23 @@ public static class WinUIXamlDesignerDevFlowActions
 		});
 	}
 
+	[DevFlowAction("od.winui-designer.native-live",
+		Description = "Switch the active Surface-runtime designer to the renderer's own live window placed over the canvas (on) or back to snapshots (off); omit to query. Only the Surface runtime supports it")]
+	public static string NativeLive(string command = "query")
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		if (view.PreviewRuntime is not IWinUIXamlNativeLive live)
+			return Failure("The active runtime does not support native-live mode (use OD_WINUI_RUNTIME=surface)");
+		if (command == "query")
+			return JsonSerializer.Serialize(new { success = true, native = live.IsNativeLive });
+		bool? on = command switch { "on" or "true" or "1" => true, "off" or "false" or "0" => false, _ => null };
+		if (on is null)
+			return Failure("Expected on/off or 'query', got: " + command);
+		return live.SetNativeLive(on.Value);
+	}
+
 	[DevFlowAction("od.winui-designer.gridlines",
 		Description = "Show or hide the design-space gridlines overlay; pass on/off or omit to query the current state")]
 	public static string Gridlines(string command = "query")

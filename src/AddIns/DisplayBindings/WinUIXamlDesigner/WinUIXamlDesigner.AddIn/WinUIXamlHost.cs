@@ -830,6 +830,14 @@ public interface IWinUIXamlGridTrackSplit
 /// Optional capability: the runtime reports its last render diagnostics (message plus
 /// source file and range when the XAML parser provided them).
 /// </summary>
+public interface IWinUIXamlNativeLive
+{
+	/// <summary>True while the document is shown in the renderer's own window, placed over the canvas.</summary>
+	bool IsNativeLive { get; }
+	/// <summary>Switches between the live native window and the snapshot canvas; returns a one-line result (JSON).</summary>
+	string SetNativeLive(bool enabled);
+}
+
 public interface IWinUIXamlDiagnostics
 {
 	IReadOnlyList<(string Message, string FileName, int Line, int Column, int EndColumn)> LastDiagnostics { get; }

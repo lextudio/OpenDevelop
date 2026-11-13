@@ -1008,9 +1008,19 @@ A lost surface returns the last accepted snapshot and "showing the last snapshot
 exception. It is a renderer capability, not part of the shared designer protocol, so a shell that never
 calls it never leaves snapshots. Tested on the fake surface (4 tests, including a dropped connection
 and a refused `EnterNative`) and on the real 2.2.0 surface over DDP (the handle is a live window,
-update refused, back to a frame). **Not built:** the shell side, i.e. reparenting that HWND into the
-LibreWPF canvas, DPI/input forwarding, and the UI to toggle it; that cannot be verified without
-a visible IDE and is the remaining work.
+update refused, back to a frame).
+
+**Shell side, verified in OpenDevelop itself (2026-11).** LibreWPF has no `HwndHost`, so the shell does it
+with Win32: `UnoDesignRuntimeHost.NativeLive.cs` un-cloaks the renderer's window, makes it a `WS_CHILD` of the
+IDE main window with `SetParent`, and `SetWindowPos`es it over the canvas, clipped to the visible viewport
+(the frame can be larger than the pane). DevFlow `od.winui-designer.native-live on|off|query` toggles it
+(`OD_WINUI_RUNTIME=surface`). Run in the live IDE on the WinUISample fixture: `on` places a 402x94 child
+window at the canvas, and a desktop capture shows the live page with the surface's own zoom chrome inside
+the pane and nothing over the other panes; `off` returns to the snapshot; `on` again reuses the window; killing
+`Surface.exe` while native, then `off`, answers "The native window was lost; showing the last snapshot." and the
+designer still reports a rendered preview. **Not done:** following scroll/zoom/resize of the canvas
+while native (the window is placed once), DPI scaling, keyboard focus hand-off, and a toolbar button
+(only the DevFlow action toggles it).
 
 ### 7.3 Treat WinUI source round-trip as the moat
 
