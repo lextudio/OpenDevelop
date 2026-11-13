@@ -1485,3 +1485,16 @@ Still open: ARM64 (this machine is AMD64; only x64 was exercised).
 - [`in-process-analysis.md`](in-process-analysis.md) — why xamlstudio is a previewer, not a designer.
 - [`xaml-loader-comparison.md`](xaml-loader-comparison.md) — the round-trip corpus method to extend to
   WinUI.
+
+### Our own "B4b": a described frame (2026-11)
+
+WinAppVSCE's designer proposal (microsoft/WinAppVSCE#56) depends on a design-time engine, "B4b", that renders, hit-tests and reports
+element bounds and layout metadata; it is not available. The pieces are mostly in the Surface already, but bounds and picks needed
+native mode. The fork adds `describe: true` on `LoadXaml`/`UpdateXaml` (package 0.3.0): each `Frame` carries `tree`, the authored
+elements with the native surface's path scheme and bounds in frame DIPs, read from the laid-out page before it is released
+(`Surface/FrameTree.cs`). Measured on a small page: 5 nodes, an update with the tree in 313 ms, no native mode. OpenDevelop's
+`SurfaceDesignDocument` turns on `DescribeFrames`, builds the shell's element tree from it and answers `design/hit-test` from the last
+frame (deepest element containing the point; only named elements are hits), falling back to the native excursion for a surface that
+sends no tree. Verified: fake-surface test, the real-surface DDP test, and the IDE on the WinUISample fixture (outline and 3 resolved
+names from the described frame). Next: layout metadata (Grid row/column offsets, panel orientation) for drop targets, then
+`ElementProps` into the property grid.
