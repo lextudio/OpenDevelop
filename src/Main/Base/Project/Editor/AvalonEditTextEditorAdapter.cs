@@ -60,7 +60,10 @@ namespace ICSharpCode.SharpDevelop.Editor
 			SD.EditorControlService.CreateEditor(out editor);
 			if (!(editor is TextEditor))
 				throw new NotSupportedException("Expected text editor to be AvalonEdit");
-			return (TextEditor)editor;
+			var textEditor = (TextEditor)editor;
+			// the editors of the code coverage and definition views take the user's editor shortcuts too
+			EditorKeyBindings.Attach(textEditor.TextArea);
+			return textEditor;
 		}
 		
 		public IDocument Document {

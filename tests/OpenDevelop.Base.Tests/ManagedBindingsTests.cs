@@ -28,7 +28,7 @@ public sealed class ManagedBindingsTests
 	readonly List<InputBinding> added = new List<InputBinding>();
 	List<InputBinding> Originals => new List<InputBinding> { deleteWord, enter, returnKey, other, plain };
 
-	ManagedBindingsTests() => live.AddRange(Originals);
+	public ManagedBindingsTests() => live.AddRange(Originals);
 
 	void Rebuild(Func<string, bool> hasOverride, Func<string, KeyGesture?> resolve) =>
 		ManagedBindings.Rebuild(live, Originals, added, KeyOf, hasOverride, k => resolve(k)!);
@@ -103,5 +103,18 @@ public sealed class ManagedBindingsTests
 	{
 		Rebuild(_ => true, _ => null);
 		Assert.Contains(plain, live); // keyOf gives null for it: the Tab snippet binding of the editor stays
+	}
+
+	[Fact]
+	public void ABindingTheOwnerRemovedAfterwards_IsNotPutBackByARebuild()
+	{
+		// like the decompiler view removing Tab editing after the editor was created: the list's owner decides about bindings that are not managed
+		Rebuild(_ => false, _ => null);
+		live.Remove(plain);
+
+		Rebuild(k => k == "editor:DeleteWord", _ => new KeyGesture(Key.D, ModifierKeys.Control));
+
+		Assert.DoesNotContain(plain, live);
+		Assert.Contains(other, live);
 	}
 }

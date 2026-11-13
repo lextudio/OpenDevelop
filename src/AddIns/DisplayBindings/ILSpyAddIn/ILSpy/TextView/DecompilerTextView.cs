@@ -131,6 +131,8 @@ namespace ICSharpCode.ILSpy.TextView
 			// disable Tab editing command (useless for read-only editor); allow using tab for focus navigation instead
 			RemoveEditCommand(EditingCommands.TabForward);
 			RemoveEditCommand(EditingCommands.TabBackward);
+			// the view takes the user's editor shortcuts (caret movement, selection) like the code editor; after its own binding changes, which Attach must see
+			ICSharpCode.SharpDevelop.Editor.EditorKeyBindings.Attach(textEditor.TextArea);
 
 			textMarkerService = new TextMarkerService(textEditor.TextArea.TextView);
 			textEditor.TextArea.TextView.BackgroundRenderers.Add(textMarkerService);

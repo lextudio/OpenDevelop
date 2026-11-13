@@ -15,7 +15,7 @@ namespace ICSharpCode.Core.Presentation
 		/// <param name="bindings">The handler's live list; it is changed.</param>
 		/// <param name="originals">The bindings the handler had before any override, in order.</param>
 		/// <param name="added">The bindings an earlier call added (removed first); it is updated to the ones added now.</param>
-		/// <param name="keyOf">The command key of a binding's command; null when the command is not managed (it is then left as it is).</param>
+		/// <param name="keyOf">The command key of a binding's command; null when the command is not managed (the binding is then never touched, even if the list's owner removed it).</param>
 		/// <param name="hasOverride">Whether the user gave the command an override (a gesture, or "none").</param>
 		/// <param name="resolve">The gesture the command has now; null for "no shortcut".</param>
 		public static void Rebuild(ICollection<InputBinding> bindings, IReadOnlyList<InputBinding> originals, List<InputBinding> added,
@@ -30,7 +30,9 @@ namespace ICSharpCode.Core.Presentation
 			var replaced = new HashSet<string>();
 			foreach (InputBinding original in originals) {
 				string key = original is KeyBinding ? keyOf(original.Command) : null;
-				if (key == null || !hasOverride(key)) {
+				if (key == null)
+					continue; // not managed: whoever owns the list may have changed or removed it since, and it stays as it is
+				if (!hasOverride(key)) {
 					if (!bindings.Contains(original))
 						bindings.Add(original);
 					continue;

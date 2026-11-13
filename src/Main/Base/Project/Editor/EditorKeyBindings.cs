@@ -8,10 +8,10 @@ using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.Core;
 using ICSharpCode.Core.Presentation;
 
-namespace ICSharpCode.AvalonEdit.AddIn
+namespace ICSharpCode.SharpDevelop.Editor
 {
 	/// <summary>
-	/// The text editor's own editing and caret commands as keyboard shortcut commands (key <c>editor:EditingCommands.Backspace</c>), and the
+	/// The text editors' own editing and caret commands as keyboard shortcut commands (key <c>editor:EditingCommands.Backspace</c>), and the
 	/// application of the user's overrides to every open editor. doc/technotes/keyboard-shortcuts.md.
 	/// </summary>
 	/// <remarks>
@@ -19,7 +19,7 @@ namespace ICSharpCode.AvalonEdit.AddIn
 	/// (<c>DefaultInputHandler.Editing.InputBindings</c>, <c>CaretNavigation.InputBindings</c>) are its own and can be changed: this is what
 	/// <c>CodeEditorView</c> already does for Tab. A binding whose command is not one of the framework's routed commands (that Tab one) is not managed here.
 	/// </remarks>
-	static class EditorKeyBindings
+	public static class EditorKeyBindings
 	{
 		public const string KeyPrefix = "editor:";
 		public const string Scope = "Text editor";
@@ -97,15 +97,20 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			return result;
 		}
 
-		/// <summary>Called for each editor when it is created (after its own binding changes): remembers its bindings and applies the overrides.</summary>
+		/// <summary>
+		/// Called for each AvalonEdit editor when it is created: remembers its bindings and applies the overrides. Call it AFTER any change the owner makes to the
+		/// handler lists (like the snippet Tab binding of <c>CodeEditorView</c>), because the bindings of that moment are the originals a rebuild puts back.
+		/// </summary>
 		public static void Attach(TextArea textArea)
 		{
 			if (textArea == null)
 				throw new ArgumentNullException("textArea");
+			EditorState existing;
+			if (states.TryGetValue(textArea, out existing))
+				return; // already attached: a second snapshot would take the overridden state for the originals and a reset could not bring them back
 			var state = new EditorState();
 			foreach (ICollection<InputBinding> list in HandlerLists(textArea))
 				state.Lists.Add(new HandlerList { Bindings = list, Originals = list.OfType<InputBinding>().ToList() });
-			states.Remove(textArea);
 			states.Add(textArea, state);
 			live.Add(new WeakReference<TextArea>(textArea));
 			if (!subscribed) {

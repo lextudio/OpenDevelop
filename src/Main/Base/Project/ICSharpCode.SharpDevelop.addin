@@ -135,6 +135,12 @@
 		            extensions = "*.*"/>
 	</Path>
 	
+	<!-- The text editors' own commands (EditingCommands and the caret movements) for the Keyboard page of the Options dialog -->
+	<Path name = "/SharpDevelop/Autostart">
+		<Class id    = "RegisterEditorKeyCommands"
+		       class = "ICSharpCode.SharpDevelop.Editor.RegisterEditorKeyCommandsCommand"/>
+	</Path>
+
 	<Path name = "/SharpDevelop/Workbench/Pads">
 		<!-- MVP: removed
 		<Pad id       = "ProjectBrowser"
