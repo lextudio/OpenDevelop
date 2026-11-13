@@ -10,6 +10,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="1*" MinHeight="100" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" Text="{core:Localize Dialog.Options.IDEOptions.Keyboard.Description}" TextWrapping="Wrap" />
@@ -60,7 +61,22 @@
             </ListView.View>
         </ListView>
 
-        <StackPanel Grid.Row="3" Margin="0,8,0,0">
+        <Expander x:Name="unknownExpander" Grid.Row="3" Margin="0,6,0,0" Visibility="Collapsed" Expanded="UnknownToggled" Collapsed="UnknownToggled">
+            <Expander.Header>
+                <TextBlock x:Name="unknownHeader" />
+            </Expander.Header>
+            <ItemsControl x:Name="unknownList" MaxHeight="80" Margin="16,2,0,0">
+                <ItemsControl.Template>
+                    <ControlTemplate TargetType="ItemsControl">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+                            <ItemsPresenter />
+                        </ScrollViewer>
+                    </ControlTemplate>
+                </ItemsControl.Template>
+            </ItemsControl>
+        </Expander>
+
+        <StackPanel Grid.Row="4" Margin="0,8,0,0">
             <TextBlock x:Name="selectedText" FontWeight="SemiBold" TextWrapping="Wrap" />
             <TextBlock x:Name="locationsText" Foreground="Gray" TextWrapping="Wrap" />
             <Grid Margin="0,4,0,0">

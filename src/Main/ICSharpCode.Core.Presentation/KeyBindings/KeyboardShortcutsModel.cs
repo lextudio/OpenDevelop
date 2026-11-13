@@ -49,6 +49,17 @@ namespace ICSharpCode.Core.Presentation
 		public string GroupName { get; private set; }
 	}
 
+	/// <summary>An override in KeyBindings.xml for a command the catalog does not have now (its AddIn is disabled, suspended or gone).</summary>
+	public sealed class UnknownOverride
+	{
+		internal UnknownOverride(string key, string gesture) { Key = key; Gesture = gesture; }
+
+		public string Key { get; private set; }
+
+		/// <summary>The gesture as written in the file; empty means "no shortcut".</summary>
+		public string Gesture { get; private set; }
+	}
+
 	/// <summary>What a capture box does with a key press.</summary>
 	public enum CaptureKeyAction
 	{
@@ -104,6 +115,7 @@ namespace ICSharpCode.Core.Presentation
 		readonly List<ShortcutRow> rows;
 		readonly Dictionary<string, ShortcutRow> byKey;
 		readonly Dictionary<string, string> initialOverrides;
+		readonly HashSet<string> removedUnknown = new HashSet<string>();
 
 		/// <param name="catalog">The commands.</param>
 		/// <param name="groupLabels">Main menu id -> its label, to name the groups; null shows the ids.</param>
@@ -128,6 +140,22 @@ namespace ICSharpCode.Core.Presentation
 		}
 
 		public IReadOnlyList<ShortcutRow> Rows { get { return rows; } }
+
+		/// <summary>Overrides of commands that are not in the catalog, which the page cannot show as rows; the user can remove them. Kept (not erased) otherwise.</summary>
+		public IReadOnlyList<UnknownOverride> UnknownOverrides {
+			get {
+				return initialOverrides.Where(p => !byKey.ContainsKey(p.Key) && !removedUnknown.Contains(p.Key))
+					.OrderBy(p => p.Key, StringComparer.Ordinal)
+					.Select(p => new UnknownOverride(p.Key, p.Value)).ToList();
+			}
+		}
+
+		/// <summary>Drops the override of a command that is not loaded (it would apply again if its AddIn came back).</summary>
+		public void RemoveUnknown(string commandKey)
+		{
+			if (commandKey != null && !byKey.ContainsKey(commandKey) && initialOverrides.ContainsKey(commandKey))
+				removedUnknown.Add(commandKey);
+		}
 
 		public ShortcutRow Find(string commandKey)
 		{
@@ -273,6 +301,8 @@ namespace ICSharpCode.Core.Presentation
 			foreach (ShortcutRow row in rows)
 				if (!row.IsRouted)
 					row.Gesture = row.DefaultGesture;
+			foreach (UnknownOverride unknown in UnknownOverrides)
+				removedUnknown.Add(unknown.Key);
 		}
 
 		/// <summary>The overrides the working copy stands for: a row that differs from its default (an empty text when it was emptied), plus the keys the catalog does not know.</summary>
@@ -280,7 +310,7 @@ namespace ICSharpCode.Core.Presentation
 		{
 			var result = new Dictionary<string, string>();
 			foreach (var pair in initialOverrides)
-				if (!byKey.ContainsKey(pair.Key))
+				if (!byKey.ContainsKey(pair.Key) && !removedUnknown.Contains(pair.Key))
 					result[pair.Key] = pair.Value;
 			foreach (ShortcutRow row in rows) {
 				if (row.IsRouted) {

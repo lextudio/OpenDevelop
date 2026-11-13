@@ -11036,4 +11036,7 @@ Press Esc to cancel this operation.</value>
   <data name="Dialog.Options.IDEOptions.Keyboard.SearchByShortcut.Tooltip" xml:space="preserve">
     <value>Press a shortcut in the search box to list the commands that use it.</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Unknown.Header" xml:space="preserve">
+    <value>Shortcuts of commands that are not loaded ({0})</value>
+  </data>
 </root>

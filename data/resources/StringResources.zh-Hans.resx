@@ -10642,4 +10642,7 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="Dialog.Options.IDEOptions.Keyboard.SearchByShortcut.Tooltip" xml:space="preserve">
     <value>在搜索框中按下快捷键，列出使用它的命令。</value>
   </data>
+  <data name="Dialog.Options.IDEOptions.Keyboard.Unknown.Header" xml:space="preserve">
+    <value>未加载命令的快捷键 ({0})</value>
+  </data>
 </root>

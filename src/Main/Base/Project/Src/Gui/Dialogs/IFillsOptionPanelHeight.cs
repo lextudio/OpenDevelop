@@ -8,5 +8,8 @@ namespace ICSharpCode.SharpDevelop.Gui
 	{
 		/// <summary>The height, in device-independent pixels, below which the page no longer fits and the dialog scrolls it as it does any other page.</summary>
 		double MinimumContentHeight { get; }
+
+		/// <summary>Raised when <see cref="MinimumContentHeight"/> changes (a section of the page opens or closes), so the dialog decides again whether the page fits.</summary>
+		event System.EventHandler MinimumContentHeightChanged;
 	}
 }

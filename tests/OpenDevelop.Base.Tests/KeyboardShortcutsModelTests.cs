@@ -253,4 +253,42 @@ public sealed class KeyboardShortcutsModelTests : IDisposable
 		if (key == System.Windows.Input.Key.Escape && modifiers != System.Windows.Input.ModifierKeys.None)
 			Assert.Equal("Ctrl+Esc", KeyboardShortcutsModel.FormatChord(key, modifiers));
 	}
+
+	[Fact]
+	public void OverridesOfCommandsThatAreNotLoaded_AreListed_AndCanBeRemovedOrKept()
+	{
+		var model = Model(new() { ["class:Gone.One"] = "Ctrl+Alt+Q", ["class:Gone.Two"] = "", ["class:Foo.Clean"] = "Ctrl+Shift+F9" });
+
+		Assert.Equal(new[] { "class:Gone.One", "class:Gone.Two" }, model.UnknownOverrides.Select(u => u.Key));
+		Assert.Equal("Ctrl+Alt+Q", model.UnknownOverrides[0].Gesture);
+		Assert.False(model.IsDirty);
+		Assert.Contains("class:Gone.One", model.BuildOverrides().Keys); // kept unless removed
+
+		model.RemoveUnknown("class:Gone.One");
+		model.RemoveUnknown("class:Foo.Clean"); // a known command is not an unknown override: ignored here
+		Assert.Equal("class:Gone.Two", Assert.Single(model.UnknownOverrides).Key);
+		Assert.True(model.IsDirty);
+		Assert.DoesNotContain("class:Gone.One", model.BuildOverrides().Keys);
+		Assert.Equal("Ctrl+Shift+F9", model.BuildOverrides()["class:Foo.Clean"]);
+
+		model.ResetAll(); // everything goes back to the manifests, the leftovers included
+		Assert.Empty(model.UnknownOverrides);
+		Assert.Empty(model.BuildOverrides());
+	}
+
+	[Fact]
+	public void RemovedUnknownOverrides_AreNotWrittenBack_ByCommit()
+	{
+		string file = Path.Combine(directory, "KeyBindings.xml");
+		var service = new KeyBindingService(file, _ => { });
+		service.SetOverride("class:Gone.One", "Ctrl+Alt+Q");
+		service.SetOverride("class:Gone.Two", "F11");
+		var model = new KeyboardShortcutsModel(Catalog(), service.Overrides);
+
+		model.RemoveUnknown("class:Gone.One");
+		model.Commit(service);
+
+		Assert.Equal("class:Gone.Two", Assert.Single(service.Overrides).Key);
+		Assert.Equal("class:Gone.Two", Assert.Single(new KeyBindingService(file, _ => { }).Overrides).Key);
+	}
 }

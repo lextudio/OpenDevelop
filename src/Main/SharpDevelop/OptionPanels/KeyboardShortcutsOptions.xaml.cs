@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
@@ -76,6 +77,35 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 			collection.Filter = Accept;
 			commandList.ItemsSource = collection;
 			ShowDetails();
+			ShowUnknown();
+		}
+
+		void UnknownToggled(object sender, RoutedEventArgs e)
+		{
+			RaiseMinimumContentHeightChanged();
+		}
+
+		/// <summary>Overrides of commands that are not loaded: listed so they can be seen and removed (they would apply again if their AddIn came back).</summary>
+		void ShowUnknown()
+		{
+			var unknown = model.UnknownOverrides;
+			unknownExpander.Visibility = unknown.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+			RaiseMinimumContentHeightChanged();
+			unknownHeader.Text = string.Format(Text("Unknown.Header}"), unknown.Count);
+			unknownList.Items.Clear();
+			foreach (UnknownOverride item in unknown) {
+				string key = item.Key;
+				var remove = new Button { Content = Text("Remove}"), Padding = new Thickness(6, 0, 6, 0), Margin = new Thickness(6, 0, 0, 0) };
+				AutomationProperties.SetName(remove, Text("Remove}") + " " + key);
+				remove.Click += delegate { model.RemoveUnknown(key); ShowUnknown(); };
+				var line = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
+				line.Children.Add(new TextBlock {
+					Text = key + "  " + (string.IsNullOrEmpty(item.Gesture) ? Text("None}") : item.Gesture),
+					VerticalAlignment = VerticalAlignment.Center
+				});
+				line.Children.Add(remove);
+				unknownList.Items.Add(line);
+			}
 		}
 
 		public override bool SaveOptions()
@@ -87,10 +117,29 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 
 		/// <summary>
 		/// The height the page needs, measured at the default dialog size: the parts that do not shrink (description, search, details, buttons, margins) are about 160 px
-		/// and the list gives way down to its MinHeight of 100 px. Some headroom is added for wrapped text (translated strings, narrow dialog). Below this the dialog scrolls
-		/// the whole page; the dialog's own MinHeight keeps that from happening in practice.
+		/// and the list gives way down to its MinHeight of 100 px. Some headroom is added for wrapped text (translated strings, narrow dialog). The section of overrides for
+		/// commands that are not loaded adds its header (about 26 px) when it is shown and its list (up to 80 px) when it is open. Below this the dialog scrolls the whole page;
+		/// the dialog's own MinHeight keeps that from happening in practice.
 		/// </summary>
-		public double MinimumContentHeight { get { return 320; } }
+		public double MinimumContentHeight {
+			get {
+				double height = 320;
+				if (unknownExpander.Visibility == Visibility.Visible) {
+					height += 26;
+					if (unknownExpander.IsExpanded)
+						height += 80;
+				}
+				return height;
+			}
+		}
+
+		public event EventHandler MinimumContentHeightChanged;
+
+		void RaiseMinimumContentHeightChanged()
+		{
+			if (MinimumContentHeightChanged != null)
+				MinimumContentHeightChanged(this, EventArgs.Empty);
+		}
 
 		RowView Selected { get { return commandList.SelectedItem as RowView; } }
 
@@ -277,6 +326,7 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 			if (MessageService.AskQuestion(ResourcePrefix + "ResetAllQuestion}")) {
 				model.ResetAll();
 				Apply(v => { });
+				ShowUnknown();
 			}
 		}
 	}

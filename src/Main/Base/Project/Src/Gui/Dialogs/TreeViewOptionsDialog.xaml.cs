@@ -173,11 +173,28 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// A page that fills the height keeps the dialog's height while it fits (so only its list scrolls); when the dialog is too small for it, the page scrolls like any other.
 		/// The decision depends only on the size of the viewer, so it cannot flip back and forth by itself.
 		/// </summary>
+		void SetFillsHeight(IFillsOptionPanelHeight page)
+		{
+			if (fillsHeight != null)
+				fillsHeight.MinimumContentHeightChanged -= FillsHeightMinimumChanged;
+			fillsHeight = page;
+			if (fillsHeight != null)
+				fillsHeight.MinimumContentHeightChanged += FillsHeightMinimumChanged;
+			UpdateScrollMode();
+		}
+
+		void FillsHeightMinimumChanged(object sender, EventArgs e)
+		{
+			UpdateScrollMode();
+		}
+
 		void UpdateScrollMode()
 		{
-			double available = optionPanelScrollViewer.ActualHeight - optionPanelTitle.ActualHeight;
-			bool fits = fillsHeight != null && available >= fillsHeight.MinimumContentHeight;
-			optionPanelScrollViewer.VerticalScrollBarVisibility = fits ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
+			var decision = OptionPanelHeightPolicy.Decide(
+				optionPanelScrollViewer.ActualHeight - optionPanelTitle.ActualHeight,
+				fillsHeight == null ? (double?)null : fillsHeight.MinimumContentHeight);
+			optionPanelScrollViewer.VerticalScrollBarVisibility = decision.VerticalScrollBar;
+			optionPanelContent.Height = decision.ContentHeight;
 		}
 
 		void SelectNode(OptionPanelNode node)
@@ -196,7 +213,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			
 			activeNode = node;
 			optionPanelTitle.Text = node.Title;
-			fillsHeight = null;
+			SetFillsHeight(null);
 			optionPanelScrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
 			optionPanelContent.Content = new TextBlock {
 				Text = "Loading…",
@@ -220,8 +237,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 				var content = await node.GetContentAsync(lifetimeCancellation.Token);
 				if (node == activeNode && IsLoaded) {
 					optionPanelContent.Content = content;
-					fillsHeight = content as IFillsOptionPanelHeight;
-					UpdateScrollMode();
+					SetFillsHeight(content as IFillsOptionPanelHeight);
 				}
 			} catch (OperationCanceledException) when (lifetimeCancellation.IsCancellationRequested) {
 				// The dialog was closed while an asynchronous panel was loading.
