@@ -14,9 +14,11 @@
 		<Import assembly = "OpenDevelop.Terminal.dll"/>
 	</Runtime>
 
+	<!-- Not category "Main": View > (pad list) would then list "Terminal" a second time next to the explicit
+	     View > Terminal item below (which also carries the shortcut and focuses the terminal). -->
 	<Path name = "/SharpDevelop/Workbench/Pads">
 		<Pad id       = "TerminalPad"
-		     category = "Main"
+		     category = "Terminal"
 		     title    = "Terminal"
 		     icon     = "Icons.16x16.Console"
 		     class    = "OpenDevelop.Terminal.TerminalPad"
