@@ -10598,7 +10598,7 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
     <value>出現於：{0}</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.Capture.Prompt" xml:space="preserve">
-    <value>請按下快速鍵...</value>
+    <value>請按下快速鍵...（再按一個組成按鍵序列，退格鍵清除）</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.Assign" xml:space="preserve">
     <value>指派</value>

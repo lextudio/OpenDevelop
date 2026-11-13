@@ -85,13 +85,16 @@ namespace ICSharpCode.Core.Presentation
 			public System.Windows.Input.ICommand Command;
 			public string FeatureName;
 			public Action<string> DisplayTextChanged;
-			public KeyGesture Gesture;
+			public ShortcutGesture Gesture;
 		}
 
 		sealed class OwnerState
 		{
 			public readonly List<Site> Sites = new List<Site>();
 			public readonly List<InputBinding> Added = new List<InputBinding>();
+			/// <summary>The key chords of the sites on this owner; the owner's PreviewKeyDown feeds it.</summary>
+			public readonly ChordRouter Chords = new ChordRouter();
+			public bool ChordHandlerAttached;
 		}
 
 		readonly string filePath;
@@ -146,16 +149,27 @@ namespace ICSharpCode.Core.Presentation
 		}
 
 		/// <summary>
-		/// The gesture a command effectively has: its override (an empty one is the explicit "none"), else <paramref name="defaultGesture"/>.
-		/// An override that does not parse is reported and ignored, so the default applies; null when there is no gesture.
+		/// The single-stroke gesture a command effectively has: its override (an empty one is the explicit "none"), else <paramref name="defaultGesture"/>.
+		/// An override that does not parse is reported and ignored, so the default applies; null when there is no gesture, or when the shortcut is a key chord
+		/// (see <see cref="ResolveShortcut"/>: the controls that match single strokes themselves do not take chords).
 		/// </summary>
 		public KeyGesture Resolve(string commandKey, string defaultGesture)
+		{
+			ShortcutGesture shortcut = ResolveShortcut(commandKey, defaultGesture);
+			return shortcut != null && !shortcut.IsChord ? shortcut.First : null;
+		}
+
+		/// <summary>
+		/// The shortcut a command effectively has (one key stroke or a chord of two): its override (an empty one is the explicit "none"), else the default.
+		/// An override that does not parse is reported and ignored, so the default applies; null when there is none.
+		/// </summary>
+		public ShortcutGesture ResolveShortcut(string commandKey, string defaultGesture)
 		{
 			string overridden;
 			if (Data.Overrides.TryGetValue(commandKey, out overridden)) {
 				if (string.IsNullOrWhiteSpace(overridden))
 					return null;
-				KeyGesture gesture = TryParse(overridden, commandKey, "shortcut");
+				ShortcutGesture gesture = TryParse(overridden, commandKey, "shortcut");
 				if (gesture != null)
 					return gesture;
 			}
@@ -163,27 +177,22 @@ namespace ICSharpCode.Core.Presentation
 			return string.IsNullOrWhiteSpace(defaultGesture) ? null : TryParse(defaultGesture, commandKey, "default shortcut");
 		}
 
-		KeyGesture TryParse(string text, string commandKey, string what)
+		ShortcutGesture TryParse(string text, string commandKey, string what)
 		{
-			try {
-				return MenuService.ParseShortcut(text);
-			} catch (Exception ex) when (ex is NotSupportedException || ex is FormatException || ex is ArgumentException) {
-				report("The " + what + " \"" + text + "\" of " + commandKey + " is not valid and is ignored: " + ex.Message);
-				return null;
-			}
+			ShortcutGesture gesture;
+			if (ShortcutGesture.TryParse(text, out gesture))
+				return gesture;
+			report("The " + what + " \"" + text + "\" of " + commandKey + " is not valid and is ignored.");
+			return null;
 		}
 
 		/// <summary>Gives a command an override; <paramref name="gestureText"/> empty means "no shortcut", whatever the manifest says.</summary>
 		/// <exception cref="FormatException">The text is not a gesture.</exception>
 		public void SetOverride(string commandKey, string gestureText)
 		{
-			if (!string.IsNullOrWhiteSpace(gestureText)) {
-				try {
-					MenuService.ParseShortcut(gestureText);
-				} catch (Exception ex) when (ex is NotSupportedException || ex is ArgumentException) {
-					throw new FormatException("\"" + gestureText + "\" is not a keyboard shortcut: " + ex.Message, ex);
-				}
-			}
+			ShortcutGesture ignored;
+			if (!string.IsNullOrWhiteSpace(gestureText) && !ShortcutGesture.TryParse(gestureText, out ignored))
+				throw new FormatException("\"" + gestureText + "\" is not a keyboard shortcut.");
 			Data.Set(commandKey, gestureText == null ? "" : gestureText.Trim());
 			SaveAndApply();
 		}
@@ -211,11 +220,9 @@ namespace ICSharpCode.Core.Presentation
 				// an entry that is not changed is kept as it is, even when it is not a gesture (the file was edited by hand): it is ignored when applied
 				if (string.IsNullOrWhiteSpace(pair.Value) || (Data.Overrides.TryGetValue(pair.Key, out current) && current == (pair.Value ?? "").Trim()))
 					continue;
-				try {
-					MenuService.ParseShortcut(pair.Value);
-				} catch (Exception ex) when (ex is NotSupportedException || ex is ArgumentException) {
-					throw new FormatException("\"" + pair.Value + "\" is not a keyboard shortcut: " + ex.Message, ex);
-				}
+				ShortcutGesture ignored;
+				if (!ShortcutGesture.TryParse(pair.Value, out ignored))
+					throw new FormatException("\"" + pair.Value + "\" is not a keyboard shortcut.");
 			}
 			Data.Clear();
 			foreach (var pair in list)
@@ -264,7 +271,7 @@ namespace ICSharpCode.Core.Presentation
 		{
 			if (commandKey == null)
 				throw new ArgumentNullException("commandKey");
-			KeyGesture gesture = Resolve(commandKey, defaultGesture);
+			ShortcutGesture gesture = ResolveShortcut(commandKey, defaultGesture);
 			string text = DisplayText(gesture);
 			if (owner == null || command == null)
 				return text;
@@ -293,9 +300,9 @@ namespace ICSharpCode.Core.Presentation
 			return text;
 		}
 
-		static string DisplayText(KeyGesture gesture)
+		static string DisplayText(ShortcutGesture gesture)
 		{
-			return gesture == null ? "" : MenuService.GetDisplayStringForShortcut(gesture);
+			return gesture == null ? "" : gesture.ToDisplayText();
 		}
 
 		void ApplyAll()
@@ -305,7 +312,7 @@ namespace ICSharpCode.Core.Presentation
 				if (!owners.TryGetValue(owner, out state))
 					continue;
 				foreach (Site site in state.Sites) {
-					site.Gesture = Resolve(site.Key, site.DefaultGesture);
+					site.Gesture = ResolveShortcut(site.Key, site.DefaultGesture);
 					if (site.DisplayTextChanged != null)
 						site.DisplayTextChanged(DisplayText(site.Gesture));
 				}
@@ -326,20 +333,26 @@ namespace ICSharpCode.Core.Presentation
 			return result;
 		}
 
-		/// <summary>Removes the bindings this service added to the owner and adds the ones its sites call for.</summary>
+		/// <summary>Removes the bindings this service added to the owner and adds the ones its sites call for: input bindings for single strokes, the owner's chord router for chords.</summary>
 		static void Rebuild(UIElement owner, OwnerState state)
 		{
 			foreach (InputBinding binding in state.Added)
 				owner.InputBindings.Remove(binding);
 			state.Added.Clear();
+			state.Chords.Clear();
 
 			var groups = new List<KeyValuePair<KeyGesture, List<Site>>>();
 			foreach (Site site in state.Sites) {
 				if (site.Gesture == null)
 					continue;
-				var group = groups.FirstOrDefault(g => g.Key.Key == site.Gesture.Key && g.Key.Modifiers == site.Gesture.Modifiers);
+				if (site.Gesture.IsChord) {
+					state.Chords.Add(site.Gesture, Wrap(site));
+					continue;
+				}
+				KeyGesture stroke = site.Gesture.First;
+				var group = groups.FirstOrDefault(g => g.Key.Key == stroke.Key && g.Key.Modifiers == stroke.Modifiers);
 				if (group.Value == null) {
-					group = new KeyValuePair<KeyGesture, List<Site>>(site.Gesture, new List<Site>());
+					group = new KeyValuePair<KeyGesture, List<Site>>(stroke, new List<Site>());
 					groups.Add(group);
 				}
 				group.Value.Add(site);
@@ -347,16 +360,69 @@ namespace ICSharpCode.Core.Presentation
 			foreach (var group in groups) {
 				System.Windows.Input.ICommand combined = null;
 				foreach (Site site in group.Value) {
-					System.Windows.Input.ICommand command = site.Command;
-					// Report a shortcut use for the feature, as it was before
-					if (!string.IsNullOrEmpty(site.FeatureName))
-						command = new ShortcutCommandWrapper(command, site.FeatureName);
+					System.Windows.Input.ICommand command = Wrap(site);
 					combined = combined == null ? command : new AmbiguousCommandWrapper(combined, command);
 				}
 				var binding = new InputBinding(combined, group.Key);
 				owner.InputBindings.Add(binding);
 				state.Added.Add(binding);
 			}
+			if (state.Chords.HasChords && !state.ChordHandlerAttached) {
+				state.ChordHandlerAttached = true;
+				ChordRouter router = state.Chords;
+				// Preview, so the first stroke is taken before a control inside the owner (an editor) sees it
+				owner.PreviewKeyDown += (sender, e) => OnPreviewKeyDown(router, e);
+			}
+		}
+
+		/// <summary>Reports a shortcut use for the feature, as it was before, then runs the site's command.</summary>
+		static System.Windows.Input.ICommand Wrap(Site site)
+		{
+			System.Windows.Input.ICommand command = site.Command;
+			if (!string.IsNullOrEmpty(site.FeatureName))
+				command = new ShortcutCommandWrapper(command, site.FeatureName);
+			return command;
+		}
+
+		static void OnPreviewKeyDown(ChordRouter router, System.Windows.Input.KeyEventArgs e)
+		{
+			if (e.Handled)
+				return;
+			System.Windows.Input.Key key = e.Key == System.Windows.Input.Key.System ? e.SystemKey : e.Key;
+			System.Windows.Input.ICommand command;
+			switch (router.Press(key, System.Windows.Input.Keyboard.Modifiers, DateTime.UtcNow, out command)) {
+				case ChordOutcome.Started:
+					e.Handled = true;
+					break;
+				case ChordOutcome.Completed:
+					if (command.CanExecute(null))
+						command.Execute(null);
+					e.Handled = true;
+					break;
+			}
+		}
+
+		/// <summary>
+		/// Runs a key chord on an owner as its key presses would (the first stroke, then the second): for tests and DevFlow, because a real key press needs the
+		/// key window. Returns whether the first stroke was taken and whether the second completed a chord whose command ran.
+		/// </summary>
+		public bool TryRunChord(UIElement owner, string firstStroke, string secondStroke, out bool executed)
+		{
+			executed = false;
+			OwnerState state;
+			ShortcutGesture chord;
+			if (owner == null || !owners.TryGetValue(owner, out state) || !ShortcutGesture.TryParse(firstStroke + ", " + secondStroke, out chord) || !chord.IsChord)
+				return false;
+			System.Windows.Input.ICommand command;
+			if (state.Chords.Press(chord.First.Key, chord.First.Modifiers, DateTime.UtcNow, out command) != ChordOutcome.Started)
+				return false;
+			if (state.Chords.Press(chord.Second.Key, chord.Second.Modifiers, DateTime.UtcNow, out command) != ChordOutcome.Completed)
+				return true;
+			if (command.CanExecute(null)) {
+				command.Execute(null);
+				executed = true;
+			}
+			return true;
 		}
 	}
 }

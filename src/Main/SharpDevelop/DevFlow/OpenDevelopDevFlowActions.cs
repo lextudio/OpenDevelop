@@ -2907,6 +2907,15 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { success = true, bound = true, canExecute, executed = canExecute });
 		}
 
+		[DevFlowAction("od.keybindings.chord", Description = "Press a key chord (two strokes, e.g. first Ctrl+K, second Ctrl+C) on the main window as its key presses would, through the same chord router: reports whether the first stroke was taken as the start of a chord and whether the second completed one whose command ran")]
+		public static string RunKeyChord(string first, string second)
+		{
+			var window = SD.Workbench.MainWindow as System.Windows.UIElement;
+			bool executed;
+			bool taken = ICSharpCode.Core.Presentation.KeyBindingService.Default.TryRunChord(window, first, second, out executed);
+			return JsonSerializer.Serialize(new { success = true, started = taken, executed });
+		}
+
 		[DevFlowAction("od.keybindings.overrides", Description = "The user's keyboard shortcut overrides (command key -> gesture, empty meaning no shortcut), as KeyBindings.xml holds them")]
 		public static string KeyBindingOverrides()
 		{

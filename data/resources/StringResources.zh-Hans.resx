@@ -10598,7 +10598,7 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
     <value>出现在：{0}</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.Capture.Prompt" xml:space="preserve">
-    <value>请按下快捷键...</value>
+    <value>请按下快捷键...（再按一个组合成按键序列，退格键清除）</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.Assign" xml:space="preserve">
     <value>分配</value>

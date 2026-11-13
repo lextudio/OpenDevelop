@@ -10992,7 +10992,7 @@ Press Esc to cancel this operation.</value>
     <value>Appears in: {0}</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.Capture.Prompt" xml:space="preserve">
-    <value>Press a shortcut...</value>
+    <value>Press a shortcut... (a second one makes a key sequence, Backspace clears)</value>
   </data>
   <data name="Dialog.Options.IDEOptions.Keyboard.Assign" xml:space="preserve">
     <value>Assign</value>

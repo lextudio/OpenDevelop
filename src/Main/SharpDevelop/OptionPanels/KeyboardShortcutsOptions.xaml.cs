@@ -196,7 +196,7 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 			else {
 				string chord = KeyboardShortcutsModel.FormatChord(key, Keyboard.Modifiers);
 				if (chord != null)
-					searchBox.Text = chord;
+					searchBox.Text = KeyboardShortcutsModel.AppendStroke(searchBox.Text, chord);
 			}
 		}
 
@@ -280,7 +280,7 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 			string chord = KeyboardShortcutsModel.FormatChord(key, Keyboard.Modifiers);
 			if (chord == null)
 				return;
-			captureBox.Text = chord;
+			captureBox.Text = KeyboardShortcutsModel.AppendStroke(captureBox.Text, chord); // a second stroke makes a key sequence
 			Evaluate();
 		}
 

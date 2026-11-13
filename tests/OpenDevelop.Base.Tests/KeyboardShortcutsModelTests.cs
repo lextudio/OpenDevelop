@@ -427,4 +427,27 @@ public sealed class KeyboardShortcutsModelTests : IDisposable
 	{
 		Assert.Equal(expected, ExternalCommand.Humanize(name));
 	}
+
+	[Fact]
+	public void AKeySequence_IsForCommandsOfTheMainWindowOnly_AndOverlapsASingleStrokeThatStartsIt()
+	{
+		var model = Model(new() { ["class:Foo.Fold"] = "Ctrl+K" }); // Fold is a control-scope command with a single stroke
+		// a Workbench command can have a key sequence
+		var ok = model.Check("class:Foo.Clean", "Ctrl+K, Ctrl+C");
+		Assert.True(ok.IsValid);
+		Assert.Equal("Ctrl+K, Ctrl+C", ok.Gesture);
+		Assert.Empty(ok.Conflicts); // Ctrl+K belongs to a control-scope command: shadowing at most, not a conflict
+		Assert.Equal("class:Foo.Fold", Assert.Single(ok.Shadows).Key);
+		// a control-scope command cannot
+		Assert.False(model.Check("class:Foo.Fold", "Ctrl+K, Ctrl+C").IsValid);
+		// a Workbench single stroke that begins a Workbench chord is a conflict
+		model.Assign("class:Foo.Clean", "Ctrl+K, Ctrl+C");
+		var clash = model.Check("class:Foo.Rebuild", "Ctrl+K");
+		Assert.Equal("class:Foo.Clean", Assert.Single(clash.Conflicts).Key);
+		// two chords sharing only the first stroke can live together
+		Assert.Empty(model.Check("class:Foo.Rebuild", "Ctrl+K, Ctrl+U").Conflicts);
+		// a reserved stroke inside a chord is refused
+		Assert.False(model.Check("class:Foo.Rebuild", "Ctrl+K, Alt+F4").IsValid);
+		Assert.Equal("Ctrl+K, Ctrl+C", model.BuildOverrides()["class:Foo.Clean"]);
+	}
 }

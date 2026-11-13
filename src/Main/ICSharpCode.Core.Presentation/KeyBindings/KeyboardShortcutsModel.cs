@@ -199,13 +199,34 @@ namespace ICSharpCode.Core.Presentation
 		/// <summary>The gesture in the normal form (Ctrl+Shift+F8); null for none or for text that is not a gesture.</summary>
 		public static string Normalize(string text)
 		{
-			if (string.IsNullOrWhiteSpace(text))
-				return null;
-			try {
-				return new KeyGestureConverter().ConvertToInvariantString(MenuService.ParseShortcut(text));
-			} catch (Exception ex) when (ex is NotSupportedException || ex is ArgumentException || ex is FormatException) {
-				return null;
-			}
+			ShortcutGesture gesture;
+			return ShortcutGesture.TryParse(text, out gesture) ? gesture.ToInvariantText() : null;
+		}
+
+		/// <summary>
+		/// Whether two shortcuts cannot both work: the same stroke, a stroke that starts a key chord, or two chords with the same two strokes. Texts that are not
+		/// shortcuts only overlap when they are equal.
+		/// </summary>
+		public static bool Overlap(string a, string b)
+		{
+			ShortcutGesture x, y;
+			if (ShortcutGesture.TryParse(a, out x) && ShortcutGesture.TryParse(b, out y))
+				return x.Overlaps(y);
+			return !string.IsNullOrWhiteSpace(a) && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+		}
+
+		/// <summary>
+		/// What the shortcut box shows after a key stroke is captured: the stroke when the box is empty; the stroke added as the SECOND of a key chord
+		/// (<c>Ctrl+K, Ctrl+C</c>) when the box holds one stroke; a new first stroke when it already holds a chord.
+		/// </summary>
+		public static string AppendStroke(string current, string stroke)
+		{
+			if (string.IsNullOrEmpty(stroke))
+				return current ?? "";
+			ShortcutGesture existing;
+			if (!ShortcutGesture.TryParse(current, out existing) || existing.IsChord)
+				return stroke;
+			return existing.ToInvariantText() + ", " + stroke;
 		}
 
 		/// <summary>What a capture box (the shortcut box or the shortcut search) does with this key and the modifiers held.</summary>
@@ -285,9 +306,13 @@ namespace ICSharpCode.Core.Presentation
 			string gesture = Normalize(gestureText);
 			if (gesture == null)
 				return Fail("\"" + gestureText.Trim() + "\" is not a keyboard shortcut.");
-			if (ReservedGestures.Contains(gesture))
+			ShortcutGesture parsed;
+			ShortcutGesture.TryParse(gesture, out parsed);
+			if (parsed.Strokes.Any(stroke => ReservedGestures.Contains(new KeyGestureConverter().ConvertToInvariantString(stroke))))
 				return Fail(gesture + " is reserved by the system.");
-			var others = rows.Where(r => r != row && string.Equals(r.Gesture, gesture, StringComparison.OrdinalIgnoreCase)).ToList();
+			if (parsed.IsChord && row.Scope != WorkbenchScope)
+				return Fail("A key sequence such as " + gesture + " works for the commands of the main window only.");
+			var others = rows.Where(r => r != row && Overlap(r.Gesture, gesture)).ToList();
 			var conflicts = others.Where(r => r.Scope == row.Scope).ToList();
 			ShortcutRow builtIn = conflicts.FirstOrDefault(r => r.IsRouted);
 			if (builtIn != null)
@@ -367,7 +392,7 @@ namespace ICSharpCode.Core.Presentation
 		{
 			if (row == null || row.Gesture == null)
 				return new ShortcutRow[0];
-			return rows.Where(r => r != row && r.Scope == row.Scope && string.Equals(r.Gesture, row.Gesture, StringComparison.OrdinalIgnoreCase)).ToList();
+			return rows.Where(r => r != row && r.Scope == row.Scope && Overlap(r.Gesture, row.Gesture)).ToList();
 		}
 
 		/// <summary>
@@ -421,7 +446,7 @@ namespace ICSharpCode.Core.Presentation
 			}
 			// conflicts as they would be after the import
 			Func<ShortcutRow, string> after = r => { string g; return planned.TryGetValue(r, out g) ? g : r.Gesture; };
-			var conflicts = rows.Where(r => after(r) != null && rows.Any(o => o != r && o.Scope == r.Scope && string.Equals(after(o), after(r), StringComparison.OrdinalIgnoreCase)
+			var conflicts = rows.Where(r => after(r) != null && rows.Any(o => o != r && o.Scope == r.Scope && Overlap(after(o), after(r))
 			                                                              && (changed.Contains(r) || changed.Contains(o)))).ToList();
 			return new ImportPreview(changes, skipped, invalid, conflicts);
 		}
