@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
@@ -736,34 +736,6 @@ public static class WinUIXamlDesignerDevFlowActions
 			nameColumnWidth = grid.NameColumnWidth,
 			properties = props
 		});
-	}
-
-	[DevFlowAction("od.winui-designer.rebuild-compiled",
-		Description = "Build the active designer's project, then restart its Surface renderer so a compiled page (OD_WINUI_COMPILED=1) shows the new build; the shared host recovery re-renders the document. Returns the build result")]
-	public static async System.Threading.Tasks.Task<string> RebuildCompiled()
-	{
-		var view = ActivateDesigner();
-		if (view?.PrimaryFileName == null)
-			return Failure("No WinUI/Uno designer is active");
-		var project = SD.ProjectService.FindProjectContainingFile(view.PrimaryFileName);
-		if (project == null)
-			return Failure("The document belongs to no project");
-		var results = await SD.BuildService.BuildAsync(project, new BuildOptions(BuildTarget.Build));
-		if (results.Result != BuildResultCode.Success)
-			return JsonSerializer.Serialize(new { success = false, build = results.Result.ToString(), restarted = false });
-		// The surface loads the project's assembly once per process, so a new build needs a new process. Ending the design child makes the
-		// shared recovery start it again with the same arguments and re-render the open document.
-		int ended = 0;
-		foreach (var process in System.Diagnostics.Process.GetProcessesByName("dotnet")) {
-			try {
-				if (process.Modules.Cast<System.Diagnostics.ProcessModule>().Any(m =>
-					m.ModuleName.Equals("WinUIXamlDesigner.SurfaceHost.Child.dll", StringComparison.OrdinalIgnoreCase))) {
-					process.Kill(entireProcessTree: true);
-					ended++;
-				}
-			} catch (Exception) { }
-		}
-		return JsonSerializer.Serialize(new { success = true, build = results.Result.ToString(), restarted = ended > 0, endedHosts = ended });
 	}
 
 	[DevFlowAction("od.winui-designer.native-live",

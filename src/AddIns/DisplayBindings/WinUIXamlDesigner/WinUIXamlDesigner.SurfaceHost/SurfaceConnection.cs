@@ -146,8 +146,8 @@ public sealed class SurfaceConnection : IAsyncDisposable
 	/// <summary>Loads a document (the first of a session, or when the viewport changes) and returns its frame or error.</summary>
 	public Task<SurfaceRenderResult> LoadXamlAsync(
 		string xaml, double width, double height, double scale, bool sampleData, string? documentPath,
-		CancellationToken cancellationToken = default, string? compiledType = null)
-		=> RequestAsync(WithCompiledType(new Dictionary<string, object?> {
+		CancellationToken cancellationToken = default)
+		=> RequestAsync(WithOptions(new Dictionary<string, object?> {
 			["type"] = "LoadXaml",
 			["xaml"] = xaml,
 			["width"] = width,
@@ -155,36 +155,31 @@ public sealed class SurfaceConnection : IAsyncDisposable
 			["scale"] = scale,
 			["sampleData"] = sampleData,
 			["documentPath"] = documentPath,
-		}, compiledType), cancellationToken);
+		}), cancellationToken);
 
 	/// <summary>Replaces the document, keeping the saved viewport.</summary>
 	public Task<SurfaceRenderResult> UpdateXamlAsync(
-		string xaml, bool sampleData, string? documentPath, CancellationToken cancellationToken = default, string? compiledType = null)
-		=> RequestAsync(WithCompiledType(new Dictionary<string, object?> {
+		string xaml, bool sampleData, string? documentPath, CancellationToken cancellationToken = default)
+		=> RequestAsync(WithOptions(new Dictionary<string, object?> {
 			["type"] = "UpdateXaml",
 			["xaml"] = xaml,
 			["sampleData"] = sampleData,
 			["documentPath"] = documentPath,
-		}, compiledType), cancellationToken);
-
-	/// <summary>
-	/// <paramref name="compiledType"/> null leaves the field out (the surface keeps its current setting); a type name makes the surface create
-	/// that class from the user assembly (the compiled page, <c>{x:Bind}</c> included) and "" turns that off again.
-	/// </summary>
-	Dictionary<string, object?> WithCompiledType(Dictionary<string, object?> message, string? compiledType)
-	{
-		if (compiledType != null)
-			message["compiledType"] = compiledType;
-		if (DescribeFrames)
-			message["describe"] = true;
-		return message;
-	}
+		}), cancellationToken);
 
 	/// <summary>
 	/// Ask for each frame's element tree (<see cref="SurfaceFrame.Tree"/>): paths and bounds read from the laid-out page in frame mode, so
 	/// no native-mode excursion is needed. A surface that predates <c>describe</c> ignores the field and sends no tree.
 	/// </summary>
 	public bool DescribeFrames { get; set; }
+
+	/// <summary>Adds the options every render request carries (currently <c>describe</c>).</summary>
+	Dictionary<string, object?> WithOptions(Dictionary<string, object?> message)
+	{
+		if (DescribeFrames)
+			message["describe"] = true;
+		return message;
+	}
 
 	/// <summary>
 	/// The reflected properties of the element at <paramref name="path"/> in the last described frame (the surface's path scheme: "0" the

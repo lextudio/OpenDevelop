@@ -1511,3 +1511,12 @@ order, with the renderer's categories, the current value as the description and 
 Path mapping: a source element's renderer path skips property elements (`Grid.RowDefinitions`), the rule the frame tree follows; four
 adapter construction sites need the catalog delegate (a missed fourth, the multi-selection path, made the pad fall back after the
 first selection).
+
+**Compiled-page route dropped (2026-11).** The `compiledType` route (real `{x:Bind}` from the project's last build, with
+`od.winui-designer.rebuild-compiled` to rebuild and restart the renderer) is removed from OpenDevelop: a compiled page is frozen at build
+time, so XAML edits only appeared after a rebuild and a host restart, which is not a live preview. The live path is `UpdateXaml` (an
+in-process re-parse, no restart). Real `{x:Bind}` is a hot-reload problem, not a renderer one: the XAML Diagnostics agent
+(`doc/technotes/hot-reload.md`, "WinUI 3: XAML Diagnostics agent") patches a running compiled app in place. The fork's optional
+`compiledType` message is left in the surface (unused by OpenDevelop), and the one reusable finding stays in the bootstrap: a project
+whose own WinAppSDK bootstrap auto-initializer is on must not have its assembly loaded into the surface (every XAML object then fails
+with `0x8001010E`).
