@@ -1528,3 +1528,5 @@ edit followed by a re-render, and the new `od.winui-designer.resize` (the commit
 200x48; the Surface refuses `design/set-bounds`, so a resize is a full re-render, which is still immediate (no host restart). A resize
 used to write Width and Height as two undo steps; they are now one, and one Undo restores both. Real pointer drags on the canvas are
 still unverified (the IDE runs hidden here; the actions exercise the same commit path).
+
+The plan that follows from these results (order, done-criteria, risks, how to run a check) is in `winui-designer-plan.md`.
