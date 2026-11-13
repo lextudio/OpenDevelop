@@ -300,6 +300,12 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		=> connection.InvokeAsync<DesignerNativeLiveReply>("design/native-live",
 			new { sessionId = SessionId, documentId = DocumentId, enabled, current = (DesignerDocumentRequest?)null }, cancellationToken);
 
+	/// <summary><c>design/describe-properties</c> (Surface child only): the runtime's property list for the element at the shell's
+	/// child-index path. An old child answers with a method-not-found error, which the caller treats as "no catalog".</summary>
+	public Task<DesignerPropertyInfo[]> DescribePropertiesAsync(string elementPath, CancellationToken cancellationToken = default)
+		=> connection.InvokeAsync<DesignerPropertyInfo[]>("design/describe-properties",
+			new { sessionId = SessionId, documentId = DocumentId, elementPath }, cancellationToken);
+
 	public Task<string> ExportPngAsync(string path, CancellationToken cancellationToken = default)
 		=> connection.InvokeAsync<string>("design/export-png",
 			new { sessionId = SessionId, documentId = DocumentId, path }, cancellationToken);

@@ -168,6 +168,7 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 				Id = treePath, Path = treePath, Name = item.Name, Type = item.Type,
 				X = item.X, Y = item.Y, Width = item.Width, Height = item.Height, IsVisible = true, IsDesignable = true,
 			};
+			ApplyLayout(node, item.Layout);
 			byPath[item.Path] = node;
 			if (item.Path == "0") {
 				root = node;
@@ -180,6 +181,52 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 			}
 		}
 		return root;
+	}
+
+	/// <summary>
+	/// Puts the measured layout facts on the shell's node: a Grid's tracks (<c>GridTracks</c>), a child's margin or Canvas position
+	/// (<c>LayoutInsets</c>, the semantics the drop and snap code reads) and its z-index. A Grid with no declared tracks reports none.
+	/// </summary>
+	static void ApplyLayout(DesignerElementNode node, SurfaceTreeLayout? layout)
+	{
+		if (layout == null)
+			return;
+		if (layout.Rows != null || layout.Columns != null)
+			node.GridTracks = new DesignerGridGuides {
+				Accepted = true,
+				RowTracks = (layout.Rows ?? Array.Empty<SurfaceTrack>()).Select(t => new DesignerGridTrackInfo { Offset = t.Offset, Size = t.Size }).ToList(),
+				ColumnTracks = (layout.Columns ?? Array.Empty<SurfaceTrack>()).Select(t => new DesignerGridTrackInfo { Offset = t.Offset, Size = t.Size }).ToList(),
+			};
+		if (layout.Parent == "Canvas")
+			node.LayoutInsets = new DesignerLayoutInsets { Kind = "CanvasPosition", Left = layout.CanvasLeft ?? 0, Top = layout.CanvasTop ?? 0 };
+		else if (layout.Parent == "Grid")
+			node.LayoutInsets = new DesignerLayoutInsets {
+				Kind = "Margin", Left = layout.MarginLeft, Top = layout.MarginTop, Right = layout.MarginRight, Bottom = layout.MarginBottom,
+			};
+		if (layout.Parent != null)
+			node.ZIndex = layout.ZIndex;
+	}
+
+	/// <summary>
+	/// The runtime's own property list for the element at <paramref name="elementPath"/> (the shell's child-index path, "" for the page root,
+	/// "0,1" for the root's second authored child): names, categories, current values, read-only flags and enum choices. Empty when the
+	/// frame was not described or the page has changed since.
+	/// </summary>
+	public async Task<IReadOnlyList<DesignerPropertyInfo>> DescribePropertiesAsync(string elementPath, CancellationToken cancellationToken = default)
+	{
+		if (connection.IsNativeLive)
+			return Array.Empty<DesignerPropertyInfo>();
+		string surfacePath = string.IsNullOrEmpty(elementPath) ? "0" : "0." + elementPath.Replace(',', '.');
+		var rows = await connection.DescribeElementAsync(surfacePath, cancellationToken).ConfigureAwait(false);
+		if (rows == null)
+			return Array.Empty<DesignerPropertyInfo>();
+		return rows.Select(r => new DesignerPropertyInfo {
+			Name = r.Name, DisplayName = r.Name, Category = r.Category, TypeName = r.TypeName, Value = r.Value,
+			IsReadOnly = r.ReadOnly, IsEnum = r.Options != null && r.TypeName != "Boolean",
+			AllowedValues = r.Options?.ToList() ?? new List<string>(),
+			Kind = r.Options != null ? (r.TypeName == "Boolean" ? "Boolean" : "Enum") : r.TypeName switch {
+				"Boolean" => "Boolean", "Double" or "Single" or "Int32" => "Number", "Thickness" => "Thickness", "Brush" => "Brush", _ => "String" },
+		}).ToList();
 	}
 
 	/// <summary>The deepest described element containing the design point (frame DIPs), or null.</summary>

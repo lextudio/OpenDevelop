@@ -230,6 +230,38 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public string RenderSample() => previewHost.RenderSample();
 	public IReadOnlyList<(string Message, string FileName, int Line, int Column, int EndColumn)> LastDiagnostics => previewHost.LastDiagnostics;
 	public string ExportPng(string path) => previewHost.ExportPng(path);
+
+	/// <summary>The renderer's own property list for a source element, or none (no catalog, or the element has no counterpart in the frame).</summary>
+	IReadOnlyList<DesignerPropertyInfo> RuntimeProperties(XElement element)
+	{
+		if (previewHost.Runtime is not IWinUIXamlPropertyCatalog catalog)
+			return Array.Empty<DesignerPropertyInfo>();
+		var path = AuthoredChildPath(element);
+		return path == null ? Array.Empty<DesignerPropertyInfo>() : catalog.DescribeProperties(path);
+	}
+
+	/// <summary>
+	/// The renderer's child-index path of a source element ("" the root, "0,1" the root's second authored child): its index among the
+	/// element siblings that are not property elements (<c>Grid.RowDefinitions</c>), the same rule the frame's authored tree follows.
+	/// Null for a property element or anything inside one.
+	/// </summary>
+	static string AuthoredChildPath(XElement element)
+	{
+		var indices = new Stack<int>();
+		for (var current = element; current.Parent != null; current = current.Parent) {
+			if (current.Name.LocalName.Contains('.'))
+				return null;
+			int index = 0;
+			foreach (var sibling in current.Parent.Elements()) {
+				if (sibling == current)
+					break;
+				if (!sibling.Name.LocalName.Contains('.'))
+					index++;
+			}
+			indices.Push(index);
+		}
+		return string.Join(",", indices);
+	}
 	public (double RenderMs, int Width, int Height, double Dpi, int CompressedBytes, int RawBytes) RenderTiming()
 		=> previewHost.RenderTiming();
 	public double EffectiveDisplayDpi => previewHost.EffectiveDisplayDpi;
@@ -336,7 +368,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			componentTraySelection = false;
 			SelectedElementName = name;
 			shellSelection.Select(name);
-			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _));
+			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _), RuntimeProperties);
 			SelectOutlineNode(name);
 			// The runtime's selection set is managed by surface picks and MultiSelect -
 			// this path only syncs the pad/outline, so it never collapses a multi-selection.
@@ -720,7 +752,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			// pretending that a visual overlay could represent it.
 			componentTraySelection = true;
 			SelectedElementName = (string)element.Attribute(WinUIXamlDocumentEditor.NameDirective);
-			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _));
+			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _), RuntimeProperties);
 			previewHost.ClearSelection();
 			previewHost.ClearGridGuides();
 		}
@@ -1564,7 +1596,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		try {
 		componentTraySelection = false;
 			SelectedElementName = null;
-			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _));
+			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _), RuntimeProperties);
 			if (string.IsNullOrEmpty(path))
 				previewHost.ClearSelection();
 			else

@@ -284,6 +284,14 @@ public class SurfaceChildProcessTests
 		Assert.False(onUnnamed.Hit);   // an unnamed element is not offered to the shell
 		Assert.True(onButtonAgain.Hit && onButtonAgain.ComponentName == "Go");
 		Assert.True(firstHitMs < 3000 && hitMs < 3000, $"a click should stay interactive; first {firstHitMs} ms, repeat {hitMs} ms");
+		// The runtime's own property list for the button (path "0,0" under the page root), read from the frame with no native mode.
+		var buttonProps = await child.Call<DesignerPropertyInfo[]>("design/describe-properties", "s1", "d1", "0,0");
+		Assert.True(buttonProps.Length > 30, "a Button has dozens of properties, got " + buttonProps.Length);
+		var isEnabled = buttonProps.Single(p => p.Name == "IsEnabled");
+		Assert.Equal(new[] { "True", "False" }, isEnabled.AllowedValues);
+		Assert.Equal("Click me", buttonProps.Single(p => p.Name == "Content").Value);
+		Assert.True(buttonProps.Single(p => p.Name == "ActualWidth").IsReadOnly);
+		Assert.Contains(buttonProps, p => p.Name == "HorizontalAlignment" && p.AllowedValues.Contains("Stretch"));
 		// A miss neither broke the connection nor the next render.
 		var again = await child.Call<DesignerSessionState>("session/update", Request(xaml, 2));
 		Assert.True(again.Accepted, again.Error);

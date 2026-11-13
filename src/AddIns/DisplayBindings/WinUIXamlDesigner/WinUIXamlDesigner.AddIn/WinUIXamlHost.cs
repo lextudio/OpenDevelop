@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -830,6 +830,16 @@ public interface IWinUIXamlGridTrackSplit
 /// Optional capability: the runtime reports its last render diagnostics (message plus
 /// source file and range when the XAML parser provided them).
 /// </summary>
+/// <summary>
+/// Optional capability: the renderer reports its own property list for the element at a child-index path ("" the page root, "0,1" the
+/// root's second authored child), so the Properties pad can offer every settable property with its real type, category and choices
+/// instead of a fixed list. Empty when the renderer has none.
+/// </summary>
+public interface IWinUIXamlPropertyCatalog
+{
+	IReadOnlyList<ICSharpCode.SharpDevelop.Designer.Remote.DesignerPropertyInfo> DescribeProperties(string elementPath);
+}
+
 public interface IWinUIXamlNativeLive
 {
 	/// <summary>True while the document is shown in the renderer's own window, placed over the canvas.</summary>

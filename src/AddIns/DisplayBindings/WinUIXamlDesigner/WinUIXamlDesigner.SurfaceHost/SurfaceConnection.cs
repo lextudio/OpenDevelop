@@ -12,7 +12,19 @@ public sealed record SurfaceReady(int Protocol, int MinProtocol, IReadOnlyList<s
 public sealed record SurfaceFrame(int Width, int Height, int DipWidth, int DipHeight, byte[] Png, IReadOnlyList<SurfaceTreeNode>? Tree = null);
 
 /// <summary>One authored element of a described frame. <see cref="Path"/> uses the surface's scheme ("0" the root, "0.1" its second child).</summary>
-public sealed record SurfaceTreeNode(string Path, string Type, string? Name, double X, double Y, double Width, double Height);
+public sealed record SurfaceTreeNode(string Path, string Type, string? Name, double X, double Y, double Width, double Height, SurfaceTreeLayout? Layout = null);
+
+/// <summary>One reflected property of a described element: its category, type, current value and, for an enum or boolean, the legal values.</summary>
+public sealed record SurfaceProperty(string Name, string Category, string TypeName, string Value, bool ReadOnly, IReadOnlyList<string>? Options);
+
+/// <summary>A Grid track as measured: offset from the Grid's origin and rendered size.</summary>
+public sealed record SurfaceTrack(double Offset, double Size);
+
+/// <summary>Measured layout facts of one described element (see the surface's <c>FrameLayout</c>); null fields do not apply.</summary>
+public sealed record SurfaceTreeLayout(
+	double MarginLeft, double MarginTop, double MarginRight, double MarginBottom, string? Parent,
+	int? Row, int? Column, int? RowSpan, int? ColumnSpan, double? CanvasLeft, double? CanvasTop, int? ZIndex,
+	string? Orientation, IReadOnlyList<SurfaceTrack>? Rows, IReadOnlyList<SurfaceTrack>? Columns);
 
 /// <summary>A surface error. <see cref="Line"/>/<see cref="Column"/> are positions in the XAML that was sent.</summary>
 public sealed record SurfaceError(string Phase, string Message, int? Line, int? Column, bool NotDesignable);
@@ -173,6 +185,48 @@ public sealed class SurfaceConnection : IAsyncDisposable
 	/// no native-mode excursion is needed. A surface that predates <c>describe</c> ignores the field and sends no tree.
 	/// </summary>
 	public bool DescribeFrames { get; set; }
+
+	/// <summary>
+	/// The reflected properties of the element at <paramref name="path"/> in the last described frame (the surface's path scheme: "0" the
+	/// page root, "0.1" its second authored child). Read in frame mode, selecting nothing; null when the path no longer resolves (the page
+	/// changed since the frame) or this surface predates <c>DescribeElement</c>.
+	/// </summary>
+	public async Task<IReadOnlyList<SurfaceProperty>?> DescribeElementAsync(string path, CancellationToken cancellationToken = default)
+	{
+		await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+		try {
+			ThrowIfFaulted();
+			ThrowIfNativeLive();
+			try {
+				DrainStale();
+				await SendAsync(new Dictionary<string, object?> { ["type"] = "DescribeElement", ["path"] = path }).ConfigureAwait(false);
+				while (true) {
+					using var doc = await NextAsync(requestTimeout, cancellationToken).ConfigureAwait(false);
+					var root = doc.RootElement;
+					switch (GetString(root, "type")) {
+						case "ElementDescribed":
+							if (!(root.TryGetProperty("found", out var found) && found.ValueKind == JsonValueKind.True))
+								return null;
+							var rows = new List<SurfaceProperty>();
+							foreach (var p in root.GetProperty("props").EnumerateArray()) {
+								List<string>? options = p.TryGetProperty("options", out var o) && o.ValueKind == JsonValueKind.Array
+									? o.EnumerateArray().Select(v => v.GetString() ?? "").ToList() : null;
+								rows.Add(new SurfaceProperty(GetString(p, "name"), GetString(p, "category"), GetString(p, "type"), GetString(p, "value"),
+									p.TryGetProperty("readOnly", out var ro) && ro.ValueKind == JsonValueKind.True, options));
+							}
+							return rows;
+						case "Error":
+							return null;   // an old surface answers an unknown message with a protocol error
+					}
+				}
+			} catch (Exception ex) when (ex is not OperationCanceledException) {
+				fault = ex;
+				throw new SurfaceConnectionFaultedException("The surface did not answer a property request.", ex);
+			}
+		} finally {
+			gate.Release();
+		}
+	}
 
 	/// <summary>
 	/// Asks the surface which element is at a design point, for a click on the canvas. See <see cref="NativeExcursionAsync"/> for how:
@@ -507,8 +561,23 @@ public sealed class SurfaceConnection : IAsyncDisposable
 		var nodes = new List<SurfaceTreeNode>(tree.GetArrayLength());
 		foreach (var n in tree.EnumerateArray())
 			nodes.Add(new SurfaceTreeNode(GetString(n, "path"), GetString(n, "type"), GetNullableString(n, "name"),
-				GetDouble(n, "x"), GetDouble(n, "y"), GetDouble(n, "w"), GetDouble(n, "h")));
+				GetDouble(n, "x"), GetDouble(n, "y"), GetDouble(n, "w"), GetDouble(n, "h"), ParseLayout(n)));
 		return nodes;
+	}
+
+	static SurfaceTreeLayout? ParseLayout(JsonElement node)
+	{
+		if (!node.TryGetProperty("layout", out var l) || l.ValueKind != JsonValueKind.Object)
+			return null;
+		double[] margin = l.TryGetProperty("margin", out var m) && m.ValueKind == JsonValueKind.Array && m.GetArrayLength() == 4
+			? m.EnumerateArray().Select(v => v.GetDouble()).ToArray() : new double[4];
+		int? Int(string name) => l.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : null;
+		double? Dbl(string name) => l.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null;
+		IReadOnlyList<SurfaceTrack>? Tracks(string name) => l.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array
+			? v.EnumerateArray().Select(x => new SurfaceTrack(GetDouble(x, "offset"), GetDouble(x, "size"))).ToList() : null;
+		return new SurfaceTreeLayout(margin[0], margin[1], margin[2], margin[3], GetNullableString(l, "parent"),
+			Int("row"), Int("column"), Int("rowSpan"), Int("columnSpan"), Dbl("canvasLeft"), Dbl("canvasTop"), Int("zIndex"),
+			GetNullableString(l, "orientation"), Tracks("rows"), Tracks("columns"));
 	}
 
 	static SurfaceError ParseError(JsonElement root)

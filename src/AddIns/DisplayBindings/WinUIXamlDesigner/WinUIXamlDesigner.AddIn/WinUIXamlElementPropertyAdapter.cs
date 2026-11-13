@@ -29,9 +29,12 @@ namespace ICSharpCode.WinUIXamlDesigner
 		readonly Action<XElement, XName, string> setEventHandler;
 		readonly Action<XElement> editRichText;
 		readonly Func<XElement, bool> canEditRichText;
+		readonly Func<XElement, IReadOnlyList<ICSharpCode.SharpDevelop.Designer.Remote.DesignerPropertyInfo>> runtimeProperties;
 
-		public WinUIXamlElementPropertyAdapter(XElement element, XElement documentRoot, Action<XElement, XName, string> setAttribute, Action<XElement, XName, string> setEventHandler = null, Action<XElement> editRichText = null, Func<XElement, bool> canEditRichText = null)
+		public WinUIXamlElementPropertyAdapter(XElement element, XElement documentRoot, Action<XElement, XName, string> setAttribute, Action<XElement, XName, string> setEventHandler = null, Action<XElement> editRichText = null, Func<XElement, bool> canEditRichText = null,
+			Func<XElement, IReadOnlyList<ICSharpCode.SharpDevelop.Designer.Remote.DesignerPropertyInfo>> runtimeProperties = null)
 		{
+			this.runtimeProperties = runtimeProperties;
 			this.element = element ?? throw new ArgumentNullException(nameof(element));
 			this.documentRoot = documentRoot;
 			this.setAttribute = setAttribute ?? throw new ArgumentNullException(nameof(setAttribute));
@@ -78,29 +81,57 @@ namespace ICSharpCode.WinUIXamlDesigner
 			var resourceKeys = CollectResourceKeys();
 			var present = new HashSet<string>(StringComparer.Ordinal);
 			var eventNames = EventsFor(element.Name.LocalName);
+			// The renderer's own list for this element (when it has one): every settable property with its real category, type and choices.
+			var runtime = RuntimeCatalog();
 			foreach (var attribute in element.Attributes()) {
 				if (attribute.IsNamespaceDeclaration) continue;
 				present.Add(attribute.Name.LocalName);
 				// Event attributes (Click="...") live in the Events view, not the property list.
 				if (eventNames.Contains(attribute.Name.LocalName))
 					continue;
-				descriptors.Add(new XamlAttributeDescriptor(element, attribute.Name, attribute.Value, setAttribute, resourceKeys));
+				runtime.TryGetValue(attribute.Name.LocalName, out var authoredInfo);
+				descriptors.Add(new XamlAttributeDescriptor(element, attribute.Name, attribute.Value, setAttribute, resourceKeys, runtime: authoredInfo));
 			}
 			if (element.Name.LocalName == "RichTextBlock" && editRichText != null && (canEditRichText?.Invoke(element) ?? false))
 				descriptors.Add(new RichTextBlockDescriptor(element, editRichText));
 			// The pad lists the element's common properties even when they are not set yet,
 			// so users can add them (VS-style) instead of only editing existing attributes.
-			foreach (var name in CommonProperties(element.Name.LocalName))
+			var offered = runtime.Count > 0
+				? runtime.Values.Where(IsSettable).Select(info => info.Name)
+				: CommonProperties(element.Name.LocalName);
+			foreach (var name in offered)
 			{
 				if (present.Contains(name))
 					continue;
 				// Attribute names without a namespace serialize without a prefix, and the
 				// XAML reader resolves them into the element's default namespace - the
 				// idiomatic form, rather than a generated "p7:" prefix.
-				descriptors.Add(new XamlAttributeDescriptor(element, XName.Get(name), null, setAttribute, resourceKeys, isNew: true));
+				runtime.TryGetValue(name, out var info);
+				descriptors.Add(new XamlAttributeDescriptor(element, XName.Get(name), null, setAttribute, resourceKeys, isNew: true, runtime: info));
 			}
 			return new PropertyDescriptorCollection(descriptors.ToArray(), readOnly: true);
 		}
+
+		/// <summary>The renderer's properties for this element by name, in the renderer's order; empty without a catalog.</summary>
+		Dictionary<string, ICSharpCode.SharpDevelop.Designer.Remote.DesignerPropertyInfo> RuntimeCatalog()
+		{
+			var byName = new Dictionary<string, ICSharpCode.SharpDevelop.Designer.Remote.DesignerPropertyInfo>(StringComparer.Ordinal);
+			try {
+				foreach (var info in runtimeProperties?.Invoke(element) ?? Array.Empty<ICSharpCode.SharpDevelop.Designer.Remote.DesignerPropertyInfo>())
+					byName.TryAdd(info.Name, info);
+			} catch (Exception) {
+				// A catalog that fails leaves the fixed list; the pad must still open.
+			}
+			return byName;
+		}
+
+		static readonly HashSet<string> TextEditableTypes = new(StringComparer.Ordinal) {
+			"Boolean", "String", "Double", "Single", "Int32", "Thickness", "CornerRadius", "Brush", "FontFamily"
+		};
+
+		/// <summary>A runtime property the pad can offer: not read-only, and either with a closed set of values or of a type that round-trips as attribute text.</summary>
+		static bool IsSettable(ICSharpCode.SharpDevelop.Designer.Remote.DesignerPropertyInfo info)
+			=> !info.IsReadOnly && info.Name != "Name" && (info.AllowedValues.Count > 0 || TextEditableTypes.Contains(info.TypeName) || info.Name == "Content");
 
 		public EventDescriptorCollection GetEvents() => GetEvents(null);
 
@@ -280,9 +311,11 @@ namespace ICSharpCode.WinUIXamlDesigner
 			readonly Action<XElement, XName, string> setAttribute;
 			readonly IReadOnlyList<string> resourceKeys;
 			readonly bool isNew;
+			readonly ICSharpCode.SharpDevelop.Designer.Remote.DesignerPropertyInfo runtime;
 
 			public XamlAttributeDescriptor(XElement element, XName attributeName, string currentValue,
-				Action<XElement, XName, string> setAttribute, IReadOnlyList<string> resourceKeys, bool isNew = false)
+				Action<XElement, XName, string> setAttribute, IReadOnlyList<string> resourceKeys, bool isNew = false,
+				ICSharpCode.SharpDevelop.Designer.Remote.DesignerPropertyInfo runtime = null)
 				// Xceed binds each row with new Binding(descriptor.Name); an attached attribute such
 				// as "Grid.Row" would be parsed as a property path and silently drop the edit.
 				: base(BindingSafeName(attributeName.LocalName), null)
@@ -293,12 +326,18 @@ namespace ICSharpCode.WinUIXamlDesigner
 				this.setAttribute = setAttribute;
 				this.resourceKeys = resourceKeys;
 				this.isNew = isNew;
+				this.runtime = runtime;
 			}
 
 			public override Type ComponentType => typeof(WinUIXamlElementPropertyAdapter);
 			public override string DisplayName => attributeName.LocalName;
 			public override bool IsReadOnly => false;
-			public override string Category => attributeName.NamespaceName.Length == 0 ? "XAML" : attributeName.NamespaceName;
+			// The renderer's category (Layout, Appearance, Text, ...) when it knows the property; otherwise the source-level grouping.
+			public override string Category => !string.IsNullOrEmpty(runtime?.Category) && attributeName.NamespaceName.Length == 0
+				? runtime.Category
+				: attributeName.NamespaceName.Length == 0 ? "XAML" : attributeName.NamespaceName;
+			public override string Description => runtime == null ? base.Description
+				: "Current value: " + (string.IsNullOrEmpty(runtime.Value) ? "(empty)" : runtime.Value) + " (" + runtime.TypeName + ")";
 
 			static bool IsThicknessProperty(string name)
 				=> name == "Margin" || name == "Padding" || name == "BorderThickness";
@@ -330,6 +369,8 @@ namespace ICSharpCode.WinUIXamlDesigner
 						return typeof(string);
 					if (EnumMappings.TryGetValue(attributeName.LocalName, out var enumType))
 						return enumType;
+					if (RuntimeChoices != null)
+						return typeof(string);
 					if (IsThicknessProperty(attributeName.LocalName))
 						return typeof(Thickness);
 					if (IsBrushProperty(attributeName.LocalName, currentValue))
@@ -346,6 +387,8 @@ namespace ICSharpCode.WinUIXamlDesigner
 						return new ResourceReferenceValueConverter(resourceKeys, resourceReferenceKind);
 					if (EnumMappings.TryGetValue(attributeName.LocalName, out var enumType))
 						return new EnumValueConverter(enumType);
+					if (RuntimeChoices != null)
+						return new RuntimeChoiceConverter(RuntimeChoices);
 					if (IsThicknessProperty(attributeName.LocalName))
 						return new ThicknessValueConverter();
 					if (IsBrushProperty(attributeName.LocalName, currentValue))
@@ -353,6 +396,11 @@ namespace ICSharpCode.WinUIXamlDesigner
 					return base.Converter;
 				}
 			}
+
+			/// <summary>The renderer's closed set of values for a property the fixed tables do not know (any enum, or a boolean), or null.</summary>
+			IReadOnlyList<string> RuntimeChoices => runtime != null && runtime.AllowedValues.Count > 0
+				&& !EnumMappings.ContainsKey(attributeName.LocalName) && !TryGetResourceReference(currentValue, out _)
+				? runtime.AllowedValues : null;
 
 			static bool TryGetResourceReference(string value, out string kind)
 			{
@@ -426,6 +474,16 @@ namespace ICSharpCode.WinUIXamlDesigner
 			public override bool CanResetValue(object component) => element.Attribute(attributeName) != null;
 			public override void ResetValue(object component) => setAttribute(element, attributeName, null);
 			public override bool ShouldSerializeValue(object component) => element.Attribute(attributeName) != null;
+		}
+
+		/// <summary>A dropdown of the renderer's legal values for an enum or boolean property.</summary>
+		sealed class RuntimeChoiceConverter : StringConverter
+		{
+			readonly IReadOnlyList<string> choices;
+			public RuntimeChoiceConverter(IReadOnlyList<string> choices) => this.choices = choices;
+			public override bool GetStandardValuesSupported(ITypeDescriptorContext context) => true;
+			public override bool GetStandardValuesExclusive(ITypeDescriptorContext context) => true;
+			public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext context) => new StandardValuesCollection(choices.ToArray());
 		}
 
 		/// <summary>

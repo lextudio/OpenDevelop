@@ -102,6 +102,7 @@ sealed class SurfaceDesignRpc
 		rpc.AddLocalRpcMethod("app/resources", new Func<string, string, string, DesignerAppResourcesResult>(AppResources));
 	rpc.AddLocalRpcMethod("design/hit-test", new Func<string, string, long, double, double, DesignerHitTestResult>(HitTest));
 		rpc.AddLocalRpcMethod("design/native-live", new Func<string, string, bool, DesignerDocumentRequest?, SurfaceNativeLiveReply>(NativeLive));
+			rpc.AddLocalRpcMethod("design/describe-properties", new Func<string, string, string, DesignerPropertyInfo[]>(DescribeProperties));
 			rpc.AddLocalRpcMethod("design/export-png", new Func<string, string, string, string>(ExportPng));
 		rpc.AddLocalRpcMethod("ping", new Action(() => { }));
 		rpc.AddLocalRpcMethod("shutdown", new Action(() => {
@@ -258,6 +259,18 @@ sealed class SurfaceDesignRpc
 		} catch (Exception e) when (e is SurfaceConnectionFaultedException or SurfaceProtocolException or IOException or TimeoutException) {
 			Console.Error.WriteLine($"{Runtime}: design/native-live failed: {e}");
 			return new SurfaceNativeLiveReply { Message = "The WinUI surface stopped responding: " + (e.InnerException?.Message ?? e.Message) };
+		}
+	}
+
+	/// <summary><c>design/describe-properties</c>: the runtime's property list for an element of the last frame (see
+	/// <see cref="SurfaceDesignDocument.DescribePropertiesAsync"/>). A lost surface answers with none, never an exception.</summary>
+	DesignerPropertyInfo[] DescribeProperties(string sessionId, string documentId, string elementPath)
+	{
+		try {
+			return documents.Get(sessionId, documentId).DescribePropertiesAsync(elementPath).GetAwaiter().GetResult().ToArray();
+		} catch (Exception e) when (e is SurfaceConnectionFaultedException or SurfaceProtocolException or IOException or TimeoutException) {
+			Console.Error.WriteLine($"{Runtime}: design/describe-properties failed: {e.Message}");
+			return Array.Empty<DesignerPropertyInfo>();
 		}
 	}
 
