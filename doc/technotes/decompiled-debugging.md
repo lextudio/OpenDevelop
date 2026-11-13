@@ -1,9 +1,9 @@
 # Debugging decompiled code (ILSpy-generated source and PDB)
 
-Status (2026-11-12): **implemented on both sides, one release step open.** The `sharpdbg` change is committed
-(`92a259a`, unpublished); the IDE side (this repository) is in the commit that carries this note. Until a SharpDbg package
-that understands `decompileExternalCode` is published and `SharpDbgCliVersion` in `Directory.Packages.props` is moved, the pinned adapter
-ignores the argument and keeps decompiling by itself, so the IDE behaves as before. Facts below were checked against the
+Status (2026-11-13): **implemented on both sides and released.** The `sharpdbg` change is `92a259a`, published by the run 43343602033 of
+`publish-opendevelop-packages.yml` as `1.0.0-lextudio.43343602033.1` (both packages), and `SharpDbgCliVersion` / `SharpDbgAndroidAgentVersion` in
+`Directory.Packages.props` point at it. `ExternalFrame_OpensDecompiledSource` passes against the published adapter. An older adapter (an older pin) ignores
+`decompileExternalCode` and keeps decompiling by itself, so the IDE then behaves as before. Facts below were checked against the
 code and, for the end-to-end behaviour, against a real IDE session on macOS. Anything marked *open* is not verified.
 
 Related notes: [`debugging.md`](debugging.md) ("External-frame decompilation", the DAP backend and
@@ -50,7 +50,7 @@ Three parts, built and tested one after the other.
 
 ### 1. `../sharpdbg`: client-supplied symbols and a switch for self-decompilation
 
-**Implemented in the `sharpdbg` working tree (2026-11-12), not yet published.** Tests:
+**Implemented in `sharpdbg` (`92a259a`, published 2026-11-13).** Tests:
 `tests/SharpDbg.Cli.Tests/ClientSymbolsTests.cs` (declined symbols leave the frame unresolved and nothing is decompiled by the adapter;
 supplied symbols resolve the frame), plus the existing `StackTraceTests`, `StepTests`, `AttachOptionsTests` and `ProtocolTests`
 unchanged.
@@ -70,8 +70,7 @@ unchanged.
   lock (`RunOffDispatchLoopIfClientSymbols`), so the dispatch loop can deliver `loadSymbols`. Lock order is unchanged.
 - Ending the session releases every waiter (`Dispose`). `initialize` reports `supportsClientSymbols: true`. A restart keeps the
   setting (`SubscribeToDebuggerEvents` re-applies it).
-- Still to do: publish through the `sharpdbg` checkout's `publish-opendevelop-packages.yml`, then move `SharpDbgCliVersion` in
-  `Directory.Packages.props` (see `OpenDevelop/AGENTS.md`); check `SharpDbg.AndroidAgent`, which has its own request switch
+- Published and pinned (see the status line). Still to do: check `SharpDbg.AndroidAgent`, which has its own request switch
   (`AndroidDapServer.cs:152`) and does not take part yet.
 
 ### 2. ILSpy add-in: the symbol provider (implemented)
@@ -129,15 +128,14 @@ ordinary source-file paths. The line numbers are the PDB's own because the PDB a
 
 | IDE | Adapter | Result |
 |---|---|---|
-| new | new (not yet published) | This design. |
-| new | pinned one (ignores `decompileExternalCode`) | The adapter still decompiles by itself; the IDE keeps using `decompiledSourceInfo` + `IDecompiledSourceNavigator`. Verified: `ExternalFrame_OpensDecompiledSource` passes. |
+| new | new (published, pinned) | This design. |
+| new | older pin (ignores `decompileExternalCode`) | The adapter still decompiles by itself; the IDE keeps using `decompiledSourceInfo` + `IDecompiledSourceNavigator`. Verified: `ExternalFrame_OpensDecompiledSource` passes. |
 | old | new | The default `true` keeps today's behaviour. |
 
-Release steps still to do: publish the two SharpDbg packages from the `sharpdbg` checkout's `publish-opendevelop-packages.yml`, then move
-`SharpDbgCliVersion` and `SharpDbgAndroidAgentVersion` in `Directory.Packages.props`. `SharpDbg.AndroidAgent` has its own request switch
+Release: done (the two packages are published and pinned). `SharpDbg.AndroidAgent` has its own request switch
 (`AndroidDapServer.cs:152`) and does not take part yet.
 
-Local testing before that: build `../sharpdbg` and copy `SharpDbg.{Application,Infrastructure,Cli}.dll/.pdb` over `AddIns/Debugger/`. Any
+Local testing of a `sharpdbg` change before it is published: build `../sharpdbg` and copy `SharpDbg.{Application,Infrastructure,Cli}.dll/.pdb` over `AddIns/Debugger/`. Any
 build of `Debugger.AddIn` (and building the integration project) puts the packaged adapter back, so copy again right before a run.
 
 ## Tests
