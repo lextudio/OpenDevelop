@@ -16,8 +16,8 @@ namespace ICSharpCode.Core.Presentation
 			IsRouted = entry.IsRouted;
 			DefaultGesture = KeyboardShortcutsModel.Normalize(entry.DefaultGesture);
 			Locations = entry.ItemPaths.Distinct().ToList();
-			Scope = KeyboardShortcutsModel.ScopeOf(entry.ItemPaths);
-			Group = KeyboardShortcutsModel.GroupOf(entry.ItemPaths);
+			Scope = entry.ExplicitScope ?? KeyboardShortcutsModel.ScopeOf(entry.ItemPaths);
+			Group = entry.ExplicitGroup ?? KeyboardShortcutsModel.GroupOf(entry.ItemPaths);
 			string label;
 			GroupName = groupLabels != null && groupLabels.TryGetValue(Group, out label) ? label : Group;
 		}

@@ -23,6 +23,11 @@ namespace ICSharpCode.Core.Presentation
 
 		/// <summary>The AddIn-tree path each item of <see cref="Items"/> sits in, in the same order.</summary>
 		public IReadOnlyList<string> ItemPaths { get; internal set; }
+
+		/// <summary>For a command that is not an AddIn-tree item (<see cref="ExternalCommand"/>): the scope and heading it names itself; null for a tree command.</summary>
+		public string ExplicitScope { get; internal set; }
+
+		public string ExplicitGroup { get; internal set; }
 	}
 
 	/// <summary>
@@ -54,6 +59,12 @@ namespace ICSharpCode.Core.Presentation
 		/// <summary>The commands of these AddIns (the loaded ones), ordered by name.</summary>
 		public static IReadOnlyList<CommandCatalogEntry> Build(IEnumerable<AddIn> addIns)
 		{
+			return Build(addIns, null);
+		}
+
+		/// <summary>The commands of these AddIns plus <paramref name="external"/> ones (a key an AddIn item already has is not added twice), ordered by name.</summary>
+		public static IReadOnlyList<CommandCatalogEntry> Build(IEnumerable<AddIn> addIns, IEnumerable<ExternalCommand> external)
+		{
 			if (addIns == null)
 				throw new ArgumentNullException("addIns");
 			var groups = new Dictionary<string, List<KeyValuePair<string, Codon>>>();
@@ -76,7 +87,18 @@ namespace ICSharpCode.Core.Presentation
 					}
 				}
 			}
-			return order.Select(key => Create(key, groups[key]))
+			var entries = order.Select(key => Create(key, groups[key])).ToList();
+			if (external != null) {
+				foreach (ExternalCommand command in external) {
+					if (groups.ContainsKey(command.Key) || entries.Any(e => e.Key == command.Key))
+						continue;
+					entries.Add(new CommandCatalogEntry {
+						Key = command.Key, DisplayName = command.Name, DefaultGesture = command.DefaultGesture,
+						Items = new Codon[0], ItemPaths = new string[0], ExplicitScope = command.Scope, ExplicitGroup = command.Group
+					});
+				}
+			}
+			return entries
 				.OrderBy(entry => entry.DisplayName, StringComparer.CurrentCultureIgnoreCase)
 				.ThenBy(entry => entry.Key, StringComparer.Ordinal)
 				.ToList();

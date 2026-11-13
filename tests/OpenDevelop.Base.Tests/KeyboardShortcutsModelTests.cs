@@ -365,4 +365,31 @@ public sealed class KeyboardShortcutsModelTests : IDisposable
 		Assert.Equal("class:Foo.Fold", Assert.Single(preview.Changes).Row.Key);
 		Assert.Equal(new[] { "class:Foo.Clean", "class:Foo.Rebuild" }, preview.Invalid.OrderBy(k => k));
 	}
+
+	[Fact]
+	public void ACommandThatIsNotAnAddInItem_IsARowInItsOwnScope_AndCanBeOverridden()
+	{
+		var external = new[] {
+			new ExternalCommand("editor:EditingCommands.DeleteNextWord", "Delete next word", "Text editor", "Text editor", "Ctrl+Delete"),
+			new ExternalCommand("class:Foo.Build", "Duplicate of an item", "Text editor", "Text editor", "F1") // a key an AddIn item has: not added twice
+		};
+		var addIn = AddIn.Load(new AddInTreeImpl(null), new StringReader(Manifest));
+		addIn.Enabled = true;
+		var model = new KeyboardShortcutsModel(CommandCatalog.Build(new[] { addIn }, external), new Dictionary<string, string>());
+
+		var row = model.Find("editor:EditingCommands.DeleteNextWord")!;
+		Assert.Equal("Text editor", row.Scope);
+		Assert.Equal("Text editor", row.Group);
+		Assert.False(row.IsRouted);
+		Assert.Equal("Ctrl+Delete", row.Gesture);
+		Assert.Equal("Build", model.Find("class:Foo.Build")!.Name.TrimStart('_').Replace("_", "")); // the item won
+
+		// the same gesture as a Workbench command is shadowing, not a conflict
+		var check = model.Check(row.Key, "Ctrl+F8");
+		Assert.Empty(check.Conflicts);
+		Assert.Equal("class:Foo.Build", Assert.Single(check.Shadows).Key);
+
+		model.Assign(row.Key, "Ctrl+Shift+D");
+		Assert.Equal("Ctrl+Shift+D", model.BuildOverrides()["editor:EditingCommands.DeleteNextWord"]);
+	}
 }

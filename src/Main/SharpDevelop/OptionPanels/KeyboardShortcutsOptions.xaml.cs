@@ -70,7 +70,7 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 		{
 			InitializeComponent();
 			var addIns = SD.AddInTree.AddIns;
-			model = new KeyboardShortcutsModel(CommandCatalog.Build(addIns), KeyBindingService.Default.Overrides, CommandCatalog.MainMenuLabels(addIns));
+			model = new KeyboardShortcutsModel(CommandCatalog.Build(addIns, ExternalCommands.All()), KeyBindingService.Default.Overrides, CommandCatalog.MainMenuLabels(addIns));
 			views = model.Rows.Select(r => new RowView(model, r)).ToList();
 			collection = CollectionViewSource.GetDefaultView(views);
 			collection.GroupDescriptions.Add(new PropertyGroupDescription("GroupName"));
@@ -218,7 +218,7 @@ namespace ICSharpCode.SharpDevelop.OptionPanels
 			bool editable = view != null && !view.Row.IsRouted;
 			captureBox.IsEnabled = editable;
 			selectedText.Text = view == null ? "" : string.Format(Text("Selected}"), view.Name);
-			locationsText.Text = view == null ? "" : string.Format(Text("Locations}"), string.Join(", ", view.Row.Locations));
+			locationsText.Text = view == null ? "" : string.Format(Text("Locations}"), (view.Row.Locations.Count == 0 ? view.GroupName : string.Join(", ", view.Row.Locations)));
 			resetButton.IsEnabled = editable && view.Row.IsCustomized;
 			removeButton.IsEnabled = editable && view.Row.Gesture != null;
 			Evaluate();
