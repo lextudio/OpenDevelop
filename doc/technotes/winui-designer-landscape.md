@@ -1498,3 +1498,16 @@ frame (deepest element containing the point; only named elements are hits), fall
 sends no tree. Verified: fake-surface test, the real-surface DDP test, and the IDE on the WinUISample fixture (outline and 3 resolved
 names from the described frame). Next: layout metadata (Grid row/column offsets, panel orientation) for drop targets, then
 `ElementProps` into the property grid.
+
+**Layout metadata and the property catalog (surface 0.4.0).** Each node of a described frame also carries measured layout facts (margin,
+parent kind, Grid row/column/span, Canvas left/top, z-index, StackPanel orientation, and a Grid's track offsets and sizes).
+`SurfaceDesignDocument` puts them on the shell's nodes as `GridTracks`, `LayoutInsets` (`Margin` for a Grid child, `CanvasPosition` for a
+Canvas child) and `ZIndex`, so drop targets and snapping need no native mode. `DescribeElement{path}` answers with the reflected properties
+of one element of the last described frame, and the child exposes it as `design/describe-properties`. The Properties pad uses it:
+instead of a fixed list of ten to fifteen names, selecting a Button in the IDE offers about 70 settable properties in the renderer's
+order, with the renderer's categories, the current value as the description and a dropdown of legal values for enums and booleans
+(`FlowDirection`, `IsTabStop`, `ElementSoundMode`, which the fixed tables did not know). An edit through the pad (`FlowDirection` ->
+`RightToLeft`) went through the source editor and undid cleanly. The fixed list remains the fallback for a renderer without a catalog.
+Path mapping: a source element's renderer path skips property elements (`Grid.RowDefinitions`), the rule the frame tree follows; four
+adapter construction sites need the catalog delegate (a missed fourth, the multi-selection path, made the pad fall back after the
+first selection).

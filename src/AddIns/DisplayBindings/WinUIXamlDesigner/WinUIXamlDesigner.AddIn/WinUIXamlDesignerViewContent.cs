@@ -234,8 +234,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	/// <summary>The renderer's own property list for a source element, or none (no catalog, or the element has no counterpart in the frame).</summary>
 	IReadOnlyList<DesignerPropertyInfo> RuntimeProperties(XElement element)
 	{
-		if (previewHost.Runtime is not IWinUIXamlPropertyCatalog catalog)
+		if (previewHost.Runtime is not IWinUIXamlPropertyCatalog catalog) {
+			ICSharpCode.Core.LoggingService.Info("WinUI property catalog: runtime is " + (previewHost.Runtime?.GetType().FullName ?? "null") + ", not a catalog");
 			return Array.Empty<DesignerPropertyInfo>();
+		}
 		var path = AuthoredChildPath(element);
 		return path == null ? Array.Empty<DesignerPropertyInfo>() : catalog.DescribeProperties(path);
 	}
@@ -1927,7 +1929,7 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	void BindPropertySelection(IReadOnlyList<string> names)
 	{
 		var adapters = names.Select(editor.FindElement).Where(element => element != null)
-			.Select(element => (object)new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _))).ToArray();
+			.Select(element => (object)new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _), RuntimeProperties)).ToArray();
 		propertyContainer.SelectedObject = adapters.Length > 1 ? new DesignerMultiPropertyAdapter(adapters) : adapters.FirstOrDefault();
 	}
 

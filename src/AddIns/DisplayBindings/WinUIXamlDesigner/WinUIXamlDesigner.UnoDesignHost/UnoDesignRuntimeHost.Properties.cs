@@ -14,7 +14,8 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlPropertyCatalog
 		if (client == null)
 			return Array.Empty<DesignerPropertyInfo>();
 		try {
-			return client.DescribePropertiesAsync(elementPath).GetAwaiter().GetResult() ?? Array.Empty<DesignerPropertyInfo>();
+			var described = client.DescribePropertiesAsync(elementPath).GetAwaiter().GetResult() ?? Array.Empty<DesignerPropertyInfo>();
+			return described;
 		} catch (Exception e) {
 			LoggingService.Debug("WinUI property catalog unavailable: " + e.GetBaseException().Message);
 			return Array.Empty<DesignerPropertyInfo>();
