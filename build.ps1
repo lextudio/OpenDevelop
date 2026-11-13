@@ -270,7 +270,10 @@ foreach ($project in $targets) {
     # Keep GitVersion from spawning a separate bare `dotnet` process only when the pinned
     # -p:GitVersion_* values are present. If pinning was skipped or failed, GitVersion must run so
     # Directory.Build.targets does not fall back to 0.0.0/nogit.
-    $gitVersionTaskProperty = if ($gitVersionWasPinned) { @('-p:DisableGitVersionTask=true') } else { @() }
+    # Typed as [string[]]: assigning a one-element array out of an `if` unrolls it to a STRING, and
+    # splatting a string hands PowerShell one argument per character ("- p : D i s a b l e ...",
+    # which MSBuild reports as MSB1001: an argument blob).
+    [string[]]$gitVersionTaskProperty = if ($gitVersionWasPinned) { '-p:DisableGitVersionTask=true' } else { @() }
     Invoke-Native $dotnet build $project -c $Configuration @gitVersionTaskProperty '-v' 'minimal' @commonProperties
 
     if ($sharedAssemblyHints | Where-Object { $relative -like "*$_*" }) {
