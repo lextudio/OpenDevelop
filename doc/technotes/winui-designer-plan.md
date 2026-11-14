@@ -137,25 +137,26 @@ Each step ends with a committed change, tests where the code has an executable s
    `DropCanvas` offers the four Grid properties at their defaults and `Grid.Row=1` is authored; a button dropped into
    `DropCanvas` shows `Canvas.Left`/`Top` 30/20 and no Grid properties, and editing `Canvas.Top` authors it; every edit
    and drop is undone.
-8. **Live `{x:Bind}` values (the better mechanism).** Specified in `winui-designer-bindings.md`; prototyped end to end on
-   2026-11-14 and working. The compiled preview (step 5) is correct but last-build; the plan's live rule needs XAML-only
+8. **Live `{x:Bind}` values (the better mechanism).** Specified in `winui-designer-bindings.md`; built, published and on
+   by default on 2026-11-14. The compiled preview (step 5) is correct but last-build; the plan's live rule needs XAML-only
    binding edits to render without a project build. The mechanism keeps the markup preview and evaluates each `{x:Bind}`
    against one design-time **page instance** (from the project assembly, constructed under the existing
    `WINUI_XAML_DESIGN_MODE` signal), substituting the value into the preview XAML: reflection for member paths, cached
    Roslyn delegates for function/static bindings, with converter/format/fallback semantics, extending the fork's existing
    `SamplePlanner`/`SampleTypeModel` resolver from "synthesise from types" to "evaluate against the app's design-time
    state". It lives in the Surface host beside `SamplePlanner` - the only process where WinUI and the user assembly are
-   loaded - behind one render option; the IDE sends it and later shows it as a toolbar mode. **Prototype status:** the
-   shell side (`OD_WINUI_LIVE_BINDINGS=1` -> `evaluateBindings`/`designType`) is in this repository; the evaluator
-   (member paths, Roslyn-compiled function/static bindings, converters declared in the document,
-   `ConverterParameter`/`FallbackValue`/`TargetNullValue`) lives in the deployed payload, not yet in the fork package.
-   Measured on `BoundPage`, whose probe rows are now `{x:Bind Title}`, a converter declared in the page's resources and
-   `{x:Bind Shout(Title)}`: markup mode reports `"Bound from code-behind"`, `"Bound from code-behind (design)"` and
-   `"BOUND FROM CODE-BEHIND!"` - identical to the compiled reference on the same document - evaluation costs about 1 ms
-   of a render, warm open is about 10 s against 21.5 s, and binding edits made through the Properties pad (a path, a
-   nested function call, a converter parameter) update the preview in 2.4-2.6 s with no build. `{x:Bind}` has no
-   `StringFormat` (WMC0011), so a format comes from a converter or a function. Still to do: `x:DataType` roots,
-   templates, non-text targets with type conversion, and moving the evaluator into `LeXtudio.WinUISurface`. Done when:
+   loaded - behind two render fields; the IDE sends them and shows the mode as the default. **Shipped** in
+   `LeXtudio.WinUISurface` 0.5.0 (fork tag `surface-v0.5.0`; the release workflow built x64 and ARM64, smoke-tested both
+   and published): member paths, Roslyn-compiled function/static bindings, converters declared in the document, and
+   `ConverterParameter`/`FallbackValue`/`TargetNullValue`. OpenDevelop defaults it on (`OD_WINUI_LIVE_BINDINGS=0` opts
+   out) and the payload is rebuilt from the published package. Measured on `BoundPage`, whose probe rows are now
+   `{x:Bind Title}`, a converter declared in the page's resources and `{x:Bind Shout(Title)}`: markup mode reports
+   `"Bound from code-behind"`, `"Bound from code-behind (design)"` and `"BOUND FROM CODE-BEHIND!"` - identical to the
+   compiled reference on the same document - evaluation costs about 1 ms of a render, warm open is about 10 s against
+   21.5 s, and binding edits made through the Properties pad (a path, a nested function call, a converter parameter)
+   update the preview in 2.4-2.6 s with no build. `{x:Bind}` has no `StringFormat` (WMC0011), so a format comes from a
+   converter or a function. Still to do: `x:DataType` roots, templates, non-text targets with type conversion, a toolbar
+   switch. Done when:
    `BoundPage` shows "Bound from code-behind" in markup mode; changing the binding or adding a converter updates the
    preview on save without a build; a code-behind edit is the only remaining rebuild (and is reported as such); warm
    render stays near markup cost (13 s measured; the compiled preview is 21.5 s).
@@ -181,10 +182,10 @@ Out of scope for now: visual states and storyboards, template editing, a data-bi
   has rows. A real drag journey needs a backend whose child reports a catalog; the pointer journey confirmed the pad has zero rows
   and `toolbox.query-item-bounds` fails, so the drop is verified through its hook and unit tests only.
 - **`{x:Bind}` today vs the target.** The compiled preview shows real values but is last-build; the default markup preview
-  shows them empty. Step 8 (`winui-designer-bindings.md`) is the design-time binding evaluator that makes XAML-only
-  binding edits live; its prototype now reports the same value in markup mode at markup cost, but the evaluator still lives in
-  the deployed payload rather than in `LeXtudio.WinUISurface`, so the compiled mode remains the shipped reference. Either mode
-  constructs a page instance from the project assembly, so the project keeps the WinAppSDK bootstrap initializers off.
+  now evaluates them (`winui-designer-bindings.md`, surface 0.5.0, on by default) so a binding edit is live, while the
+  compiled page stays the opt-in fidelity reference. Unhandled forms - `x:DataType` roots, templates, non-text targets,
+  two-way - still fall back to the cleaner's placeholders. Either mode constructs a page instance from the project
+  assembly, so the project keeps the WinAppSDK bootstrap initializers off.
 - **Process.** Commits so far skipped the `build/opencode-review.ps1` review at the owner's instruction; CI results are ignored for now.
   ARM64 is not a priority.
 
@@ -216,8 +217,7 @@ editor converter and whether the source authors the property; `properties-pad.ed
 drive and inspect them. `runtime-properties <name>` reports the renderer's own values, which is how a compiled preview's
 `{x:Bind}` result is read. For the compiled preview, launch with `OD_WINUI_COMPILED=1` and a project whose
 `WindowsAppSdkBootstrapInitialize`/`WindowsAppSdkUndockedRegFreeWinRTInitialize` are false (see
-`tests/fixtures/WinUIDesignerFixture/Microsoft/BoundPage.xaml`); without the variable the same page renders markup and the
-bound text is empty. The live-binding evaluator that replaces that limitation is specified and prototyped in
-`doc/technotes/winui-designer-bindings.md`: launch with `OD_WINUI_LIVE_BINDINGS=1` as well and the markup preview reports
-`Text = "Bound from code-behind"`, and a binding edit made through the Properties pad re-renders without a build (the
-evaluator itself is in the deployed payload, not yet in the published surface package).
+`tests/fixtures/WinUIDesignerFixture/Microsoft/BoundPage.xaml`); without the variable the same page renders markup. The
+markup preview itself now evaluates `{x:Bind}` (`doc/technotes/winui-designer-bindings.md`, surface 0.5.0 and on by
+default), so it reports `Text = "Bound from code-behind"` with no variable set, and a binding edit made through the
+Properties pad re-renders without a build; `OD_WINUI_LIVE_BINDINGS=0` turns the evaluation off.

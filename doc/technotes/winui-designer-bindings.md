@@ -61,11 +61,12 @@ last-build edge instead of "the whole XAML is last-build".
 The evaluator must run where WinUI and the user assembly are loaded - the **Surface host**
 (`Surface.exe`), not the IDE and not the DDP child, neither of which loads WinUI. So:
 
-- fork (`lextudio/WinAppVSCE`, package `LeXtudio.WinUISurface`): a `BindingEvaluator` beside
-  `SamplePlanner`, a design-time instance cache, and one new render option (for example
-  `evaluateBindings: true`, alongside `sampleData`/`compiledType`);
-- this repo: send the option and expose the mode (a DevFlow action and, later, a toolbar choice),
-  and add a `{x:Bind}` probe page (BoundPage already is one);
+- fork (`lextudio/WinAppVSCE`, package `LeXtudio.WinUISurface` 0.5.0): `surface/Surface/BindingEvaluator.cs`
+  beside `SamplePlanner`, a design-time instance cache in `RenderHost`, and two render fields
+  (`evaluateBindings`, `designType`) alongside `sampleData`/`compiledType`; unit checks live in
+  `surface/Surface.Tests` and the fork's release workflow builds, smoke-tests (x64 and ARM64) and publishes it;
+- this repo: sends the fields, derives `designType` from `x:Class`, and defaults the mode on
+  (`OD_WINUI_LIVE_BINDINGS=0` opts out); a toolbar choice is still to come;
 - no renderer change for the markup path itself: it is the same `XamlCleaner` substitution point
   the sample-data mode uses today.
 
@@ -103,17 +104,14 @@ The evaluator must run where WinUI and the user assembly are loaded - the **Surf
   builds. If the evaluator hits an expression it cannot honour, falling back to the compiled reference is the honest
   answer rather than a placeholder.
 
-## Prototype result (2026-11-14)
+## Result (2026-11-14)
 
-The mechanism was built end to end and measured on `BoundPage.xaml`, as an opt-in prototype: the shell side
-(`OD_WINUI_LIVE_BINDINGS=1` -> `evaluateBindings`/`designType` on every render request) is real code in
-`SurfaceConnection`/`SurfaceDesignDocument`; the evaluator itself (`BindingEvaluator.cs` plus the render hook in
-`RenderHost`/`FrameServer`) was first prototyped in the deployed `HostSDK/surface/Surface` sources and is now in the
-fork: `surface/Surface/BindingEvaluator.cs` with the two render fields and eleven checks in `surface/Surface.Tests`
-(508 passed, 0 failed) on branch `port/live-bindings`, package version 0.5.0. Publishing that package and inverting the
-gate are what make it the default; until then the deployed payload carries the same files and the flag stays opt-in.
+The mechanism was built end to end, measured on `BoundPage.xaml`, and shipped: the evaluator lives in the fork
+(`surface/Surface/BindingEvaluator.cs`, package 0.5.0, tag `surface-v0.5.0`; the fork's release workflow built both
+architectures, smoke-tested the x64 surface and the packaged ARM64 surface, and published it). This repo sends
+`evaluateBindings`/`designType` on every render request and **defaults the mode on**; `OD_WINUI_LIVE_BINDINGS=0` opts out.
 
-What the prototype does:
+What the evaluator does:
 
 - parses the markup being rendered and, for each `{x:Bind ...}` on a text-valued attribute, evaluates a
   **member path** by reflection against one page instance (`Activator.CreateInstance(userDll.GetType(x:Class))`),
@@ -125,8 +123,8 @@ What the prototype does:
   so a XAML-only converter edit is live too; falls back to the design instance's resources, then skips;
 - applies `ConverterParameter`/`ConverterLanguage` and `FallbackValue`/`TargetNullValue`, and leaves attached-property
   targets and template content to `XamlCleaner`'s existing placeholder/sample behaviour;
-- logs `LiveBindings: evaluated N, skipped M` per render (plus the instance type and any resolution failure);
-- is mutually exclusive with `compiledType`, and off unless the environment variable is set.
+- logs `LIVEBIND: evaluated N, skipped M` per render (plus the instance type and any resolution failure);
+- is mutually exclusive with `compiledType`.
 
 Measured (WinUISample fixture, warm provisioner cache, x64):
 
@@ -145,8 +143,8 @@ Measured (WinUISample fixture, warm provisioner cache, x64):
 
 So the two claims that mattered are true: an `{x:Bind}` in the *markup* preview now shows the real design-time value,
 and a binding edit - a path, a function call, a converter - re-renders at markup speed without a project build or
-renderer restart. The remaining work is `x:DataType` roots, templates, non-text targets with type conversion,
-`BindBack`/two-way, then publishing the fork package and making the evaluator the default instead of an opt-in.
+renderer restart. The remaining work is `x:DataType` roots, templates, non-text targets with type conversion and
+`BindBack`/two-way, plus a toolbar switch for the mode.
 
 Three findings worth recording:
 
@@ -160,10 +158,13 @@ Three findings worth recording:
   member 'StringFormat' on element 'BindExtension'"). A format has to come from a converter or a function, so the
   evaluator does not pretend to support one.
 
+The published-package check (payload rebuilt from `LeXtudio.WinUISurface` 0.5.0, provisioner cache cleared, no
+environment variable set) reports the same four values, which is what "default" means here.
+
 ## Done when
 
 1. `BoundPage.xaml` shows `Text = "Bound from code-behind"` from markup mode, with no
-   `OD_WINUI_COMPILED`. **Met in the prototype** (the flag is `OD_WINUI_LIVE_BINDINGS=1` until the fork ships it).
+   `OD_WINUI_COMPILED`. **Met and shipped** in surface 0.5.0, on by default (`OD_WINUI_LIVE_BINDINGS=0` opts out).
 2. Changing the binding in the source (`{x:Bind Title}` to `{x:Bind Subtitle}`, or adding a
    converter) updates the preview on save, without a project build or renderer restart. **Met**: member paths,
    a converter declared in the document, and function bindings all re-render live; the values match the compiled

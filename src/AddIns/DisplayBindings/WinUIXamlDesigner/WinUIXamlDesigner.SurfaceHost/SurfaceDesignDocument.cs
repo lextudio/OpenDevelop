@@ -43,11 +43,12 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		|| Environment.GetEnvironmentVariable("OD_SURFACE_COMPILED") == "1";
 
 	/// <summary>
-	/// <c>OD_WINUI_LIVE_BINDINGS=1</c> opts into design-time binding evaluation: the markup preview evaluates each
-	/// <c>{x:Bind}</c> against the page instance named by the document's <c>x:Class</c> and substitutes the value, so a
-	/// XAML-side binding edit renders without a project build. Off by default while the fork side is a prototype.
+	/// Design-time binding evaluation is on by default: the markup preview evaluates each <c>{x:Bind}</c> against the
+	/// page instance named by the document's <c>x:Class</c> and substitutes the value, so a XAML-side binding edit
+	/// renders without a project build. <c>OD_WINUI_LIVE_BINDINGS=0</c> turns it off; a surface that does not know the
+	/// option ignores it, so the flag degrades to the previous placeholder behaviour.
 	/// </summary>
-	static readonly bool LiveBindingsEnabled = Environment.GetEnvironmentVariable("OD_WINUI_LIVE_BINDINGS") == "1";
+	static readonly bool LiveBindingsEnabled = Environment.GetEnvironmentVariable("OD_WINUI_LIVE_BINDINGS") != "0";
 
 	static readonly XNamespace XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
 
