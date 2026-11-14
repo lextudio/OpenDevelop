@@ -444,16 +444,21 @@ projects separate, sharing only explicit source links.
 ## .NET 11 with net10 stragglers
 
 The IDE product — shell, Base/Core, every AddIn, the AddIn SDK and tools — targets
-`net11.0`/`net11.0-windows` (commit `0f522a1576`). A few projects deliberately stay older; they are
-current targets, not stale output, so never "upgrade" or delete their `bin`/`obj`:
+`net11.0`/`net11.0-windows` (commit `0f522a1576`). Anything that can run on net11 does; the
+designer child hosts are net11 too (`WinUIXamlDesigner.UnoHost` is `net11.0-desktop`, and a net11
+host loads a net10 designed app's assemblies). A net10 target may only survive where the code must
+execute inside *another process's* runtime graph, or where it is a compatibility fixture:
 
 | Path | TFM | Why |
 |---|---|---|
-| `src/Main/Designer/Designer.Remote` + `Designer.Server` | `net9.0;net10.0;net11.0` | child-side protocol, loaded on the designed app's CLR; net11 is for the IDE's own hosts |
-| `WinUIXamlDesigner.UnoHost` | `net10.0-desktop` (+ ios/android) | Uno Platform has no net11 head yet |
-| `WinUIXamlDesigner.MicrosoftHost` | `net9.0/net10.0-windows10.0.19041.0` | Windows App SDK WinUI |
 | `WpfHotReload.Agent` + `.Microsoft` (`WpfHotReload.Agent.Shared.props`) | `net10.0-windows` | injected into the debuggee |
+| `WinUIXamlDesigner.MicrosoftHost` | `net9.0`/`net10.0`/`net11.0-windows10.0.19041.0` | one child per supported designed-app CLR major; `UnoDesignRuntimeHostBootstrap.RuntimeDirectoryFor` picks it from the app runtimeconfig |
+| `src/Main/Designer/Designer.Remote` + `Designer.Server` | `net9.0;net10.0;net11.0` | the protocol those WinUI children load at their own CLR; net11 serves the IDE's own hosts |
 | `tests/fixtures/**` | net10 | compatibility fixtures |
+
+These are current targets, not stale output: never upgrade or delete their `bin`/`obj`. The
+Microsoft WinUI host cannot be built on macOS (Windows App SDK plus Visual Studio MSBuild only), so
+a change there is verified by the Windows CI lanes, not locally.
 
 Package-internal `lib/net10.0` and `runtimes/*/lib/net10.0` folders are the LibreWPF closure's only
 assets, not TFM choices: `Directory.Build.props` pins `_ProGpuWpf*RuntimeTfm` back to net10. Never
@@ -477,6 +482,11 @@ Recognise a mixed tree:
 actions are invoked with POST. To find stale output, compare each project's current
 `TargetFrameworks` against `bin|obj/**/net10*` and delete only the mismatches; never blanket-delete
 `AddIns/`, which is the live net11 deployment.
+
+Do not probe a platform-specific TFM with `-p:TargetFrameworks=net11.0-desktop` on the command line:
+the property propagates into every `ProjectReference`, and a plain library then fails with
+`NETSDK1139: The target platform identifier desktop was not recognized`. Edit the project file to
+test a new head, and revert it if the build fails.
 
 ## Builds, packages, icons
 
