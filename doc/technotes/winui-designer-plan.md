@@ -26,6 +26,7 @@ Dates are 2026-11.
 | Hit-test and selection from the frame (no native mode) | `SurfaceDesignDocument.HitTestAsync` | fake-surface and real-surface DDP tests |
 | Layout metadata (package 0.4.0): margin, parent kind, Grid row/col/span and tracks, Canvas position, z-index, orientation | `FrameLayout` -> `GridTracks`, `LayoutInsets`, `ZIndex` | real-surface probe of Grid, Canvas, StackPanel |
 | Property catalog: the renderer's full property list per element in the Properties pad | `DescribeElement`, `design/describe-properties`, `WinUIXamlElementPropertyAdapter` | IDE: about 70 properties for a Button, enum and boolean dropdowns, an edit through the pad |
+| Property pad depth: renderer values in the value cell, catalog-typed editors, attached layout properties | `WinUIXamlElementPropertyAdapter` (value fallback, type-driven converters, attached offer), `od.winui-designer.properties-pad.properties` | 6 UI-fact tests; IDE: 14/14 - FontSize 14 from the renderer, Brush/CornerRadius/FontFamily editors, Grid and Canvas attached properties authored and undone |
 | Move and resize as source edits | `WinUIXamlMarginEditor.TryDelta` (Margin, alignment-aware), `ApplyElementBounds`; hooks `nudge`, `resize` | IDE: +20,+10 move, 98x32 -> 200x48 resize, one Undo restores. Pointer: a real press/stepped drag/release moved 60x30 and authored `Margin="60,30,0,0"`, a handle drag grew 98x32 to 168x72 with `Width`/`Height`, one Undo each |
 | Toolbox drop at a point: the measured Grid cell (`Grid.Row`/`Grid.Column`), `Canvas.Left`/`Top`, or the StackPanel child index, as one source edit | `WinUIXamlDropPlacement`, `WinUIXamlDocumentEditor.Insert(..., before, attached)`, hook `drop` | 60 tests; IDE: a Button dropped at (600,400) in `DropGrid` authored `Grid.Row="1" Grid.Column="1"`, at (30,20) in `DropCanvas` authored `Canvas.Left="30" Canvas.Top="20"`, one Undo each |
 | Edits keep the author's layout (declaration, line endings, untouched tags) | `WinUIXamlDocumentEditor.PreserveLayout` | 47 tests, `tests/OpenDevelop.WinUIXamlDocument.Tests` |
@@ -123,8 +124,21 @@ Each step ends with a committed change, tests where the code has an executable s
    DevFlow-started mode shows on the toggle, and killing the renderer's process falls back to snapshots and re-renders.
    OS-level keyboard focus hand-off cannot be asserted on this desktop (it has no stable foreground window:
    `GetForegroundWindow` alternates between 0 and the IDE), so that last step stays a visual check.
-7. **Property pad depth.** Show the renderer's current value in the value cell (today it is the description), type-aware editors
-   for `Brush`, `CornerRadius` and `FontFamily` from the catalog, attached properties of the parent (`Grid.Row`, `Canvas.Left`).
+7. **Property pad depth.** Done. The value cell now shows the value the renderer reports for a property the source
+   has not authored (the description says it came from the renderer), so a control's real `FontSize`, `CornerRadius`
+   or font is visible before any edit; editing one authors the attribute through the same pad path. The renderer's
+   catalog picks the editor by its real type: `Brush`/`Color` keep the color picker (literal colors only;
+   `{StaticResource}`/`{ThemeResource}` stay a resource-key dropdown), `CornerRadius` gets its own 1-or-4-value
+   converter (WinUI does not accept Thickness's 2-value form), and `FontFamily` a non-exclusive dropdown of the
+   installed families (85 here). A child of a Grid is offered `Grid.Row`/`Grid.Column`/`RowSpan`/`ColumnSpan`
+   (defaults 0/0/1/1) and a child of a Canvas `Canvas.Left`/`Canvas.Top`, in the Layout category, so a cell or offset
+   can be authored without hand-editing XAML. `properties-pad.properties` reports the pad's rows (value-cell text,
+   converter, authored flag) for tests. Verified in the IDE (14/14 checks): `PrimaryButton` shows `FontSize` 14 from
+   the renderer, its authored `Background` `#FF4488FF` with the color editor, `CornerRadius` through
+   `CornerRadiusValueConverter`, `FontFamily` "Segoe UI Variable" with 85 suggestions; editing `FontSize` authors it;
+   `DropCanvas` offers the four Grid properties at their defaults and `Grid.Row=1` is authored; a button dropped into
+   `DropCanvas` shows `Canvas.Left`/`Top` 30/20 and no Grid properties, and editing `Canvas.Top` authors it; every edit
+   and drop is undone.
 
 Out of scope for now: visual states and storyboards, template editing, a data-binding wizard (the same non-goals Microsoft lists).
 
@@ -175,4 +189,6 @@ reload, so poll `query-element-bounds` for the settled value instead of assuming
 Grid-track lines the selected element's parent contributes to a drag. `od.designer-canvas.status` reports every visible
 toolbar item's **screen bounds** (`toolbarItemBounds`) so a real click can press one by name - the native-live toggle, for
 example, needs no coordinates hardcoded; a click over the live window is deliberately absent from `od.pointer-events` because
-it goes to the renderer's own process.
+it goes to the renderer's own process. `properties-pad.properties` lists the pad's rows with the value cell's text, the
+editor converter and whether the source authors the property; `properties-pad.edit` and `properties-pad.standard-values`
+drive and inspect them.

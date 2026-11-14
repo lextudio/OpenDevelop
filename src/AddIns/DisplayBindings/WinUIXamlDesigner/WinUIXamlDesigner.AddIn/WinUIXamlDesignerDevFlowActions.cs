@@ -262,6 +262,38 @@ public static class WinUIXamlDesignerDevFlowActions
 		});
 	}
 
+	[DevFlowAction("od.winui-designer.properties-pad.properties", Description = "Report the Properties pad's rows for the selected element: name, category, the value the value cell shows, the editor converter, and the description that says whether the source authors it or the renderer supplied it")]
+	public static string PropertyPadProperties()
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var grid = PropertyPadGrid;
+		if (grid?.SelectedObject is not WinUIXamlElementPropertyAdapter selected)
+			return Failure("Properties pad has no selected WinUI/Uno element; it holds " +
+				(grid?.SelectedObject?.GetType().FullName ?? "null"));
+		var rows = (grid.Properties == null ? Enumerable.Empty<object>() : grid.Properties.Cast<object>()).OfType<PropertyItem>().Select(item => {
+			var descriptor = item.PropertyDescriptor;
+			var value = item.Value;
+			string text = null;
+			try {
+				text = value == null ? null : descriptor?.Converter?.ConvertToString(value);
+			} catch {
+				text = value?.ToString();
+			}
+			return new {
+				name = item.PropertyName,
+				displayName = item.DisplayName,
+				category = item.Category,
+				value = text ?? value?.ToString(),
+				converter = descriptor?.Converter?.GetType().Name,
+				description = descriptor?.Description,
+				authored = descriptor != null && descriptor.CanResetValue(selected)
+			};
+		}).ToArray();
+		return JsonSerializer.Serialize(new { success = true, selectedName = view.SelectedElementName, properties = rows });
+	}
+
 	[DevFlowAction("od.winui-designer.properties-pad.edit", Description = "Edit a property through the real shared Properties pad PropertyItem; does not touch the XAML document directly")]
 	public static string EditPropertyThroughPropertiesPad(string propertyName, string value)
 	{

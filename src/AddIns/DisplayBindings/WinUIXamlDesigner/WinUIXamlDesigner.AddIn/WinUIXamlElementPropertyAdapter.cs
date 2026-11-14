@@ -107,9 +107,41 @@ namespace ICSharpCode.WinUIXamlDesigner
 				// XAML reader resolves them into the element's default namespace - the
 				// idiomatic form, rather than a generated "p7:" prefix.
 				runtime.TryGetValue(name, out var info);
-				descriptors.Add(new XamlAttributeDescriptor(element, XName.Get(name), null, setAttribute, resourceKeys, isNew: true, runtime: info));
+				// The renderer's value fills the value cell while the source still has no
+				// attribute, so the pad shows what the design currently renders (and the
+				// description says it came from the renderer, not the markup).
+				descriptors.Add(new XamlAttributeDescriptor(element, XName.Get(name), null, setAttribute, resourceKeys, runtime: info,
+					fallbackValue: info?.Value));
+			}
+			// The parent container's attached layout properties: a Grid child can be placed in a
+			// cell and a Canvas child at an offset even when the source never authored the attribute.
+			foreach (var attached in AttachedProperties(element))
+			{
+				if (present.Contains(attached.Name))
+					continue;
+				descriptors.Add(new XamlAttributeDescriptor(element, XName.Get(attached.Name), null, setAttribute, resourceKeys,
+					fallbackValue: attached.DefaultValue));
 			}
 			return new PropertyDescriptorCollection(descriptors.ToArray(), readOnly: true);
+		}
+
+		/// <summary>The attached layout properties the element's parent container understands, with
+		/// the value WinUI uses when the attribute is not authored.</summary>
+		static IEnumerable<(string Name, string DefaultValue)> AttachedProperties(XElement element)
+		{
+			switch (element.Parent?.Name.LocalName)
+			{
+				case "Grid":
+					yield return ("Grid.Row", "0");
+					yield return ("Grid.Column", "0");
+					yield return ("Grid.RowSpan", "1");
+					yield return ("Grid.ColumnSpan", "1");
+					break;
+				case "Canvas":
+					yield return ("Canvas.Left", "0");
+					yield return ("Canvas.Top", "0");
+					break;
+			}
 		}
 
 		/// <summary>The renderer's properties for this element by name, in the renderer's order; empty without a catalog.</summary>
@@ -307,14 +339,13 @@ namespace ICSharpCode.WinUIXamlDesigner
 		{
 			readonly XElement element;
 			readonly XName attributeName;
-			readonly string currentValue;
+			readonly string fallbackValue;
 			readonly Action<XElement, XName, string> setAttribute;
 			readonly IReadOnlyList<string> resourceKeys;
-			readonly bool isNew;
 			readonly ICSharpCode.SharpDevelop.Designer.Remote.DesignerPropertyInfo runtime;
 
 			public XamlAttributeDescriptor(XElement element, XName attributeName, string currentValue,
-				Action<XElement, XName, string> setAttribute, IReadOnlyList<string> resourceKeys, bool isNew = false,
+				Action<XElement, XName, string> setAttribute, IReadOnlyList<string> resourceKeys, string fallbackValue = null,
 				ICSharpCode.SharpDevelop.Designer.Remote.DesignerPropertyInfo runtime = null)
 				// Xceed binds each row with new Binding(descriptor.Name); an attached attribute such
 				// as "Grid.Row" would be parsed as a property path and silently drop the edit.
@@ -322,25 +353,54 @@ namespace ICSharpCode.WinUIXamlDesigner
 			{
 				this.element = element;
 				this.attributeName = attributeName;
-				this.currentValue = currentValue;
+				this.fallbackValue = fallbackValue;
 				this.setAttribute = setAttribute;
 				this.resourceKeys = resourceKeys;
-				this.isNew = isNew;
 				this.runtime = runtime;
 			}
 
 			public override Type ComponentType => typeof(WinUIXamlElementPropertyAdapter);
 			public override string DisplayName => attributeName.LocalName;
 			public override bool IsReadOnly => false;
-			// The renderer's category (Layout, Appearance, Text, ...) when it knows the property; otherwise the source-level grouping.
-			public override string Category => !string.IsNullOrEmpty(runtime?.Category) && attributeName.NamespaceName.Length == 0
-				? runtime.Category
-				: attributeName.NamespaceName.Length == 0 ? "XAML" : attributeName.NamespaceName;
-			public override string Description => runtime == null ? base.Description
-				: "Current value: " + (string.IsNullOrEmpty(runtime.Value) ? "(empty)" : runtime.Value) + " (" + runtime.TypeName + ")";
+			// The renderer's category (Layout, Appearance, Text, ...) when it knows the property; an
+			// attached property is a layout fact about the element; otherwise the source-level grouping.
+			public override string Category => attributeName.LocalName.Contains('.')
+				? "Layout"
+				: !string.IsNullOrEmpty(runtime?.Category) && attributeName.NamespaceName.Length == 0
+					? runtime.Category
+					: attributeName.NamespaceName.Length == 0 ? "XAML" : attributeName.NamespaceName;
+
+			/// <summary>The text the pad edits: the authored attribute, else the value the renderer
+			/// reports for an unset property, else the container's default.</summary>
+			string EffectiveText => element.Attribute(attributeName)?.Value ?? fallbackValue;
+
+			public override string Description
+			{
+				get
+				{
+					var text = EffectiveText;
+					var source = element.Attribute(attributeName) != null ? "authored"
+						: fallbackValue != null ? "current value from the renderer"
+						: "not set";
+					if (string.IsNullOrEmpty(text) && runtime == null)
+						return base.Description;
+					return "Value: " + (string.IsNullOrEmpty(text) ? "(empty)" : text)
+						+ (runtime == null || string.IsNullOrEmpty(runtime.TypeName) ? "" : " (" + runtime.TypeName + ")")
+						+ " - " + source;
+				}
+			}
 
 			static bool IsThicknessProperty(string name)
 				=> name == "Margin" || name == "Padding" || name == "BorderThickness";
+
+			static bool IsCornerRadiusProperty(string name) => name == "CornerRadius";
+
+			static bool IsFontFamilyProperty(string name) => name == "FontFamily";
+
+			bool RuntimeTypeIs(params string[] typeNames)
+				=> runtime != null && Array.IndexOf(typeNames, runtime.TypeName) >= 0;
+
+			bool RuntimeKindIs(string kind) => runtime != null && string.Equals(runtime.Kind, kind, StringComparison.Ordinal);
 
 			/// <summary>Enum types whose XAML value names match the CLR enum member names.</summary>
 			static readonly Dictionary<string, Type> EnumMappings = new(StringComparer.Ordinal) {
@@ -365,41 +425,57 @@ namespace ICSharpCode.WinUIXamlDesigner
 			{
 				get
 				{
-					if (TryGetResourceReference(currentValue, out _))
+					var text = EffectiveText;
+					if (TryGetResourceReference(text, out _))
 						return typeof(string);
 					if (EnumMappings.TryGetValue(attributeName.LocalName, out var enumType))
 						return enumType;
 					if (RuntimeChoices != null)
 						return typeof(string);
-					if (IsThicknessProperty(attributeName.LocalName))
+					// The renderer's catalog knows the real type even when the source has no attribute.
+					if (RuntimeTypeIs("Brush", "Color") || RuntimeKindIs("Brush") || RuntimeKindIs("Color"))
+						return typeof(Color);
+					if (RuntimeTypeIs("CornerRadius") || IsCornerRadiusProperty(attributeName.LocalName))
+						return typeof(CornerRadius);
+					if (RuntimeTypeIs("Thickness") || KindIsThickness() || IsThicknessProperty(attributeName.LocalName))
 						return typeof(Thickness);
-					if (IsBrushProperty(attributeName.LocalName, currentValue))
+					if (RuntimeTypeIs("FontFamily") || IsFontFamilyProperty(attributeName.LocalName))
+						return typeof(string);
+					if (IsBrushProperty(attributeName.LocalName, text))
 						return typeof(Color);
 					return typeof(string);
 				}
 			}
 
+			bool KindIsThickness() => RuntimeKindIs("Thickness");
+
 			public override TypeConverter Converter
 			{
 				get
 				{
-					if (TryGetResourceReference(currentValue, out var resourceReferenceKind))
+					var text = EffectiveText;
+					if (TryGetResourceReference(text, out var resourceReferenceKind))
 						return new ResourceReferenceValueConverter(resourceKeys, resourceReferenceKind);
 					if (EnumMappings.TryGetValue(attributeName.LocalName, out var enumType))
 						return new EnumValueConverter(enumType);
 					if (RuntimeChoices != null)
 						return new RuntimeChoiceConverter(RuntimeChoices);
-					if (IsThicknessProperty(attributeName.LocalName))
+					if (RuntimeTypeIs("CornerRadius") || IsCornerRadiusProperty(attributeName.LocalName))
+						return new CornerRadiusValueConverter();
+					if (RuntimeTypeIs("Thickness") || KindIsThickness() || IsThicknessProperty(attributeName.LocalName))
 						return new ThicknessValueConverter();
-					if (IsBrushProperty(attributeName.LocalName, currentValue))
+					if (RuntimeTypeIs("Brush", "Color") || RuntimeKindIs("Brush") || RuntimeKindIs("Color")
+						|| IsBrushProperty(attributeName.LocalName, text))
 						return new ColorValueConverter();
+					if (RuntimeTypeIs("FontFamily") || IsFontFamilyProperty(attributeName.LocalName))
+						return new FontFamilyValueConverter();
 					return base.Converter;
 				}
 			}
 
 			/// <summary>The renderer's closed set of values for a property the fixed tables do not know (any enum, or a boolean), or null.</summary>
 			IReadOnlyList<string> RuntimeChoices => runtime != null && runtime.AllowedValues.Count > 0
-				&& !EnumMappings.ContainsKey(attributeName.LocalName) && !TryGetResourceReference(currentValue, out _)
+				&& !EnumMappings.ContainsKey(attributeName.LocalName) && !TryGetResourceReference(EffectiveText, out _)
 				? runtime.AllowedValues : null;
 
 			static bool TryGetResourceReference(string value, out string kind)
@@ -421,32 +497,21 @@ namespace ICSharpCode.WinUIXamlDesigner
 
 			public override object GetValue(object component)
 			{
-				if (isNew)
+				var text = EffectiveText;
+				if (string.IsNullOrEmpty(text))
 					return null;
-				if (TryGetResourceReference(currentValue, out _))
-					return element.Attribute(attributeName)?.Value;
+				if (TryGetResourceReference(text, out _))
+					return text;
 				if (EnumMappings.TryGetValue(attributeName.LocalName, out var enumType))
-				{
-					var text = element.Attribute(attributeName)?.Value;
-					if (Enum.TryParse(enumType, text, ignoreCase: true, out var parsed))
-						return parsed;
-					return null;
-				}
-				if (IsThicknessProperty(attributeName.LocalName))
-				{
-					var text = element.Attribute(attributeName)?.Value;
-					if (ThicknessValueConverter.TryParse(text, out var thickness))
-						return thickness;
-					return null;
-				}
-				if (IsBrushProperty(attributeName.LocalName, currentValue))
-				{
-					var text = element.Attribute(attributeName)?.Value;
-					if (ColorValueConverter.TryParseColor(text, out var color))
-						return color;
-					return null;
-				}
-				return element.Attribute(attributeName)?.Value;
+					return Enum.TryParse(enumType, text, ignoreCase: true, out var parsed) ? parsed : text;
+				if (RuntimeTypeIs("CornerRadius") || IsCornerRadiusProperty(attributeName.LocalName))
+					return CornerRadiusValueConverter.TryParse(text, out var cornerRadius) ? cornerRadius : text;
+				if (RuntimeTypeIs("Thickness") || KindIsThickness() || IsThicknessProperty(attributeName.LocalName))
+					return ThicknessValueConverter.TryParse(text, out var thickness) ? thickness : text;
+				if (RuntimeTypeIs("Brush", "Color") || RuntimeKindIs("Brush") || RuntimeKindIs("Color")
+					|| IsBrushProperty(attributeName.LocalName, text))
+					return ColorValueConverter.TryParseColor(text, out var color) ? color : text;
+				return text;
 			}
 
 			public override void SetValue(object component, object value)
@@ -456,12 +521,17 @@ namespace ICSharpCode.WinUIXamlDesigner
 					setAttribute(element, attributeName, value == null ? null : value.ToString());
 					return;
 				}
-				if (IsThicknessProperty(attributeName.LocalName) && value is Thickness thickness)
+				if ((RuntimeTypeIs("CornerRadius") || IsCornerRadiusProperty(attributeName.LocalName)) && value is CornerRadius cornerRadius)
+				{
+					setAttribute(element, attributeName, CornerRadiusValueConverter.Format(cornerRadius));
+					return;
+				}
+				if ((RuntimeTypeIs("Thickness") || KindIsThickness() || IsThicknessProperty(attributeName.LocalName)) && value is Thickness thickness)
 				{
 					setAttribute(element, attributeName, ThicknessValueConverter.Format(thickness));
 					return;
 				}
-				if (IsBrushProperty(attributeName.LocalName, currentValue) && value is Color color)
+				if (value is Color color)
 				{
 					setAttribute(element, attributeName, ColorValueConverter.FormatColor(color));
 					return;
@@ -672,6 +742,92 @@ namespace ICSharpCode.WinUIXamlDesigner
 			}
 		}
 
+		/// <summary>Converts WinUI CornerRadius XAML: one number for all corners, or four
+		/// (top-left, top-right, bottom-right, bottom-left). WinUI does not accept the
+		/// two-value form Thickness allows, so it gets its own converter.</summary>
+		sealed class CornerRadiusValueConverter : TypeConverter
+		{
+			public override bool CanConvertFrom(ITypeDescriptorContext context, Type sourceType)
+				=> sourceType == typeof(string) || base.CanConvertFrom(context, sourceType);
+
+			public override bool CanConvertTo(ITypeDescriptorContext context, Type destinationType)
+				=> destinationType == typeof(string) || base.CanConvertTo(context, destinationType);
+
+			public override object ConvertFrom(ITypeDescriptorContext context, CultureInfo culture, object value)
+			{
+				if (value is string text && TryParse(text, out var radius))
+					return radius;
+				return base.ConvertFrom(context, culture, value);
+			}
+
+			public override object ConvertTo(ITypeDescriptorContext context, CultureInfo culture, object value, Type destinationType)
+			{
+				if (destinationType == typeof(string) && value is CornerRadius radius)
+					return Format(radius);
+				return base.ConvertTo(context, culture, value, destinationType);
+			}
+
+			internal static bool TryParse(string text, out CornerRadius radius)
+			{
+				radius = default;
+				if (string.IsNullOrWhiteSpace(text))
+					return false;
+				var parts = text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+				if (parts.Length == 1 && double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var all))
+				{
+					radius = new CornerRadius(all);
+					return true;
+				}
+				if (parts.Length == 4
+					&& double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var topLeft)
+					&& double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var topRight)
+					&& double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var bottomRight)
+					&& double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out var bottomLeft))
+				{
+					radius = new CornerRadius(topLeft, topRight, bottomRight, bottomLeft);
+					return true;
+				}
+				return false;
+			}
+
+			internal static string Format(CornerRadius value)
+			{
+				if (value.TopLeft == value.TopRight && value.TopLeft == value.BottomRight && value.TopLeft == value.BottomLeft)
+					return value.TopLeft.ToString(CultureInfo.InvariantCulture);
+				return $"{value.TopLeft.ToString(CultureInfo.InvariantCulture)},{value.TopRight.ToString(CultureInfo.InvariantCulture)}," +
+					$"{value.BottomRight.ToString(CultureInfo.InvariantCulture)},{value.BottomLeft.ToString(CultureInfo.InvariantCulture)}";
+			}
+		}
+
+		/// <summary>Installed font families as non-exclusive suggestions for FontFamily: any family
+		/// the application can resolve can still be typed, and WinUI's family names match the system's.</summary>
+		sealed class FontFamilyValueConverter : StringConverter
+		{
+			static IReadOnlyList<string> installed;
+
+			static IReadOnlyList<string> Installed()
+			{
+				if (installed != null)
+					return installed;
+				try {
+					installed = Fonts.SystemFontFamilies
+						.Select(family => family.Source)
+						.Where(name => !string.IsNullOrEmpty(name))
+						.Distinct(StringComparer.OrdinalIgnoreCase)
+						.OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+						.ToArray();
+				} catch {
+					// A platform without a font enumeration still gets the text editor.
+					installed = Array.Empty<string>();
+				}
+				return installed;
+			}
+
+			public override bool GetStandardValuesSupported(ITypeDescriptorContext context) => Installed().Count > 0;
+			public override bool GetStandardValuesExclusive(ITypeDescriptorContext context) => false;
+			public override StandardValuesCollection GetStandardValues(ITypeDescriptorContext context)
+				=> new StandardValuesCollection(Installed().ToArray());
+		}
 		/// <summary>Converts between "#RRGGBB" (or "#AARRGGBB") XAML values and Color.</summary>
 		sealed class ColorValueConverter : TypeConverter
 		{
