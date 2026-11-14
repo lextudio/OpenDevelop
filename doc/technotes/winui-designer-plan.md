@@ -156,7 +156,9 @@ Each step ends with a committed change, tests where the code has an executable s
    21.5 s, and binding edits made through the Properties pad (a path, a nested function call, a converter parameter)
    update the preview in 2.4-2.6 s with no build. `{x:Bind}` has no `StringFormat` (WMC0011), so a format comes from a
    converter or a function. Non-text targets (`Visibility`, `IsEnabled`, `Width`, numeric attached properties) are
-   evaluated too (surface 0.6.0). Still to do: `x:DataType` roots, template content, `BindBack`/two-way, a toolbar switch.
+   evaluated too (surface 0.6.0), and the mode has the shared canvas's **Live Bindings** toggle plus
+   `od.winui-designer.live-bindings on|off|query`; the toggle took it off and back on in the IDE (values, then
+   placeholders, then values). Still to do: `x:DataType` roots, template content, `BindBack`/two-way.
    Done when:
    `BoundPage` shows "Bound from code-behind" in markup mode; changing the binding or adding a converter updates the
    preview on save without a build; a code-behind edit is the only remaining rebuild (and is reported as such); warm

@@ -300,6 +300,14 @@ public sealed class UnoDesignClient : RecoverableDesignerDocumentHostClient, IDe
 		=> connection.InvokeAsync<DesignerNativeLiveReply>("design/native-live",
 			new { sessionId = SessionId, documentId = DocumentId, enabled, current = (DesignerDocumentRequest?)null }, cancellationToken);
 
+	/// <summary>
+	/// <c>design/live-bindings</c> (only the Surface child implements it): turn design-time <c>{x:Bind}</c> evaluation on
+	/// or off. The reply carries the mode the child actually reached and the re-render that applied it.
+	/// </summary>
+	public Task<DesignerLiveBindingsReply> LiveBindingsAsync(bool enabled, CancellationToken cancellationToken = default)
+		=> connection.InvokeAsync<DesignerLiveBindingsReply>("design/live-bindings",
+			new { sessionId = SessionId, documentId = DocumentId, enabled }, cancellationToken);
+
 	/// <summary><c>design/describe-properties</c> (Surface child only): the runtime's property list for the element at the shell's
 	/// child-index path. An old child answers with a method-not-found error, which the caller treats as "no catalog".</summary>
 	public Task<DesignerPropertyInfo[]> DescribePropertiesAsync(string elementPath, CancellationToken cancellationToken = default)
@@ -465,5 +473,12 @@ public sealed class DesignerNativeLiveReply
 	public double DipHeight { get; set; }
 	public double Scale { get; set; } = 1;
 	public DesignerSessionState? State { get; set; }
+	public string? Message { get; set; }
+}
+
+/// <summary>The reply of the Surface child's <c>design/live-bindings</c> (its twin is <c>SurfaceLiveBindingsReply</c> in the child).</summary>
+public sealed class DesignerLiveBindingsReply
+{
+	public bool Live { get; set; }
 	public string? Message { get; set; }
 }

@@ -65,8 +65,9 @@ The evaluator must run where WinUI and the user assembly are loaded - the **Surf
   beside `SamplePlanner`, a design-time instance cache in `RenderHost`, and two render fields
   (`evaluateBindings`, `designType`) alongside `sampleData`/`compiledType`; unit checks live in
   `surface/Surface.Tests` and the fork's release workflow builds, smoke-tests (x64 and ARM64) and publishes it;
-- this repo: sends the fields, derives `designType` from `x:Class`, and defaults the mode on
-  (`OD_WINUI_LIVE_BINDINGS=0` opts out); a toolbar choice is still to come;
+- this repo: sends the fields, derives `designType` from `x:Class`, defaults the mode on
+  (`OD_WINUI_LIVE_BINDINGS=0` opts out), and offers it as the shared canvas toolbar's **Live Bindings** toggle
+  (`od.winui-designer.live-bindings on|off|query` drives the same path);
 - no renderer change for the markup path itself: it is the same `XamlCleaner` substitution point
   the sample-data mode uses today.
 
@@ -147,8 +148,7 @@ Measured (WinUISample fixture, warm provisioner cache, x64):
 
 So the two claims that mattered are true: an `{x:Bind}` in the *markup* preview now shows the real design-time value,
 and a binding edit - a path, a function call, a converter - re-renders at markup speed without a project build or
-renderer restart. The remaining work is `x:DataType` roots, template content and `BindBack`/two-way, plus a toolbar
-switch for the mode.
+renderer restart. The remaining work is `x:DataType` roots, template content and `BindBack`/two-way.
 
 Three findings worth recording:
 

@@ -102,6 +102,7 @@ sealed class SurfaceDesignRpc
 		rpc.AddLocalRpcMethod("app/resources", new Func<string, string, string, DesignerAppResourcesResult>(AppResources));
 	rpc.AddLocalRpcMethod("design/hit-test", new Func<string, string, long, double, double, DesignerHitTestResult>(HitTest));
 		rpc.AddLocalRpcMethod("design/native-live", new Func<string, string, bool, DesignerDocumentRequest?, SurfaceNativeLiveReply>(NativeLive));
+		rpc.AddLocalRpcMethod("design/live-bindings", new Func<string, string, bool, SurfaceLiveBindingsReply>(LiveBindings));
 			rpc.AddLocalRpcMethod("design/describe-properties", new Func<string, string, string, DesignerPropertyInfo[]>(DescribeProperties));
 			rpc.AddLocalRpcMethod("design/export-png", new Func<string, string, string, string>(ExportPng));
 		rpc.AddLocalRpcMethod("ping", new Action(() => { }));
@@ -256,6 +257,26 @@ sealed class SurfaceDesignRpc
 		} catch (Exception e) when (e is SurfaceConnectionFaultedException or SurfaceProtocolException or IOException or TimeoutException) {
 			Console.Error.WriteLine($"{Runtime}: design/native-live failed: {e}");
 			return new SurfaceNativeLiveReply { Message = "The WinUI surface stopped responding: " + (e.InnerException?.Message ?? e.Message) };
+		}
+	}
+
+	/// <summary>
+	/// <c>design/live-bindings</c>: turns design-time <c>{x:Bind}</c> evaluation on or off for one document and re-renders
+	/// it as it stands, so the designer's toolbar toggle takes effect without an edit. Like native live, this is a
+	/// capability of this renderer rather than part of the shared protocol.
+	/// </summary>
+	SurfaceLiveBindingsReply LiveBindings(string sessionId, string documentId, bool enabled)
+	{
+		var document = documents.Get(sessionId, documentId);
+		try {
+			document.SetLiveBindings(enabled);
+			return new SurfaceLiveBindingsReply { Live = document.LiveBindings };
+		} catch (Exception e) when (e is SurfaceConnectionFaultedException or SurfaceProtocolException or IOException or TimeoutException) {
+			Console.Error.WriteLine($"{Runtime}: design/live-bindings failed: {e}");
+			return new SurfaceLiveBindingsReply {
+				Live = document.LiveBindings,
+				Message = "The WinUI surface stopped responding: " + (e.InnerException?.Message ?? e.Message),
+			};
 		}
 	}
 

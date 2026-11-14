@@ -222,6 +222,57 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		status.Text = live.IsNativeLive ? "Native live window over the canvas" : "Back on the design snapshots";
 		return reply;
 	}
+
+	/// <summary>Whether the preview evaluates the app's design-time binding values.</summary>
+	public bool LiveBindings => previewHost.Runtime is IWinUIXamlLiveBindings live && live.IsLiveBindings;
+
+	/// <summary>
+	/// Offers (and reflects) the shared canvas's live-bindings toggle. The canvas is shared by every designer, so it
+	/// shows the toggle only for a renderer that reports it can evaluate bindings.
+	/// </summary>
+	void WireLiveBindings()
+	{
+		if (previewHost.Runtime is not IWinUIXamlLiveBindings live || !live.SupportsLiveBindings || previewHost.SharedCanvas is not { } canvas)
+			return;
+		if (!liveBindingsWired) {
+			liveBindingsWired = true;
+			liveBindingsCanvas = canvas;
+			canvas.ShowLiveBindings = true;
+			canvas.LiveBindingsRequested += OnLiveBindingsRequested;
+		}
+		canvas.SetLiveBindings(live.IsLiveBindings);
+	}
+
+	DesignerCanvas liveBindingsCanvas;
+	bool liveBindingsWired;
+
+	void OnLiveBindingsRequested(object sender, bool enabled)
+	{
+		if (previewHost.Runtime is not IWinUIXamlLiveBindings live || liveBindingsCanvas == null)
+			return;
+		live.SetLiveBindings(enabled);
+		liveBindingsCanvas.SetLiveBindings(live.IsLiveBindings);
+		// The mode lives in the renderer (the DDP child), so the document is rendered again for the change to show.
+		previewHost.LoadXaml(editor.Text);
+		status.Text = live.IsLiveBindings
+			? "Showing the app's design-time binding values"
+			: "Binding placeholders; turn Live Bindings back on to evaluate them";
+	}
+
+	/// <summary>Applies the live-bindings mode through the runtime (DevFlow/automation), re-renders, and returns the
+	/// runtime's JSON reply.</summary>
+	public string SetLiveBindings(bool enabled)
+	{
+		if (previewHost.Runtime is not IWinUIXamlLiveBindings live || !live.SupportsLiveBindings)
+			return JsonSerializer.Serialize(new { success = false, error = "The active runtime does not evaluate bindings (use OD_WINUI_RUNTIME=surface)" });
+		var reply = live.SetLiveBindings(enabled);
+		WireLiveBindings();
+		previewHost.LoadXaml(editor.Text);
+		status.Text = live.IsLiveBindings
+			? "Showing the app's design-time binding values"
+			: "Binding placeholders; turn Live Bindings back on to evaluate them";
+		return reply;
+	}
 	/// <summary>The element's bounds in DESIGN units - the space a Toolbox drop point is
 	/// expressed in (see <see cref="InsertFromToolbox(string, string, (double X, double Y)?)"/>).</summary>
 	public (double X, double Y, double Width, double Height)? QueryElementBounds(string name) => previewHost.QueryElementBounds(name);
@@ -862,6 +913,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		// A runtime that hosts the design in its own window offers the canvas's native-live toggle;
 		// do this on every state change so the toggle reflects a mode entered through DevFlow too.
 		WireNativeLive();
+		// Likewise for the live-bindings toggle, which only a renderer that evaluates bindings offers.
+		WireLiveBindings();
 	}
 
 	void RefreshComponentTray()

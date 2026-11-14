@@ -28,6 +28,7 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 	byte[]? lastPng;
 	DesignerSessionState? lastState;
 
+
 	public SurfaceDesignDocument(SurfaceConnection connection) => this.connection = connection;
 
 	/// <summary>
@@ -49,6 +50,19 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 	/// option ignores it, so the flag degrades to the previous placeholder behaviour.
 	/// </summary>
 	static readonly bool LiveBindingsEnabled = Environment.GetEnvironmentVariable("OD_WINUI_LIVE_BINDINGS") != "0";
+
+	/// <summary>
+	/// Whether this document evaluates design-time binding values. It starts from <see cref="LiveBindingsEnabled"/>
+	/// and the designer's toolbar toggle drives it per document, so a page whose constructor is unsuitable for a
+	/// preview can show placeholders without restarting anything.
+	/// </summary>
+	public bool LiveBindings { get; private set; } = LiveBindingsEnabled;
+
+	/// <summary>
+	/// Turns design-time binding evaluation on or off. The caller re-renders the document it holds (the designer's
+	/// toolbar toggle goes through the ordinary document path), so this only records the mode.
+	/// </summary>
+	public void SetLiveBindings(bool enabled) => LiveBindings = enabled;
 
 	static readonly XNamespace XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
 
@@ -74,7 +88,7 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		var compiled = CompiledPageTypeFor(xaml);
 		connection.CompiledPageType = compiled;
 		// One renderer per request: a compiled page renders generated code, so evaluation would be redundant.
-		connection.EvaluateBindings = compiled == null && LiveBindingsEnabled;
+		connection.EvaluateBindings = compiled == null && LiveBindings;
 		connection.DesignPageType = connection.EvaluateBindings ? XClassFor(xaml) : null;
 	}
 

@@ -867,6 +867,21 @@ public interface IWinUIXamlNativeLive
 	string SetNativeLive(bool enabled);
 }
 
+/// <summary>
+/// Optional capability: the preview can show the app's design-time <c>{x:Bind}</c> values instead of placeholders, and
+/// the canvas toolbar reflects and drives that mode. Only the Surface renderer evaluates bindings, so a host that
+/// cannot answers <see cref="SupportsLiveBindings"/> false and the toolbar stays hidden.
+/// </summary>
+public interface IWinUIXamlLiveBindings
+{
+	/// <summary>False when this host's renderer cannot evaluate bindings (e.g. the Uno host).</summary>
+	bool SupportsLiveBindings { get; }
+	/// <summary>True while the preview evaluates binding values.</summary>
+	bool IsLiveBindings { get; }
+	/// <summary>Sets the mode and returns a one-line result (JSON); the caller re-renders the document.</summary>
+	string SetLiveBindings(bool enabled);
+}
+
 public interface IWinUIXamlDiagnostics
 {
 	IReadOnlyList<(string Message, string FileName, int Line, int Column, int EndColumn)> LastDiagnostics { get; }

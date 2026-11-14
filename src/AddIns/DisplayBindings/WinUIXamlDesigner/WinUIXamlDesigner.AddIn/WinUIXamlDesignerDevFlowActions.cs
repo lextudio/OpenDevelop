@@ -66,6 +66,7 @@ public static class WinUIXamlDesignerDevFlowActions
 			isDirty = view.PrimaryFile?.IsDirty ?? false
 			, sizePresetKeys = (view.PreviewRuntime as IWinUIXamlSizePresets)?.SizePresetKeys
 			, nativeLive = (view.PreviewRuntime as IWinUIXamlNativeLive)?.IsNativeLive ?? false
+			, liveBindings = view.LiveBindings
 		});
 	}
 
@@ -906,8 +907,28 @@ public static class WinUIXamlDesignerDevFlowActions
 		return JsonSerializer.Serialize(new { success = true, showTabOrder = show.Value });
 	}
 
-	[DevFlowAction("od.winui-designer.multi-select",
-		Description = "Set the design-surface selection to the named elements (first is primary), for align/distribute/match-size operations")]
+	[DevFlowAction("od.winui-designer.live-bindings",
+		Description = "Show the app's design-time {x:Bind} values instead of placeholders (Surface renderer); pass on/off or omit to query the current mode")]
+	public static string LiveBindings(string command = "query")
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		if (command == "query")
+			return JsonSerializer.Serialize(new { success = true, liveBindings = view.LiveBindings });
+		var enabled = command switch
+		{
+			"on" or "true" or "1" => true,
+			"off" or "false" or "0" => false,
+			_ => (bool?)null
+		};
+		if (enabled is null)
+			return Failure("Expected on/off/true/false or 'query', got: " + command);
+		// Through the view, so the shared canvas's toggle follows the mode it reached and the document re-renders.
+		return view.SetLiveBindings(enabled.Value);
+	}
+
+	[DevFlowAction("od.winui-designer.multi-select",		Description = "Set the design-surface selection to the named elements (first is primary), for align/distribute/match-size operations")]
 	public static string MultiSelect(string names)
 	{
 		var view = ActivateDesigner();
