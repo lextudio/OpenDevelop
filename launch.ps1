@@ -63,7 +63,7 @@ function Sync-LibreWpfDevelopmentRuntime {
     $transportDir = Join-Path $packageRoot "librewpf.transport/$transportVersion"
     $managedDir = Join-Path $transportDir 'lib/net10.0'
     $runtimeDir = Join-Path $transportDir "runtimes/$rid/lib/net10.0"
-    $outputDir = Join-Path $repoRoot "src/Main/SharpDevelop/bin/$Configuration/net10.0-windows"
+    $outputDir = Join-Path $repoRoot "src/Main/SharpDevelop/bin/$Configuration/net11.0-windows"
     # Reassert the transport payload, but never DOWNGRADE an assembly restore already placed at a
     # higher version. System.Private.Windows.Core is the case that matters: LibreWinForms'
     # System.Windows.Forms is built against v11 while LibreWPF's PresentationCore is built against

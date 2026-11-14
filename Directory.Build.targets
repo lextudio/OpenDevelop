@@ -14,7 +14,7 @@
        MSBuild SDK; existing addins are discovered from their deployment OutputPath. -->
   <PropertyGroup>
     <OpenDevelopRepoRoot Condition="'$(OpenDevelopRepoRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))</OpenDevelopRepoRoot>
-    <OpenDevelopHostBin Condition="'$(OpenDevelopHostBin)' == ''">$(OpenDevelopRepoRoot)src/Main/SharpDevelop/bin/$(Configuration)/net10.0-windows/</OpenDevelopHostBin>
+    <OpenDevelopHostBin Condition="'$(OpenDevelopHostBin)' == ''">$(OpenDevelopRepoRoot)src/Main/SharpDevelop/bin/$(Configuration)/net11.0-windows/</OpenDevelopHostBin>
     <OpenDevelopHostManifest Condition="'$(OpenDevelopHostManifest)' == ''">$(OpenDevelopHostBin)OpenDevelop.host-assemblies.txt</OpenDevelopHostManifest>
     <OpenDevelopAddin Condition="'$(OpenDevelopAddin)' == '' And '$(MSBuildProjectName)' != 'SharpDevelop' And $([System.String]::Copy('$(OutputPath)').Replace('\','/').ToLower().Contains('addins/'))">true</OpenDevelopAddin>
     <OpenDevelopAddinKind Condition="'$(OpenDevelopAddin)' == 'true' And '$(OpenDevelopAddinKind)' == ''">InProcessDependency</OpenDevelopAddinKind>

@@ -82,7 +82,7 @@ $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Import-Module (Join-Path $repoRoot 'build/common.psm1') -Force
 
 $config = $Configuration
-$tfm = 'net10.0-windows'
+$tfm = 'net11.0-windows'
 $sln = Join-Path $repoRoot 'OpenDevelop.Mvp.slnx'
 $hostProject = Join-Path $repoRoot 'src/Main/SharpDevelop/SharpDevelop.csproj'
 $dotnet = Find-DotNetHost
