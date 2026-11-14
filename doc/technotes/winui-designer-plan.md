@@ -100,7 +100,8 @@ Each step ends with a committed change, tests where the code has an executable s
    the compiled XBF's old text until the project is rebuilt - the last-build coupling that removed this route before. The
    fixture needs `WindowsAppSdkBootstrapInitialize=false` and `WindowsAppSdkUndockedRegFreeWinRTInitialize=false`, or the
    surface refuses to load the project assembly. Editing the bound property itself remains `restart required` in the
-   patcher. So it exists as an opt-in "what the build renders" mode, not as the default text-authoritative preview.
+   patcher. So it exists as an opt-in "what the build renders" mode, not as the default text-authoritative preview;
+   step 8 replaces it as the live experience and keeps it as the fidelity reference.
 6. **Native-live polish.** Done. The renderer's own window is reachable from the shared toolbar: `DesignerCanvas` gained
    a `NativeLive` capability and toggle (shown only for a runtime that implements `IWinUIXamlNativeLive`), a user press
    raises `NativeLiveRequested`, and `SetNativeLive` reflects a backend-initiated change without echoing it back. The
@@ -131,6 +132,18 @@ Each step ends with a committed change, tests where the code has an executable s
    `DropCanvas` offers the four Grid properties at their defaults and `Grid.Row=1` is authored; a button dropped into
    `DropCanvas` shows `Canvas.Left`/`Top` 30/20 and no Grid properties, and editing `Canvas.Top` authors it; every edit
    and drop is undone.
+8. **Live `{x:Bind}` values (the better mechanism).** Specified in `winui-designer-bindings.md`; not built yet. The
+   compiled preview (step 5) is correct but last-build; the plan's live rule needs XAML-only binding edits to render
+   without a project build. The mechanism keeps the markup preview and evaluates each `{x:Bind}` against one design-time
+   **page instance** (from the project assembly, constructed under the existing `WINUI_XAML_DESIGN_MODE` signal),
+   substituting the value into the preview XAML: reflection for member paths, cached Roslyn delegates for function/static
+   bindings, with converter/format/fallback semantics, extending the fork's existing `SamplePlanner`/`SampleTypeModel`
+   resolver from "synthesise from types" to "evaluate against the app's design-time state". It lives in the Surface fork
+   beside `SamplePlanner` - the only process where WinUI and the user assembly are loaded - behind one render option; the
+   IDE sends it and later shows it as a toolbar mode. Done when: `BoundPage` shows "Bound from code-behind" in markup
+   mode; changing the binding or adding a converter updates the preview on save without a build; a code-behind edit is
+   the only remaining rebuild (and is reported as such); warm render stays near markup cost (13 s measured; the compiled
+   preview is 21.5 s).
 
 Out of scope for now: visual states and storyboards, template editing, a data-binding wizard (the same non-goals Microsoft lists).
 
@@ -152,11 +165,11 @@ Out of scope for now: visual states and storyboards, template editing, a data-bi
   hook therefore falls back to the control type name when the pad is empty, and still requires the pad to offer the control when it
   has rows. A real drag journey needs a backend whose child reports a catalog; the pointer journey confirmed the pad has zero rows
   and `toolbox.query-item-bounds` fails, so the drop is verified through its hook and unit tests only.
-- **`{x:Bind}` needs the compiled preview.** The default Surface preview renders the project's markup, so generated bindings do
-  not run there. `OD_WINUI_COMPILED=1` instantiates the compiled page and shows the real values, but it shows the last
-  build: a source edit does not reach it until the project is rebuilt, and the project must opt out of the WinAppSDK
-  bootstrap initializers so the surface can load its assembly. Bound-property edits stay `restart required` under the
-  hot-reload patcher.
+- **`{x:Bind}` today vs the target.** The compiled preview shows real values but is last-build; the default markup preview
+  shows them empty. Step 8 (`winui-designer-bindings.md`) specifies the design-time binding evaluator that makes XAML-only
+  binding edits live; until the fork publishes it, the compiled mode is a correct reference, not the intended live
+  experience. Either mode constructs a page instance from the project assembly, so the project keeps the WinAppSDK bootstrap
+  initializers off.
 - **Process.** Commits so far skipped the `build/opencode-review.ps1` review at the owner's instruction; CI results are ignored for now.
   ARM64 is not a priority.
 
@@ -189,4 +202,5 @@ drive and inspect them. `runtime-properties <name>` reports the renderer's own v
 `{x:Bind}` result is read. For the compiled preview, launch with `OD_WINUI_COMPILED=1` and a project whose
 `WindowsAppSdkBootstrapInitialize`/`WindowsAppSdkUndockedRegFreeWinRTInitialize` are false (see
 `tests/fixtures/WinUIDesignerFixture/Microsoft/BoundPage.xaml`); without the variable the same page renders markup and the
-bound text is empty.
+bound text is empty. The live-binding evaluator that replaces that limitation is specified in
+`doc/technotes/winui-designer-bindings.md`.
