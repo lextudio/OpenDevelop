@@ -42,12 +42,18 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		Environment.GetEnvironmentVariable("OD_WINUI_COMPILED") == "1"
 		|| Environment.GetEnvironmentVariable("OD_SURFACE_COMPILED") == "1";
 
+	/// <summary>
+	/// <c>OD_WINUI_LIVE_BINDINGS=1</c> opts into design-time binding evaluation: the markup preview evaluates each
+	/// <c>{x:Bind}</c> against the page instance named by the document's <c>x:Class</c> and substitutes the value, so a
+	/// XAML-side binding edit renders without a project build. Off by default while the fork side is a prototype.
+	/// </summary>
+	static readonly bool LiveBindingsEnabled = Environment.GetEnvironmentVariable("OD_WINUI_LIVE_BINDINGS") == "1";
+
 	static readonly XNamespace XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
 
-	/// <summary>The document's <c>x:Class</c> full name, when compiled-page rendering is on and the document names one.</summary>
-	static string? CompiledPageTypeFor(string xaml)
+	static string? XClassFor(string xaml)
 	{
-		if (!CompiledPagesEnabled || string.IsNullOrEmpty(xaml))
+		if (string.IsNullOrEmpty(xaml))
 			return null;
 		try {
 			return (string?)XDocument.Parse(xaml).Root?.Attribute(XamlNamespace + "Class");
@@ -56,8 +62,20 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		}
 	}
 
-	/// <summary>Points the connection at this document's compiled page (or back to markup).</summary>
-	void ApplyCompiledPage(string xaml) => connection.CompiledPageType = CompiledPageTypeFor(xaml);
+	/// <summary>The document's <c>x:Class</c> full name, when compiled-page rendering is on and the document names one.</summary>
+	static string? CompiledPageTypeFor(string xaml)
+		=> CompiledPagesEnabled ? XClassFor(xaml) : null;
+
+	/// <summary>Points the connection at this document's compiled page (or back to markup), and selects the
+	/// design-time binding evaluator when it is enabled and the compiled page is not.</summary>
+	void ApplyCompiledPage(string xaml)
+	{
+		var compiled = CompiledPageTypeFor(xaml);
+		connection.CompiledPageType = compiled;
+		// One renderer per request: a compiled page renders generated code, so evaluation would be redundant.
+		connection.EvaluateBindings = compiled == null && LiveBindingsEnabled;
+		connection.DesignPageType = connection.EvaluateBindings ? XClassFor(xaml) : null;
+	}
 
 	/// <summary>
 	/// Serves the document from <paramref name="owner"/>'s process, which is stopped when the document is disposed.

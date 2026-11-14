@@ -181,6 +181,16 @@ public sealed class SurfaceConnection : IAsyncDisposable
 	/// </summary>
 	public string? CompiledPageType { get; set; }
 
+	/// <summary>
+	/// Opt-in design-time binding evaluation (prototype): the surface renders the markup but evaluates each
+	/// <c>{x:Bind}</c> against the page instance named by <see cref="DesignPageType"/> and substitutes the value.
+	/// Mutually exclusive with <see cref="CompiledPageType"/>; an older surface ignores both fields.
+	/// </summary>
+	public bool EvaluateBindings { get; set; }
+
+	/// <summary>The page class used as design-time state for <see cref="EvaluateBindings"/> (the document's x:Class).</summary>
+	public string? DesignPageType { get; set; }
+
 	/// <summary>Adds the options every render request carries (currently <c>describe</c> and <c>compiledType</c>).</summary>
 	Dictionary<string, object?> WithOptions(Dictionary<string, object?> message)
 	{
@@ -189,6 +199,8 @@ public sealed class SurfaceConnection : IAsyncDisposable
 		// The surface treats "" as "clear the compiled page and parse markup again"; an absent field
 		// would keep a previous value, so send it every time.
 		message["compiledType"] = CompiledPageType ?? "";
+		message["evaluateBindings"] = EvaluateBindings;
+		message["designType"] = DesignPageType ?? "";
 		return message;
 	}
 
@@ -385,6 +397,8 @@ public sealed class SurfaceConnection : IAsyncDisposable
 					["sampleData"] = false,
 					["documentPath"] = documentPath,
 					["compiledType"] = CompiledPageType ?? "",
+					["evaluateBindings"] = EvaluateBindings,
+					["designType"] = DesignPageType ?? "",
 					["paneWidthPx"] = (int)Math.Ceiling(width * scale),
 					["paneHeightPx"] = (int)Math.Ceiling(height * scale),
 					["view"] = new Dictionary<string, object?> { ["fit"] = false, ["zoom"] = 1.0, ["offsetX"] = 0.0, ["offsetY"] = 0.0 },

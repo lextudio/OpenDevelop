@@ -101,14 +101,59 @@ The evaluator must run where WinUI and the user assembly are loaded - the **Surf
   builds. If the evaluator hits an expression it cannot honour, falling back to the compiled reference is the honest
   answer rather than a placeholder.
 
+## Prototype result (2026-11-14)
+
+The mechanism was built end to end and measured on `BoundPage.xaml`, as an opt-in prototype: the shell side
+(`OD_WINUI_LIVE_BINDINGS=1` -> `evaluateBindings`/`designType` on every render request) is real code in
+`SurfaceConnection`/`SurfaceDesignDocument`; the evaluator itself (`BindingEvaluator.cs` plus the render hook in
+`RenderHost`/`FrameServer`) exists only in the deployed `HostSDK/surface/Surface` sources the provisioner compiles,
+so it is not in this repository yet - a package version of the fork is what ships it.
+
+What the prototype does:
+
+- parses the markup being rendered and, for each `{x:Bind ...}` on a text-valued attribute, evaluates a plain member
+  path by reflection against one page instance (`Activator.CreateInstance(userDll.GetType(x:Class))`), cached per type;
+- applies `FallbackValue`/`TargetNullValue` when the value is null, and leaves `Converter`, function/static
+  bindings, attached-property targets and template content to `XamlCleaner`'s existing placeholder/sample behaviour;
+- logs `LiveBindings: evaluated N, skipped M` per render (plus the instance type and any resolution failure);
+- is mutually exclusive with `compiledType`, and off unless the environment variable is set.
+
+Measured (WinUISample fixture, warm provisioner cache, x64):
+
+| Check | Result |
+|---|---|
+| markup mode, no flag (yesterday's baseline) | `BoundText.Text` empty |
+| markup mode + evaluator | `Text = "Bound from code-behind"`; `LiteralText` still `"literal from the last build"` |
+| cost of evaluation | the substitution takes about 1 ms of a render (`Apply` 00:32:30.107 -> .109) |
+| warm open, surface host | about 10 s (provisioner cache hit), against 21.5 s measured for the compiled reference |
+| live binding edit, no build | `Text` edited through the Properties pad to `{x:Bind BoundRoot.Name}` -> preview reports `BoundRoot` in 2.4 s, including the pad edit |
+| undo | restores the source attribute and the preview reports `Bound from code-behind` again |
+
+So the two claims that mattered are true: an `{x:Bind}` in the *markup* preview now shows the real design-time value,
+and a binding edit re-renders at markup speed without a project build or renderer restart. The remaining work is the
+tier this note already specifies (converters, `StringFormat`, function/static expressions, `x:DataType`, templates,
+non-text targets with type conversion), and moving the evaluator from the deployed payload into the fork package.
+
+Two findings worth recording:
+
+- the shell that renders is the **DDP child**, not the IDE process, so the `SurfaceDesignDocument`/`SurfaceConnection`
+  changes must reach `AddIns/.../WinUIXamlDesigner/SurfaceHost/` as well as the AddIn folder; a stale copy there made
+  the feature look inert (the surface logged `evaluate=False`) even though the IDE's copy was current;
+- the design-time instance is created successfully for pages that have code-behind only because the project runs
+  `WINUI_XAML_DESIGN_MODE=1` and its bootstrap initializers are off - the same precondition the compiled reference
+  already has.
+
 ## Done when
 
 1. `BoundPage.xaml` shows `Text = "Bound from code-behind"` from markup mode, with no
-   `OD_WINUI_COMPILED`.
+   `OD_WINUI_COMPILED`. **Met in the prototype** (the flag is `OD_WINUI_LIVE_BINDINGS=1` until the fork ships it).
 2. Changing the binding in the source (`{x:Bind Title}` to `{x:Bind Subtitle}`, or adding a
-   converter) updates the preview on save, without a project build or renderer restart.
+   converter) updates the preview on save, without a project build or renderer restart. **Met for member paths**;
+   converters are still a `XamlCleaner` placeholder until the expression tier lands.
 3. A literal edit stays live (already true) and a code-behind edit still requires a build, with the
-   status/report naming that reason.
+   status/report naming that reason. Literal edits are live; the "requires a build" report is not built yet.
 4. Warm open/render stays close to the markup-path cost (13 s measured; the compiled path is 21.5 s).
+   Measured at about 10 s warm with the evaluator.
 5. `od.winui-designer.runtime-properties` reports the evaluated value, so the check reads the
-   renderer's own state rather than a screenshot.
+   renderer's own state rather than a screenshot. Met.
+
