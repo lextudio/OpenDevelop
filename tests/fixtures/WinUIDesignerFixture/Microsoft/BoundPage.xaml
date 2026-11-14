@@ -6,7 +6,8 @@
     <!-- Compiled-page probe: the first text is bound with {x:Bind}, which only generated code can
          evaluate; the second is a plain literal from the compiled XBF (a source edit to it must not
          change the compiled preview until the project is rebuilt). The remaining rows probe the
-         design-time evaluator's tiers: a converter declared in this document and a function binding. -->
+         design-time evaluator's tiers: a converter declared in this document, a function binding, and
+         non-text targets (bool, number, enum) whose text the XAML parser converts. -->
     <Page.Resources>
         <local:SuffixConverter x:Key="Suffix" />
     </Page.Resources>
@@ -15,5 +16,9 @@
         <TextBlock x:Name="LiteralText" Text="literal from the last build" />
         <TextBlock x:Name="ConvertedText" Text="{x:Bind Title, Converter={StaticResource Suffix}, ConverterParameter=design}" />
         <TextBlock x:Name="FunctionText" Text="{x:Bind Shout(Title)}" />
+        <TextBlock x:Name="DisabledText" Text="state" Visibility="{x:Bind State}" />
+        <Border x:Name="SizedBorder" Height="10" Background="Gray" Width="{x:Bind BoxWidth}" />
+        <!-- IsEnabled is a Control member, so the bool probe needs a Button rather than a TextBlock. -->
+        <Button x:Name="DisabledButton" Content="state" IsEnabled="{x:Bind IsBusy}" />
     </StackPanel>
 </Page>

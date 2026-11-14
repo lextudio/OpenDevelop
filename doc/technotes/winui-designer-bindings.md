@@ -121,8 +121,11 @@ What the evaluator does:
   the CLR namespace the document declares), with the compiled invoker cached per rewritten expression;
 - resolves a **converter** from the document's own resource declaration (`<local:SuffixConverter x:Key="Suffix"/>`),
   so a XAML-only converter edit is live too; falls back to the design instance's resources, then skips;
-- applies `ConverterParameter`/`ConverterLanguage` and `FallbackValue`/`TargetNullValue`, and leaves attached-property
-  targets and template content to `XamlCleaner`'s existing placeholder/sample behaviour;
+- applies `ConverterParameter`/`ConverterLanguage` and `FallbackValue`/`TargetNullValue`, and writes the value into both
+  text targets and simple non-text ones (`Visibility`, `IsEnabled`, `Width`, `Grid.Row`, ...): bools become
+  `True`/`False`, numbers and enums are formatted with the invariant culture because the XAML parser is invariant, and
+  the property itself does the final conversion; attached-property targets outside that numeric set and template
+  content stay with `XamlCleaner`;
 - logs `LIVEBIND: evaluated N, skipped M` per render (plus the instance type and any resolution failure);
 - is mutually exclusive with `compiledType`.
 
@@ -130,11 +133,12 @@ Measured (WinUISample fixture, warm provisioner cache, x64):
 
 | Check | Result |
 |---|---|
-| markup mode, no flag (yesterday's baseline) | `BoundText.Text` empty |
+| markup mode, no flag (baseline before the evaluator) | `BoundText.Text` empty, and the non-text rows fall back to their defaults |
 | markup mode + evaluator | `Text = "Bound from code-behind"`; `LiteralText` still `"literal from the last build"` |
 | converter declared in the document | `ConvertedText` = `"Bound from code-behind (design)"` (the converter instance is created from the markup) |
 | function binding | `FunctionText` = `"BOUND FROM CODE-BEHIND!"`; the first compile takes about 3 s, the cached invoker about 0.2 s |
-| **cross-check, compiled reference** | the same document rendered with `OD_WINUI_COMPILED=1` reports all four values identically |
+| non-text targets | `Visibility="{x:Bind State}"` = `Collapsed`, `Width="{x:Bind BoxWidth}"` = `120.5`, `IsEnabled="{x:Bind IsBusy}"` = `False` |
+| **cross-check, compiled reference** | the same document rendered with `OD_WINUI_COMPILED=1` reports every value identically |
 | cost of evaluation | the substitution takes about 1 ms of a render (`Apply` 00:32:30.107 -> .109) |
 | warm open, surface host | about 10 s (provisioner cache hit), against 21.5 s measured for the compiled reference |
 | live binding edit, no build | `Text` edited through the Properties pad to `{x:Bind BoundRoot.Name}` -> preview reports `BoundRoot` in 2.4 s, including the pad edit |
@@ -143,8 +147,8 @@ Measured (WinUISample fixture, warm provisioner cache, x64):
 
 So the two claims that mattered are true: an `{x:Bind}` in the *markup* preview now shows the real design-time value,
 and a binding edit - a path, a function call, a converter - re-renders at markup speed without a project build or
-renderer restart. The remaining work is `x:DataType` roots, templates, non-text targets with type conversion and
-`BindBack`/two-way, plus a toolbar switch for the mode.
+renderer restart. The remaining work is `x:DataType` roots, template content and `BindBack`/two-way, plus a toolbar
+switch for the mode.
 
 Three findings worth recording:
 

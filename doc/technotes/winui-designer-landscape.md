@@ -35,7 +35,7 @@ Almost every capability and risk difference below follows from that.
 | Document model | None (Monaco text + live objects; single-attribute text patch) | Parent-side XAML source model (`XDocument`) + child live model; versioned `design/*` mutations | None (text + live objects); property edits are live-only | Visual Studio's `Markup.dll` document model + edit transactions |
 | Writeback / undo | Partial: one attribute at a time by string patching; no designer undo | Yes (parent) | No (workstream I1) | Yes (VS) |
 | Structural editing | No (toolbox appends a tag to text; no drag/resize/snap) | Yes (add/delete/move/resize/wrap/reorder) | No | Yes (VS tools) |
-| Type/resource fidelity | Real UWP/WinUI 2 runtime in-process; UWP app resources, images/media; `{Binding}` debug only, **no `{x:Bind}`** | Reflection metadata + `.xbf` mirror + placeholder substitution, plus design-time `{x:Bind}` evaluation from a page instance (surface 0.5.0); opt-in compiled page | Version-matched host built from the project's WASDK/NuGet/PRI closure; fixed Toolkit closure still placeholders | VS build system + markup services + construction actions |
+| Type/resource fidelity | Real UWP/WinUI 2 runtime in-process; UWP app resources, images/media; `{Binding}` debug only, **no `{x:Bind}`** | Reflection metadata + `.xbf` mirror + placeholder substitution, plus design-time `{x:Bind}` evaluation from a page instance (surface 0.6.0); opt-in compiled page | Version-matched host built from the project's WASDK/NuGet/PRI closure; fixed Toolkit closure still placeholders | VS build system + markup services + construction actions |
 | Cross-platform | No (Windows/UWP only) | Yes (Uno path: Windows/macOS/Linux/device) | No | No (Windows + VS only) |
 | Main risk | UWP/WinUI 2 dead end; no isolation; text patching | WinUI compile-time semantics; five backends to maintain | No document model; fidelity tax of cleaning/placeholder | Private VS assemblies, private fields and a process-wide detour |
 | Scale (product code) | ~7.9k app + ~3.6k toolkit | ~16.7k WinUI designer + ~11.7k shared designer layers | ~14.0k extension + ~15.8k renderer + ~1.5k provisioner | ~9.0k C# + 531 lines native TAP |
@@ -1136,7 +1136,7 @@ Gains, all in the Microsoft WinUI backend on Windows:
 1. Generated metadata and PRI are authentic instead of stripped or approximated, and custom controls stop being
    placeholders. **`{x:Bind}` is not in this list:** the surface never runs the project's generated binding code, so it stays a
    placeholder or is dropped (measured in the spike results above). Our fork now evaluates binding values instead
-   (`evaluateBindings`/`designType`, package 0.5.0): member paths, compiled function bindings and converters read a real
+   (`evaluateBindings`/`designType`, package 0.6.0): member paths, compiled function bindings and converters read a real
    design-time value from a page instance without running generated code - see `winui-designer-bindings.md`.
 2. Removes two known defects: the `.xbf` mirror collision between concurrently opened WinUI
    projects, and the reflection-on-template-parts native crash that forced the 3-failure circuit

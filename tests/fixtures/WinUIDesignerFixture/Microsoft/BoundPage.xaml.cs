@@ -17,6 +17,13 @@ public sealed partial class BoundPage : Page
 	public string Title => "Bound from code-behind";
 
 	public string Shout(string text) => text.ToUpperInvariant() + "!";
+
+	// Non-text targets: the evaluator substitutes the text the XAML parser converts for the property type.
+	public bool IsBusy => false;
+
+	public double BoxWidth => 120.5;
+
+	public Microsoft.UI.Xaml.Visibility State => Microsoft.UI.Xaml.Visibility.Collapsed;
 }
 
 /// <summary>Declared in BoundPage.xaml's resources; proves a converter the document declares is used.</summary>

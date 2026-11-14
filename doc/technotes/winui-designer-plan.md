@@ -155,8 +155,9 @@ Each step ends with a committed change, tests where the code has an executable s
    compiled reference on the same document - evaluation costs about 1 ms of a render, warm open is about 10 s against
    21.5 s, and binding edits made through the Properties pad (a path, a nested function call, a converter parameter)
    update the preview in 2.4-2.6 s with no build. `{x:Bind}` has no `StringFormat` (WMC0011), so a format comes from a
-   converter or a function. Still to do: `x:DataType` roots, templates, non-text targets with type conversion, a toolbar
-   switch. Done when:
+   converter or a function. Non-text targets (`Visibility`, `IsEnabled`, `Width`, numeric attached properties) are
+   evaluated too (surface 0.6.0). Still to do: `x:DataType` roots, template content, `BindBack`/two-way, a toolbar switch.
+   Done when:
    `BoundPage` shows "Bound from code-behind" in markup mode; changing the binding or adding a converter updates the
    preview on save without a build; a code-behind edit is the only remaining rebuild (and is reported as such); warm
    render stays near markup cost (13 s measured; the compiled preview is 21.5 s).
@@ -183,8 +184,8 @@ Out of scope for now: visual states and storyboards, template editing, a data-bi
   and `toolbox.query-item-bounds` fails, so the drop is verified through its hook and unit tests only.
 - **`{x:Bind}` today vs the target.** The compiled preview shows real values but is last-build; the default markup preview
   now evaluates them (`winui-designer-bindings.md`, surface 0.5.0, on by default) so a binding edit is live, while the
-  compiled page stays the opt-in fidelity reference. Unhandled forms - `x:DataType` roots, templates, non-text targets,
-  two-way - still fall back to the cleaner's placeholders. Either mode constructs a page instance from the project
+  compiled page stays the opt-in fidelity reference. Unhandled forms - `x:DataType` roots, template content and
+  two-way bindings - still fall back to the cleaner's placeholders. Either mode constructs a page instance from the project
   assembly, so the project keeps the WinAppSDK bootstrap initializers off.
 - **Process.** Commits so far skipped the `build/opencode-review.ps1` review at the owner's instruction; CI results are ignored for now.
   ARM64 is not a priority.
