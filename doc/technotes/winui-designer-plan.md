@@ -88,11 +88,26 @@ Each step ends with a committed change, tests where the code has an executable s
    now explicitly 120x60 and top-left aligned - a Stretch-aligned element with an explicit size is centred in its cell,
    so its measured x is not its authored Margin and a snap could not be observed from the commit. `snap-lines` reports
    the lines and the parent's measured track counts for this check.
-5. **Hot-reload spike for real `{x:Bind}`.** Question: can `WinUIHotReload.Agent` attach to the Surface process (self-injection,
-   `InitializeXamlDiagnosticsEx` on its own pid) and patch a compiled page's visual tree in place? Needs a surface that
-   instantiates the project's page (the removed `compiledType` message is the starting point) plus the agent as a startup hook. Done
-   when: edit a bound element's attribute and see the running compiled page change without restarting the renderer, with the real
-   binding values intact. If it cannot attach, record why and stop; `{x:Bind}` stays a placeholder.
+5. **Hot-reload spike for real `{x:Bind}`.** Stopped on 2026-11-13, with the reason measured rather than assumed. The
+   question was whether `WinUIHotReload.Agent` can attach to the Surface process and patch a compiled page in place,
+   keeping real binding values. Three findings close it for now:
+   - **The agent cannot attach without its native TAP.** `WinUIHotReloadEndToEndTests` here loads the agent and opens its
+     pipe, then reports `no TAP for X64 next to the agent` (x86 likewise; ARM64 skips). `WinUIHotReload.Tap.vcxproj`
+     needs Visual Studio's C++ toolchain (`PlatformToolset v145`), and this machine has no Visual Studio Installer
+     (`vswhere.exe` is absent), no Windows SDK headers and no C/C++ compiler, so the TAP cannot be produced. That blocks
+     attach everywhere, not only in the Surface.
+   - **The Surface has no compiled page to patch.** The `compiledType` route was removed because it showed the last
+     build; the surface renders the project's markup. `--user-dll` only loads the project's assembly so its types resolve
+     (and is skipped for an unpackaged app whose WinAppSDK bootstrap auto-initializer is on); it never creates the page.
+     `{x:Bind}` therefore has no generated code to be live here: it stays a placeholder by construction, not because a
+     patcher rule declines it.
+   - **The patcher's rule is per changed attribute.** `XamlDocumentPatcher` refuses an edit whose new value contains
+     `{x:Bind}` (generated code owns it), as it refuses events and `x:Class`; an unrelated attribute on a page that merely
+     contains `{x:Bind}` elsewhere is allowed. So even with a compiled page and a TAP, editing the bound property itself
+     stays `restart required`; only non-bound attributes could be patched live.
+   To continue later: build the TAP on a machine with the C++ desktop workload, restore a way for the Surface to
+   instantiate the compiled page (the fork's unused `compiledType` message is the starting point), and accept that edits
+   to bound properties remain rebuild-only.
 6. **Native-live polish.** DPI scaling (only 100% was tested), keyboard focus hand-off between the IDE and the renderer window,
    and a toolbar toggle (the shared control is `DesignerCanvas.cs`, which every designer uses, so that is a deliberate change).
 7. **Property pad depth.** Show the renderer's current value in the value cell (today it is the description), type-aware editors
@@ -116,6 +131,9 @@ Out of scope for now: visual states and storyboards, template editing, a data-bi
   hook therefore falls back to the control type name when the pad is empty, and still requires the pad to offer the control when it
   has rows. A real drag journey needs a backend whose child reports a catalog; the pointer journey confirmed the pad has zero rows
   and `toolbox.query-item-bounds` fails, so the drop is verified through its hook and unit tests only.
+- **`{x:Bind}` stays a placeholder.** The Surface renders the project's markup, not its compiled page, so no generated
+  bindings exist there; and the WinUI hot-reload agent cannot attach without its native TAP, which needs Visual Studio's
+  C++ toolchain (step 5 records the measured blocker and what a later attempt needs).
 - **Process.** Commits so far skipped the `build/opencode-review.ps1` review at the owner's instruction; CI results are ignored for now.
   ARM64 is not a priority.
 
