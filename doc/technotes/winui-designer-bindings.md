@@ -39,9 +39,11 @@ Keep the **edited markup as what is rendered** (so every XAML edit is live) and 
    expression against the instance": reflection for property/field paths, a cached compiled delegate
    for function/static bindings (Roslyn is already a dependency of the payload).
 3. **Apply the binding semantics** the XAML compiler would: `Converter`, `ConverterParameter`,
-   `ConverterLanguage`, `StringFormat`, `FallbackValue`, `TargetNullValue`, and conversion to the
-   target property's type. `Mode`/`UpdateSourceTrigger` matter only for write-back, which a preview
-   does not need (values shown are design-time state).
+   `ConverterLanguage`, `FallbackValue`, `TargetNullValue`, and conversion to the target property's
+   type. `{x:Bind}` has **no `StringFormat`** (the XAML compiler rejects it with WMC0011, measured on
+   the fixture; a format comes from a converter or a function), so there is nothing to apply.
+   `Mode`/`UpdateSourceTrigger` matter only for write-back, which a preview does not need (values
+   shown are design-time state).
 4. **Rewrite the preview, never the source.** Replace each `{x:Bind ...}` in the XAML text sent to
    the renderer with the computed value (or, for templates, keep per-row `{Binding}` objects as the
    planner already does). Selection, hit-testing, the element tree and edits that write the source
@@ -49,7 +51,7 @@ Keep the **edited markup as what is rendered** (so every XAML edit is live) and 
 5. **Re-evaluate on each render** and cache compiled expressions by text hash. A new project build
    (new code-behind or types) invalidates the instance and the cache.
 
-The result: a binding edit - a new path, a converter, a string format, a different `x:DataType` -
+The result: a binding edit - a new path, a converter, a function call, a different `x:DataType` -
 re-renders at markup cost with the app's real design-time values; a C# change still needs a build,
 because the instance and its types come from the compiled assembly. That is a narrow, explainable
 last-build edge instead of "the whole XAML is last-build".
@@ -111,10 +113,16 @@ so it is not in this repository yet - a package version of the fork is what ship
 
 What the prototype does:
 
-- parses the markup being rendered and, for each `{x:Bind ...}` on a text-valued attribute, evaluates a plain member
-  path by reflection against one page instance (`Activator.CreateInstance(userDll.GetType(x:Class))`), cached per type;
-- applies `FallbackValue`/`TargetNullValue` when the value is null, and leaves `Converter`, function/static
-  bindings, attached-property targets and template content to `XamlCleaner`'s existing placeholder/sample behaviour;
+- parses the markup being rendered and, for each `{x:Bind ...}` on a text-valued attribute, evaluates a
+  **member path** by reflection against one page instance (`Activator.CreateInstance(userDll.GetType(x:Class))`),
+  cached per type;
+- evaluates **function and static bindings** by compiling the expression with Roslyn against the loaded project
+  assembly (`Shout(Title)` becomes `__page.Shout(__page.Title)`; `local:Helper.Fmt(Title)` maps the XAML prefix to
+  the CLR namespace the document declares), with the compiled invoker cached per rewritten expression;
+- resolves a **converter** from the document's own resource declaration (`<local:SuffixConverter x:Key="Suffix"/>`),
+  so a XAML-only converter edit is live too; falls back to the design instance's resources, then skips;
+- applies `ConverterParameter`/`ConverterLanguage` and `FallbackValue`/`TargetNullValue`, and leaves attached-property
+  targets and template content to `XamlCleaner`'s existing placeholder/sample behaviour;
 - logs `LiveBindings: evaluated N, skipped M` per render (plus the instance type and any resolution failure);
 - is mutually exclusive with `compiledType`, and off unless the environment variable is set.
 
@@ -124,36 +132,43 @@ Measured (WinUISample fixture, warm provisioner cache, x64):
 |---|---|
 | markup mode, no flag (yesterday's baseline) | `BoundText.Text` empty |
 | markup mode + evaluator | `Text = "Bound from code-behind"`; `LiteralText` still `"literal from the last build"` |
+| converter declared in the document | `ConvertedText` = `"Bound from code-behind (design)"` (the converter instance is created from the markup) |
+| function binding | `FunctionText` = `"BOUND FROM CODE-BEHIND!"`; the first compile takes about 3 s, the cached invoker about 0.2 s |
+| **cross-check, compiled reference** | the same document rendered with `OD_WINUI_COMPILED=1` reports all four values identically |
 | cost of evaluation | the substitution takes about 1 ms of a render (`Apply` 00:32:30.107 -> .109) |
 | warm open, surface host | about 10 s (provisioner cache hit), against 21.5 s measured for the compiled reference |
 | live binding edit, no build | `Text` edited through the Properties pad to `{x:Bind BoundRoot.Name}` -> preview reports `BoundRoot` in 2.4 s, including the pad edit |
-| undo | restores the source attribute and the preview reports `Bound from code-behind` again |
+| live function/converter edit, no build | `{x:Bind Shout(Shout(Title))}` -> `"BOUND FROM CODE-BEHIND!!"` in 2.6 s; `ConverterParameter=live` -> `"Bound from code-behind (live)"` in 2.5 s |
+| undo | restores the source attribute and the preview reports the original values again |
 
 So the two claims that mattered are true: an `{x:Bind}` in the *markup* preview now shows the real design-time value,
-and a binding edit re-renders at markup speed without a project build or renderer restart. The remaining work is the
-tier this note already specifies (converters, `StringFormat`, function/static expressions, `x:DataType`, templates,
-non-text targets with type conversion), and moving the evaluator from the deployed payload into the fork package.
+and a binding edit - a path, a function call, a converter - re-renders at markup speed without a project build or
+renderer restart. The remaining work is `x:DataType` roots, templates, non-text targets with type conversion,
+`BindBack`/two-way, and moving the evaluator from the deployed payload into the fork package.
 
-Two findings worth recording:
+Three findings worth recording:
 
 - the shell that renders is the **DDP child**, not the IDE process, so the `SurfaceDesignDocument`/`SurfaceConnection`
   changes must reach `AddIns/.../WinUIXamlDesigner/SurfaceHost/` as well as the AddIn folder; a stale copy there made
   the feature look inert (the surface logged `evaluate=False`) even though the IDE's copy was current;
 - the design-time instance is created successfully for pages that have code-behind only because the project runs
   `WINUI_XAML_DESIGN_MODE=1` and its bootstrap initializers are off - the same precondition the compiled reference
-  already has.
+  already has;
+- `{x:Bind}` has **no `StringFormat`**: `Text="{x:Bind Title, StringFormat='[{0}]'}"` is a build error (WMC0011, "Unknown
+  member 'StringFormat' on element 'BindExtension'"). A format has to come from a converter or a function, so the
+  evaluator does not pretend to support one.
 
 ## Done when
 
 1. `BoundPage.xaml` shows `Text = "Bound from code-behind"` from markup mode, with no
    `OD_WINUI_COMPILED`. **Met in the prototype** (the flag is `OD_WINUI_LIVE_BINDINGS=1` until the fork ships it).
 2. Changing the binding in the source (`{x:Bind Title}` to `{x:Bind Subtitle}`, or adding a
-   converter) updates the preview on save, without a project build or renderer restart. **Met for member paths**;
-   converters are still a `XamlCleaner` placeholder until the expression tier lands.
+   converter) updates the preview on save, without a project build or renderer restart. **Met**: member paths,
+   a converter declared in the document, and function bindings all re-render live; the values match the compiled
+   reference on the same document.
 3. A literal edit stays live (already true) and a code-behind edit still requires a build, with the
    status/report naming that reason. Literal edits are live; the "requires a build" report is not built yet.
 4. Warm open/render stays close to the markup-path cost (13 s measured; the compiled path is 21.5 s).
    Measured at about 10 s warm with the evaluator.
 5. `od.winui-designer.runtime-properties` reports the evaluated value, so the check reads the
    renderer's own state rather than a screenshot. Met.
-

@@ -1,12 +1,19 @@
 <Page x:Class="WinUISample.BoundPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:local="using:WinUISample"
       Background="#FFEEEEEE">
     <!-- Compiled-page probe: the first text is bound with {x:Bind}, which only generated code can
          evaluate; the second is a plain literal from the compiled XBF (a source edit to it must not
-         change the compiled preview until the project is rebuilt). -->
+         change the compiled preview until the project is rebuilt). The remaining rows probe the
+         design-time evaluator's tiers: a converter declared in this document and a function binding. -->
+    <Page.Resources>
+        <local:SuffixConverter x:Key="Suffix" />
+    </Page.Resources>
     <StackPanel x:Name="BoundRoot">
         <TextBlock x:Name="BoundText" Text="{x:Bind Title}" />
         <TextBlock x:Name="LiteralText" Text="literal from the last build" />
+        <TextBlock x:Name="ConvertedText" Text="{x:Bind Title, Converter={StaticResource Suffix}, ConverterParameter=design}" />
+        <TextBlock x:Name="FunctionText" Text="{x:Bind Shout(Title)}" />
     </StackPanel>
 </Page>

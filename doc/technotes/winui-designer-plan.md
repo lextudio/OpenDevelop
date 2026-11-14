@@ -146,15 +146,19 @@ Each step ends with a committed change, tests where the code has an executable s
    `SamplePlanner`/`SampleTypeModel` resolver from "synthesise from types" to "evaluate against the app's design-time
    state". It lives in the Surface host beside `SamplePlanner` - the only process where WinUI and the user assembly are
    loaded - behind one render option; the IDE sends it and later shows it as a toolbar mode. **Prototype status:** the
-   shell side (`OD_WINUI_LIVE_BINDINGS=1` -> `evaluateBindings`/`designType`) is in this repository; the evaluator is a
-   path-only prototype living in the deployed payload, not yet in the fork package. Measured on `BoundPage`: markup mode
-   reports `Text = "Bound from code-behind"` (empty without it), evaluation costs about 1 ms of a render, warm open is
-   about 10 s against 21.5 s for the compiled reference, and a binding edit made through the Properties pad updates the
-   preview in 2.4 s with no build, then undo restores it. Still to do: converters, `StringFormat` and function bindings,
-   `x:DataType`, non-text targets, and moving the evaluator into `LeXtudio.WinUISurface`. Done when: `BoundPage` shows
-   "Bound from code-behind" in markup mode; changing the binding or adding a converter updates the preview on save without
-   a build; a code-behind edit is the only remaining rebuild (and is reported as such); warm render stays near markup cost
-   (13 s measured; the compiled preview is 21.5 s).
+   shell side (`OD_WINUI_LIVE_BINDINGS=1` -> `evaluateBindings`/`designType`) is in this repository; the evaluator
+   (member paths, Roslyn-compiled function/static bindings, converters declared in the document,
+   `ConverterParameter`/`FallbackValue`/`TargetNullValue`) lives in the deployed payload, not yet in the fork package.
+   Measured on `BoundPage`, whose probe rows are now `{x:Bind Title}`, a converter declared in the page's resources and
+   `{x:Bind Shout(Title)}`: markup mode reports `"Bound from code-behind"`, `"Bound from code-behind (design)"` and
+   `"BOUND FROM CODE-BEHIND!"` - identical to the compiled reference on the same document - evaluation costs about 1 ms
+   of a render, warm open is about 10 s against 21.5 s, and binding edits made through the Properties pad (a path, a
+   nested function call, a converter parameter) update the preview in 2.4-2.6 s with no build. `{x:Bind}` has no
+   `StringFormat` (WMC0011), so a format comes from a converter or a function. Still to do: `x:DataType` roots,
+   templates, non-text targets with type conversion, and moving the evaluator into `LeXtudio.WinUISurface`. Done when:
+   `BoundPage` shows "Bound from code-behind" in markup mode; changing the binding or adding a converter updates the
+   preview on save without a build; a code-behind edit is the only remaining rebuild (and is reported as such); warm
+   render stays near markup cost (13 s measured; the compiled preview is 21.5 s).
 
 Out of scope for now: visual states and storyboards, template editing, a data-binding wizard (the same non-goals Microsoft lists).
 
