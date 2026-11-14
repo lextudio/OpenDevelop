@@ -65,6 +65,7 @@ public static class WinUIXamlDesignerDevFlowActions
 			canRedo = view.CanRedo,
 			isDirty = view.PrimaryFile?.IsDirty ?? false
 			, sizePresetKeys = (view.PreviewRuntime as IWinUIXamlSizePresets)?.SizePresetKeys
+			, nativeLive = (view.PreviewRuntime as IWinUIXamlNativeLive)?.IsNativeLive ?? false
 		});
 	}
 
@@ -809,7 +810,8 @@ public static class WinUIXamlDesignerDevFlowActions
 		bool? on = command switch { "on" or "true" or "1" => true, "off" or "false" or "0" => false, _ => null };
 		if (on is null)
 			return Failure("Expected on/off or 'query', got: " + command);
-		return live.SetNativeLive(on.Value);
+		// Through the view, so the shared canvas's native-live toggle follows the mode it reached.
+		return view.SetNativeLive(on.Value);
 	}
 
 	[DevFlowAction("od.winui-designer.gridlines",

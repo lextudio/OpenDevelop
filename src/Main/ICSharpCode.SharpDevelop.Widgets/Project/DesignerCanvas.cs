@@ -47,6 +47,10 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		/// <summary>Raster/snapline placement toggles and raster width. Deliberately not part of
 		/// <see cref="All"/>: a designer opts in only once its drag path honors them.</summary>
 		Snapping = 512,
+		/// <summary>The renderer's own live window can be shown over the canvas (native-live).
+		/// Deliberately not part of <see cref="All"/>: only a runtime that hosts the design in a real
+		/// window offers it, and the designer opts in when its runtime reports the capability.</summary>
+		NativeLive = 1024,
 		All = Zoom | Fit | Gridlines | Theme | ShowNames | DesignSize | StatusBar | VisualStates | ComponentTray
 	}
 
@@ -74,7 +78,9 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		readonly ToggleButton namesButton;
 		readonly ToggleButton rasterButton;
 		readonly ToggleButton snaplinesButton;
+		readonly ToggleButton nativeLiveButton;
 		readonly ComboBox rasterWidthCombo;
+		bool syncingNativeLive;
 		bool syncingRasterWidth;
 		// At most one non-preset width (e.g. a persisted custom value) is shown alongside the presets.
 		int? customRasterWidth;
@@ -147,6 +153,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			themeCombo.Items.Add("Dark");
 			themeCombo.SelectedIndex = 0;
 			namesButton = CreateIconToggle("Icons.16x16.DisplayName", "Show control names on the selection outline");
+			nativeLiveButton = CreateIconToggle("Icons.16x16.Run", "Show the renderer's own live window over the canvas (native live)");
 			rasterButton = CreateIconToggle("Icons.16x16.SnapToGrid", "Snap moved elements to the raster");
 			snaplinesButton = CreateIconToggle("Icons.16x16.ToggleGuides", "Snap moved elements to alignment guides");
 			rasterWidthCombo = new ComboBox {
@@ -168,6 +175,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			AutomationProperties.SetName(gridButton, "Gridlines");
 			AutomationProperties.SetName(themeCombo, "Theme");
 			AutomationProperties.SetName(namesButton, "Show Names");
+			AutomationProperties.SetName(nativeLiveButton, "Native Live");
 			AutomationProperties.SetName(rasterButton, "Snap to Raster");
 			AutomationProperties.SetName(snaplinesButton, "Snap to Guides");
 			AutomationProperties.SetName(rasterWidthCombo, "Raster Width");
@@ -192,6 +200,9 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			statesPanel.Visibility = Visibility.Collapsed;
 			toolbar.Children.Add(statesPanel);
 			toolbar.Children.Add(namesButton);
+			// Sits beside Show Names: both answer "how is the design presented", and a backend
+			// without a live renderer window never shows it (capability off).
+			toolbar.Children.Add(nativeLiveButton);
 			// The design-size preset combo sits on its own at the far right.
 			toolbar.Children.Add(DesignSizeCombo);
 
@@ -240,6 +251,17 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			};
 			namesButton.Checked += (_, _) => { UpdateButtonHighlight(namesButton); ShowNamesRequested?.Invoke(this, true); };
 			namesButton.Unchecked += (_, _) => { UpdateButtonHighlight(namesButton); ShowNamesRequested?.Invoke(this, false); };
+			// SetNativeLive reflects a backend-initiated change; only a real press asks the backend.
+			nativeLiveButton.Checked += (_, _) => {
+				UpdateButtonHighlight(nativeLiveButton);
+				if (!syncingNativeLive)
+					NativeLiveRequested?.Invoke(this, true);
+			};
+			nativeLiveButton.Unchecked += (_, _) => {
+				UpdateButtonHighlight(nativeLiveButton);
+				if (!syncingNativeLive)
+					NativeLiveRequested?.Invoke(this, false);
+			};
 			rasterButton.Checked += (_, _) => { UpdateButtonHighlight(rasterButton); SnapToGridRequested?.Invoke(this, true); };
 			rasterButton.Unchecked += (_, _) => { UpdateButtonHighlight(rasterButton); SnapToGridRequested?.Invoke(this, false); };
 			snaplinesButton.Checked += (_, _) => { UpdateButtonHighlight(snaplinesButton); SnapToGuidesRequested?.Invoke(this, true); };
@@ -544,6 +566,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				gridButton.Visibility = value.HasFlag(DesignerCanvasCapabilities.Gridlines) ? Visibility.Visible : Visibility.Collapsed;
 				themeCombo.Visibility = value.HasFlag(DesignerCanvasCapabilities.Theme) ? Visibility.Visible : Visibility.Collapsed;
 				namesButton.Visibility = value.HasFlag(DesignerCanvasCapabilities.ShowNames) ? Visibility.Visible : Visibility.Collapsed;
+				nativeLiveButton.Visibility = value.HasFlag(DesignerCanvasCapabilities.NativeLive) ? Visibility.Visible : Visibility.Collapsed;
 				var snapping = value.HasFlag(DesignerCanvasCapabilities.Snapping) ? Visibility.Visible : Visibility.Collapsed;
 				rasterButton.Visibility = snapping;
 				rasterWidthCombo.Visibility = snapping;
@@ -572,6 +595,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.Gridlines)) result.Add("Gridlines");
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.Theme)) result.Add("Theme");
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.ShowNames)) result.Add("Show Names");
+				if (capabilities.HasFlag(DesignerCanvasCapabilities.NativeLive)) result.Add("Native Live");
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.Snapping)) result.Add("Snapping");
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.VisualStates) && statesPanel.Children.Count > 0) result.Add("Visual States");
 				if (capabilities.HasFlag(DesignerCanvasCapabilities.DesignSize)) result.Add("Design Size");
@@ -585,6 +609,7 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public bool ShowGrid { get => capabilities.HasFlag(DesignerCanvasCapabilities.Gridlines); set => SetCapability(DesignerCanvasCapabilities.Gridlines, value); }
 		public bool ShowTheme { get => capabilities.HasFlag(DesignerCanvasCapabilities.Theme); set => SetCapability(DesignerCanvasCapabilities.Theme, value); }
 		public bool ShowNames { get => capabilities.HasFlag(DesignerCanvasCapabilities.ShowNames); set => SetCapability(DesignerCanvasCapabilities.ShowNames, value); }
+		public bool ShowNativeLive { get => capabilities.HasFlag(DesignerCanvasCapabilities.NativeLive); set => SetCapability(DesignerCanvasCapabilities.NativeLive, value); }
 		public bool ShowStatusBar { get => capabilities.HasFlag(DesignerCanvasCapabilities.StatusBar); set => SetCapability(DesignerCanvasCapabilities.StatusBar, value); }
 		void SetCapability(DesignerCanvasCapabilities capability, bool enabled) => Capabilities = enabled ? capabilities | capability : capabilities & ~capability;
 
@@ -747,6 +772,30 @@ namespace ICSharpCode.SharpDevelop.Widgets
 		public event EventHandler<string> ThemeRequested;
 		public event EventHandler<bool> ShowNamesRequested;
 
+		/// <summary>Raised when the user presses the native-live toolbar toggle. The backend applies
+		/// the mode and then calls <see cref="SetNativeLive"/> with the state it actually reached, so
+		/// a failed start visibly unchecks the button.</summary>
+		public event EventHandler<bool> NativeLiveRequested;
+
+		/// <summary>Whether the backend's own live window is currently presented over the canvas
+		/// (the toolbar toggle's state).</summary>
+		public bool IsNativeLive => nativeLiveButton.IsChecked == true;
+
+		/// <summary>Reflects a backend-initiated native-live change on the toolbar WITHOUT raising
+		/// <see cref="NativeLiveRequested"/>, so the backend never echoes its own change back.</summary>
+		public void SetNativeLive(bool native)
+		{
+			if (nativeLiveButton.IsChecked == native)
+				return;
+			syncingNativeLive = true;
+			try {
+				nativeLiveButton.IsChecked = native;
+			} finally {
+				syncingNativeLive = false;
+			}
+			UpdateButtonHighlight(nativeLiveButton);
+		}
+
 		/// <summary>Raster placement toggle state; setting it raises <see cref="SnapToGridRequested"/>
 		/// exactly as a click does.</summary>
 		public bool IsSnappingToGrid { get => rasterButton.IsChecked == true; set => rasterButton.IsChecked = value; }
@@ -783,6 +832,39 @@ namespace ICSharpCode.SharpDevelop.Widgets
 				return false;
 			rasterWidthCombo.SelectedItem = width;
 			return true;
+		}
+
+		/// <summary>Presses the native-live toggle as a user would, raising
+		/// <see cref="NativeLiveRequested"/>; false when this backend does not offer it.</summary>
+		public bool RequestNativeLive(bool native)
+		{
+			if (!capabilities.HasFlag(DesignerCanvasCapabilities.NativeLive))
+				return false;
+			nativeLiveButton.IsChecked = native;
+			return true;
+		}
+
+		/// <summary>Screen bounds of a visible toolbar item, by the name
+		/// <see cref="VisibleToolbarItems"/> reports, for synthetic pointer input. Empty when the
+		/// item is not offered or not on screen (a real click at these coordinates reaches the same
+		/// button a user presses).</summary>
+		public Rect ToolbarItemBounds(string item)
+		{
+			FrameworkElement element = item switch {
+				"Zoom" => ZoomCombo,
+				"Fit" => fitButton,
+				"Gridlines" => gridButton,
+				"Theme" => themeCombo,
+				"Show Names" => namesButton,
+				"Native Live" => nativeLiveButton,
+				"Snapping" => rasterButton,
+				"Visual States" => statesPanel,
+				"Design Size" => DesignSizeCombo,
+				_ => null
+			};
+			if (element == null || element.Visibility != Visibility.Visible || !element.IsVisible)
+				return Rect.Empty;
+			return new Rect(element.PointToScreen(new Point(0, 0)), element.RenderSize);
 		}
 
 		/// <summary>Presses the toolbar's Fit button, as a user would; false when this canvas

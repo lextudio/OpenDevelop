@@ -1353,6 +1353,14 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 		if (Math.Abs(dpi - lastRenderDpi) > 0.01)
 		{
 			lastRenderDpi = dpi;
+			// Native-live places the renderer's window from the geometry probe's PHYSICAL pixels, so
+			// a scale change needs a fresh placement even before the re-rendered frame arrives; the
+			// timer is the DPI-change signal here because LibreWPF raises no window DpiChanged event.
+			if (IsNativeLive)
+			{
+				lastPlacement = default;
+				OnCanvasLayout(this, EventArgs.Empty);
+			}
 			_ = RenderAsync(Volatile.Read(ref lastLoadedText), Interlocked.Increment(ref version));
 		}
 	}

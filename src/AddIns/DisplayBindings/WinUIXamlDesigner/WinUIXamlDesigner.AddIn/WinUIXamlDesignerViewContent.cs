@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -170,6 +171,49 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 
 	/// <summary>The Grid-track snap lines behind a named element's drag snapping.</summary>
 	public object SnapLineDiagnostics(string name) => previewHost.SnapLineDiagnostics(name);
+
+	/// <summary>Offers (and reflects) the shared canvas's native-live toolbar toggle, when the
+	/// runtime hosts a real renderer window. The canvas is shared by every designer, so it shows the
+	/// toggle only for a runtime that opts in.</summary>
+	void WireNativeLive()
+	{
+		if (previewHost.Runtime is not IWinUIXamlNativeLive live || previewHost.SharedCanvas is not { } canvas)
+			return;
+		if (!nativeLiveWired) {
+			nativeLiveWired = true;
+			nativeLiveCanvas = canvas;
+			canvas.ShowNativeLive = true;
+			canvas.NativeLiveRequested += OnNativeLiveRequested;
+		}
+		canvas.SetNativeLive(live.IsNativeLive);
+	}
+
+	DesignerCanvas nativeLiveCanvas;
+	bool nativeLiveWired;
+
+	void OnNativeLiveRequested(object sender, bool enabled)
+	{
+		if (previewHost.Runtime is not IWinUIXamlNativeLive live || nativeLiveCanvas == null)
+			return;
+		live.SetNativeLive(enabled);
+		nativeLiveCanvas.SetNativeLive(live.IsNativeLive);
+		status.Text = live.IsNativeLive
+			? "Native live window over the canvas"
+			: enabled ? "Native live could not start; showing the last snapshot" : "Back on the design snapshots";
+	}
+
+	/// <summary>Applies native-live mode through the runtime, keeps the toolbar toggle on the state
+	/// the runtime actually reached, and returns the runtime's JSON reply.</summary>
+	public string SetNativeLive(bool enabled)
+	{
+		if (previewHost.Runtime is not IWinUIXamlNativeLive live)
+			return JsonSerializer.Serialize(new { success = false, error = "The active runtime does not support native-live mode (use OD_WINUI_RUNTIME=surface)" });
+		var reply = live.SetNativeLive(enabled);
+		WireNativeLive();
+		previewHost.SharedCanvas?.SetNativeLive(live.IsNativeLive);
+		status.Text = live.IsNativeLive ? "Native live window over the canvas" : "Back on the design snapshots";
+		return reply;
+	}
 	/// <summary>The element's bounds in DESIGN units - the space a Toolbox drop point is
 	/// expressed in (see <see cref="InsertFromToolbox(string, string, (double X, double Y)?)"/>).</summary>
 	public (double X, double Y, double Width, double Height)? QueryElementBounds(string name) => previewHost.QueryElementBounds(name);
@@ -807,6 +851,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			WinUIXamlToolbox.Instance.PopulateFromCatalog(catalog);
 			toolboxPopulated = true;
 		}
+		// A runtime that hosts the design in its own window offers the canvas's native-live toggle;
+		// do this on every state change so the toggle reflects a mode entered through DevFlow too.
+		WireNativeLive();
 	}
 
 	void RefreshComponentTray()
@@ -2196,6 +2243,8 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		previewHost.GridTrackSplitRequested -= OnGridTrackSplitRequestedOnSurface;
 		previewHost.ControlDropped -= OnControlDroppedOnSurface;
 		outline.SelectedItemChanged -= OnOutlineSelectionChanged;
+		if (nativeLiveWired && nativeLiveCanvas != null)
+			nativeLiveCanvas.NativeLiveRequested -= OnNativeLiveRequested;
 		propertyContainer.Clear();
 		previewHost.Dispose();
 		base.Dispose();

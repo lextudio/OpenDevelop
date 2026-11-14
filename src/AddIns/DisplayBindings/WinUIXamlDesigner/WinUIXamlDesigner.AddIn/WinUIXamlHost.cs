@@ -20,6 +20,11 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	/// <summary>Selected runtime identity, available even if the first document render fails.</summary>
 	public string BackendName => ((runtime?.WpfSurface ?? Content) as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.BackendName ?? "";
 
+	/// <summary>The shared design canvas every designer uses, when this runtime hosts one. The
+	/// native-live toolbar toggle is offered through it (a WinUI-only capability).</summary>
+	public ICSharpCode.SharpDevelop.Widgets.DesignerCanvas SharedCanvas
+		=> (runtime?.WpfSurface ?? Content) as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas;
+
 	/// <summary>Whether the canvas is currently showing its shared "please wait" chrome (a design
 	/// load or a VisualState switch). Exposed for DevFlow/tests, which cannot screenshot.</summary>
 	public bool IsLoading => (runtime?.WpfSurface as ICSharpCode.SharpDevelop.Widgets.DesignerCanvas)?.IsLoading == true;

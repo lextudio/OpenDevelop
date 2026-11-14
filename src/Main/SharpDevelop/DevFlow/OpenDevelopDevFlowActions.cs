@@ -5323,6 +5323,13 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				loading = canvas?.IsLoading ?? false,
 				statusText = canvas?.StatusText,
 				toolbarItems = canvas?.VisibleToolbarItems ?? Array.Empty<string>(),
+				// Screen bounds by toolbar item name, so a pointer journey can press the exact button.
+				toolbarItemBounds = canvas == null ? null
+					: canvas.VisibleToolbarItems.ToDictionary(
+						item => item,
+						item => canvas.ToolbarItemBounds(item) is var bounds && !bounds.IsEmpty
+							? (object)new { x = bounds.X, y = bounds.Y, width = bounds.Width, height = bounds.Height }
+							: null),
 				snapToGridChecked = canvas?.IsSnappingToGrid ?? false,
 				snapToGuidesChecked = canvas?.IsSnappingToGuides ?? false,
 				rasterWidth = canvas?.RasterWidth ?? 0,

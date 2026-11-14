@@ -29,7 +29,7 @@ Dates are 2026-11.
 | Move and resize as source edits | `WinUIXamlMarginEditor.TryDelta` (Margin, alignment-aware), `ApplyElementBounds`; hooks `nudge`, `resize` | IDE: +20,+10 move, 98x32 -> 200x48 resize, one Undo restores. Pointer: a real press/stepped drag/release moved 60x30 and authored `Margin="60,30,0,0"`, a handle drag grew 98x32 to 168x72 with `Width`/`Height`, one Undo each |
 | Toolbox drop at a point: the measured Grid cell (`Grid.Row`/`Grid.Column`), `Canvas.Left`/`Top`, or the StackPanel child index, as one source edit | `WinUIXamlDropPlacement`, `WinUIXamlDocumentEditor.Insert(..., before, attached)`, hook `drop` | 60 tests; IDE: a Button dropped at (600,400) in `DropGrid` authored `Grid.Row="1" Grid.Column="1"`, at (30,20) in `DropCanvas` authored `Canvas.Left="30" Canvas.Top="20"`, one Undo each |
 | Edits keep the author's layout (declaration, line endings, untouched tags) | `WinUIXamlDocumentEditor.PreserveLayout` | 47 tests, `tests/OpenDevelop.WinUIXamlDocument.Tests` |
-| Native-live window over the canvas (opt-in), follows the canvas, falls back to the last snapshot if the renderer dies | `UnoDesignRuntimeHost.NativeLive.cs`, `od.winui-designer.native-live` | IDE: on, off, on, killed renderer, window follows maximize |
+| Native-live window over the canvas (opt-in), follows the canvas, falls back to the last snapshot if the renderer dies | `UnoDesignRuntimeHost.NativeLive.cs`, the shared `DesignerCanvas` `NativeLive` toggle, `od.winui-designer.native-live` | IDE: the toolbar toggle enters/leaves, the window lands on the visible canvas at the same DPI, a click reaches the renderer's process, it follows a pan, and killing the renderer falls back to snapshots (12/12 checks) |
 | Outline selection by element name, and the unnamed root | `DocumentOutlineControl.ResolveDisplayedId`, `WinUIXamlDesignerViewContent.SelectSourceElement`/`OnOutlineSelectionChanged` | 3 UI-fact tests; IDE: clicking `[Page]`, `[Grid]`, `RootStack`, `TitleText` and `PrimaryButton` keeps the row selected and draws exactly that element's box |
 | Selection handles, outline and snapping guides from the described bounds | shared `DesignSurface` adorner layer; `GridTrackSnapLines` + `SnapGuideCalculator.Line` in `DesignSurfaceController` | 5 UI-fact snap tests; IDE: a real drag 4 units short of a measured column divider lands exactly on it (`Margin="120,0,0,0"`), a resize edge likewise (`Width="120"`), and a position away from every line stays put |
 | Guard: a project whose own WinAppSDK bootstrap initializer is on is not loaded into the surface | `SurfaceDesignRuntimeHostBootstrap` | measured: otherwise every XAML object fails with `0x8001010E` |
@@ -108,8 +108,21 @@ Each step ends with a committed change, tests where the code has an executable s
    To continue later: build the TAP on a machine with the C++ desktop workload, restore a way for the Surface to
    instantiate the compiled page (the fork's unused `compiledType` message is the starting point), and accept that edits
    to bound properties remain rebuild-only.
-6. **Native-live polish.** DPI scaling (only 100% was tested), keyboard focus hand-off between the IDE and the renderer window,
-   and a toolbar toggle (the shared control is `DesignerCanvas.cs`, which every designer uses, so that is a deliberate change).
+6. **Native-live polish.** Done. The renderer's own window is reachable from the shared toolbar: `DesignerCanvas` gained
+   a `NativeLive` capability and toggle (shown only for a runtime that implements `IWinUIXamlNativeLive`), a user press
+   raises `NativeLiveRequested`, and `SetNativeLive` reflects a backend-initiated change without echoing it back. The
+   runtime parents the window to the WPF **main window** (`WindowInteropHelper`), not `Process.MainWindowHandle` - the
+   latter can name another top-level window, and the child was then placed at a bogus origin and destroyed with that
+   window. Placement stays in physical pixels from the geometry probe (no dpi/96 division), both windows' DPI are
+   reported, and the runtime's two-second scale poller re-places the window on a DPI change (LibreWPF raises no
+   `DpiChanged`). A handle whose window no longer exists now reads as "not native", so the last snapshot is the fallback.
+   Entering keeps keyboard focus on the design canvas; leaving hands it back. Verified in the IDE with real clicks on
+   the toolbar and the live page (12/12 checks): the toggle enters and leaves native mode, the
+   `WinUIDesktopWin32WindowClass` window lands exactly on the frame intersected with the viewport (432x80 at 314,214),
+   both DPIs are 96, a click there lands in the renderer's own process (its content bridge), the window follows a pan, a
+   DevFlow-started mode shows on the toggle, and killing the renderer's process falls back to snapshots and re-renders.
+   OS-level keyboard focus hand-off cannot be asserted on this desktop (it has no stable foreground window:
+   `GetForegroundWindow` alternates between 0 and the IDE), so that last step stays a visual check.
 7. **Property pad depth.** Show the renderer's current value in the value cell (today it is the description), type-aware editors
    for `Brush`, `CornerRadius` and `FontFamily` from the catalog, attached properties of the parent (`Grid.Row`, `Canvas.Left`).
 
@@ -122,11 +135,13 @@ Out of scope for now: visual states and storyboards, template editing, a data-bi
   seen by NuGet caches: bump the version.
 - **Round-trip.** The editor now preserves untouched layout, but the edited tag itself is still reflowed and two identical tags may
   swap layout. The corpus baseline (`real-files-baseline.txt`) makes any change visible.
-- **Unverified here.** High DPI and focus behaviour, whether the Surface accepts the incremental `design/set-bounds`
-  edit or silently falls back to a full reload (the commit works either way and reports no distinction), the pointer
-  drag from the Toolbox (no deployed backend reports a catalog), and anything on macOS/Linux (the Surface is
-  Windows-only). Grid-track snapping uses the *measured* track offsets: a Grid with padding or a border offsets its
-  tracks by more than its own bounds origin, and that difference has not been measured yet.
+- **Unverified here.** DPI scaling **above 100%** (placement is in physical pixels and both window DPIs are reported,
+  but no monitor at another scale was available to move the IDE to), OS-level keyboard focus for the live window (this
+  desktop has no stable foreground window: `GetForegroundWindow` alternates between 0 and the IDE), whether the Surface
+  accepts the incremental `design/set-bounds` edit or silently falls back to a full reload (the commit works either way
+  and reports no distinction), the pointer drag from the Toolbox (no deployed backend reports a catalog), and anything on
+  macOS/Linux (the Surface is Windows-only). Grid-track snapping uses the *measured* track offsets: a Grid with padding or
+  a border offsets its tracks by more than its own bounds origin, and that difference has not been measured yet.
 - **The Surface host advertises no toolbox catalog**, so its Toolbox pad stays empty and a real drag cannot start there; the `drop`
   hook therefore falls back to the control type name when the pad is empty, and still requires the pad to offer the control when it
   has rows. A real drag journey needs a backend whose child reports a catalog; the pointer journey confirmed the pad has zero rows
@@ -157,4 +172,7 @@ queued past the endpoint's return) and treat a zero `count` as a delivery failur
 movement selects; a press on the reported `handle` resizes. Read `MainPage.xaml` after `Ctrl+S` to confirm the authored
 `Margin`/`Width`/`Height`, then `undo` and save again so the fixture stays clean. A gesture commits through a full document
 reload, so poll `query-element-bounds` for the settled value instead of assuming a fixed delay. `snap-lines <name>` shows the
-Grid-track lines the selected element's parent contributes to a drag.
+Grid-track lines the selected element's parent contributes to a drag. `od.designer-canvas.status` reports every visible
+toolbar item's **screen bounds** (`toolbarItemBounds`) so a real click can press one by name - the native-live toggle, for
+example, needs no coordinates hardcoded; a click over the live window is deliberately absent from `od.pointer-events` because
+it goes to the renderer's own process.
