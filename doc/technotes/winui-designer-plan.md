@@ -31,6 +31,7 @@ Dates are 2026-11.
 | Toolbox drop at a point: the measured Grid cell (`Grid.Row`/`Grid.Column`), `Canvas.Left`/`Top`, or the StackPanel child index, as one source edit | `WinUIXamlDropPlacement`, `WinUIXamlDocumentEditor.Insert(..., before, attached)`, hook `drop` | 60 tests; IDE: a Button dropped at (600,400) in `DropGrid` authored `Grid.Row="1" Grid.Column="1"`, at (30,20) in `DropCanvas` authored `Canvas.Left="30" Canvas.Top="20"`, one Undo each |
 | Edits keep the author's layout (declaration, line endings, untouched tags) | `WinUIXamlDocumentEditor.PreserveLayout` | 47 tests, `tests/OpenDevelop.WinUIXamlDocument.Tests` |
 | Native-live window over the canvas (opt-in), follows the canvas, falls back to the last snapshot if the renderer dies | `UnoDesignRuntimeHost.NativeLive.cs`, the shared `DesignerCanvas` `NativeLive` toggle, `od.winui-designer.native-live` | IDE: the toolbar toggle enters/leaves, the window lands on the visible canvas at the same DPI, a click reaches the renderer's process, it follows a pan, and killing the renderer falls back to snapshots (12/12 checks) |
+| Compiled preview with real `{x:Bind}` (opt-in, `OD_WINUI_COMPILED=1`) | `SurfaceConnection.CompiledPageType`, `SurfaceDesignDocument` (`x:Class` -> `compiledType`), the fork's compiled page, `tests/fixtures/WinUIDesignerFixture/Microsoft/BoundPage.xaml` | IDE: the bound TextBlock reports "Bound from code-behind" (empty in markup mode); a source edit does not change it until the project is rebuilt; 21.5 s warm open vs 13 s markup |
 | Outline selection by element name, and the unnamed root | `DocumentOutlineControl.ResolveDisplayedId`, `WinUIXamlDesignerViewContent.SelectSourceElement`/`OnOutlineSelectionChanged` | 3 UI-fact tests; IDE: clicking `[Page]`, `[Grid]`, `RootStack`, `TitleText` and `PrimaryButton` keeps the row selected and draws exactly that element's box |
 | Selection handles, outline and snapping guides from the described bounds | shared `DesignSurface` adorner layer; `GridTrackSnapLines` + `SnapGuideCalculator.Line` in `DesignSurfaceController` | 5 UI-fact snap tests; IDE: a real drag 4 units short of a measured column divider lands exactly on it (`Margin="120,0,0,0"`), a resize edge likewise (`Width="120"`), and a position away from every line stays put |
 | Guard: a project whose own WinAppSDK bootstrap initializer is on is not loaded into the surface | `SurfaceDesignRuntimeHostBootstrap` | measured: otherwise every XAML object fails with `0x8001010E` |
@@ -89,23 +90,17 @@ Each step ends with a committed change, tests where the code has an executable s
    now explicitly 120x60 and top-left aligned - a Stretch-aligned element with an explicit size is centred in its cell,
    so its measured x is not its authored Margin and a snap could not be observed from the commit. `snap-lines` reports
    the lines and the parent's measured track counts for this check.
-5. **Hot-reload spike for real `{x:Bind}`.** The attach half is now proven on this machine; what remains is the Surface's lack
-   of a compiled page, which is a design decision rather than a toolchain one.
-   - **Attach and patch: yes.** With Visual Studio 2026 Build Tools installed (C++ workload + the ARM64 tools, because the
-     agent's target builds the TAP for x86/x64/ARM64 unconditionally), `WinUIHotReload.Tap` builds and
-     `WinUIHotReloadEndToEndTests` passes on x64 and x86 (ARM64 skips on x64 hardware). The test launches the compiled
-     fixture through the real adapter, applies property edits, a subtree rebuild and an edit inside that rebuilt region,
-     reads the values back from the live application, and confirms an event handler is refused - without restarting it.
-   - **The Surface has no compiled page to patch.** The `compiledType` route was removed because it showed the last build;
-     the surface renders the project's markup. `--user-dll` only loads the project's assembly so its types resolve (and is
-     skipped for an unpackaged app whose WinAppSDK bootstrap auto-initializer is on); it never creates the page. `{x:Bind}`
-     therefore has no generated code to be live here: a placeholder by construction, not because a patcher rule declines it.
-   - **The patcher's rule is per changed attribute.** `XamlDocumentPatcher` refuses an edit whose new value contains
-     `{x:Bind}` (generated code owns it), as it refuses events and `x:Class`; an unrelated attribute on a page that merely
-     contains `{x:Bind}` elsewhere is allowed. So even with a compiled page, editing the bound property itself stays
-     `restart required`; only non-bound attributes could be patched live.
-   Remaining work for real binding values in the designer: restore a Surface route that instantiates the compiled page (the
-   fork's unused `compiledType` message is the starting point), accepting that bound-property edits stay rebuild-only.
+5. **Hot-reload spike for real `{x:Bind}`.** Done: real bindings render in an opt-in **compiled preview**, and the cost is
+   measured. `OD_WINUI_COMPILED=1` makes the Surface child send the page's `x:Class` as the fork's `compiledType`; the
+   renderer then instantiates the project's compiled page (generated `InitializeComponent`, generated `{x:Bind}`, code-behind)
+   instead of parsing the markup. On `BoundPage.xaml` the bound `TextBlock` reports `Text = "Bound from code-behind"` from
+   the renderer's own catalog, where markup mode reports it empty; the element tree, property catalog and selection all keep
+   working, and the first render has no document error. Warm open of that page costs 21.5 s against 13 s for markup (one
+   document, same machine), and a source edit does **not** reach the preview: a literal changed in the file still renders
+   the compiled XBF's old text until the project is rebuilt - the last-build coupling that removed this route before. The
+   fixture needs `WindowsAppSdkBootstrapInitialize=false` and `WindowsAppSdkUndockedRegFreeWinRTInitialize=false`, or the
+   surface refuses to load the project assembly. Editing the bound property itself remains `restart required` in the
+   patcher. So it exists as an opt-in "what the build renders" mode, not as the default text-authoritative preview.
 6. **Native-live polish.** Done. The renderer's own window is reachable from the shared toolbar: `DesignerCanvas` gained
    a `NativeLive` capability and toggle (shown only for a runtime that implements `IWinUIXamlNativeLive`), a user press
    raises `NativeLiveRequested`, and `SetNativeLive` reflects a backend-initiated change without echoing it back. The
@@ -157,10 +152,11 @@ Out of scope for now: visual states and storyboards, template editing, a data-bi
   hook therefore falls back to the control type name when the pad is empty, and still requires the pad to offer the control when it
   has rows. A real drag journey needs a backend whose child reports a catalog; the pointer journey confirmed the pad has zero rows
   and `toolbox.query-item-bounds` fails, so the drop is verified through its hook and unit tests only.
-- **`{x:Bind}` stays a placeholder.** The Surface renders the project's markup, not its compiled page, so no generated
-  bindings exist there. Hot reload itself now attaches and patches a compiled WinUI app end to end (x64 and x86); what a
-  later attempt needs is a Surface route that instantiates the compiled page (the fork's unused `compiledType` message),
-  not a toolchain change.
+- **`{x:Bind}` needs the compiled preview.** The default Surface preview renders the project's markup, so generated bindings do
+  not run there. `OD_WINUI_COMPILED=1` instantiates the compiled page and shows the real values, but it shows the last
+  build: a source edit does not reach it until the project is rebuilt, and the project must opt out of the WinAppSDK
+  bootstrap initializers so the surface can load its assembly. Bound-property edits stay `restart required` under the
+  hot-reload patcher.
 - **Process.** Commits so far skipped the `build/opencode-review.ps1` review at the owner's instruction; CI results are ignored for now.
   ARM64 is not a priority.
 
@@ -189,4 +185,8 @@ toolbar item's **screen bounds** (`toolbarItemBounds`) so a real click can press
 example, needs no coordinates hardcoded; a click over the live window is deliberately absent from `od.pointer-events` because
 it goes to the renderer's own process. `properties-pad.properties` lists the pad's rows with the value cell's text, the
 editor converter and whether the source authors the property; `properties-pad.edit` and `properties-pad.standard-values`
-drive and inspect them.
+drive and inspect them. `runtime-properties <name>` reports the renderer's own values, which is how a compiled preview's
+`{x:Bind}` result is read. For the compiled preview, launch with `OD_WINUI_COMPILED=1` and a project whose
+`WindowsAppSdkBootstrapInitialize`/`WindowsAppSdkUndockedRegFreeWinRTInitialize` are false (see
+`tests/fixtures/WinUIDesignerFixture/Microsoft/BoundPage.xaml`); without the variable the same page renders markup and the
+bound text is empty.

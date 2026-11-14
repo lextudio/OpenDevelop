@@ -172,6 +172,14 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	/// <summary>The Grid-track snap lines behind a named element's drag snapping.</summary>
 	public object SnapLineDiagnostics(string name) => previewHost.SnapLineDiagnostics(name);
 
+	/// <summary>The renderer's own property catalog for a named element - its CURRENT values, independent of the
+	/// source markup (an<x:Bind> element therefore reports the value generated code produced).</summary>
+	public IReadOnlyList<DesignerPropertyInfo> RuntimePropertiesFor(string name)
+	{
+		var element = editor.FindElement(name);
+		return element == null ? Array.Empty<DesignerPropertyInfo>() : RuntimeProperties(element);
+	}
+
 	/// <summary>Offers (and reflects) the shared canvas's native-live toolbar toggle, when the
 	/// runtime hosts a real renderer window. The canvas is shared by every designer, so it shows the
 	/// toggle only for a runtime that opts in.</summary>

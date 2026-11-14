@@ -31,6 +31,31 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 	public SurfaceDesignDocument(SurfaceConnection connection) => this.connection = connection;
 
 	/// <summary>
+	/// <c>OD_WINUI_COMPILED=1</c> opts into compiled-page rendering: the surface instantiates the document's own page class
+	/// (named by its <c>x:Class</c>) from the project assembly instead of parsing the markup, which is what makes generated
+	/// <c>{x:Bind}</c> and code-behind run. It shows the project's LAST BUILD. Off by default: the text-authoritative
+	/// renderer is the normal mode.
+	/// </summary>
+	static readonly bool CompiledPagesEnabled = Environment.GetEnvironmentVariable("OD_WINUI_COMPILED") == "1";
+
+	static readonly XNamespace XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+	/// <summary>The document's <c>x:Class</c> full name, when compiled-page rendering is on and the document names one.</summary>
+	static string? CompiledPageTypeFor(string xaml)
+	{
+		if (!CompiledPagesEnabled || string.IsNullOrEmpty(xaml))
+			return null;
+		try {
+			return (string?)XDocument.Parse(xaml).Root?.Attribute(XamlNamespace + "Class");
+		} catch (XmlException) {
+			return null;
+		}
+	}
+
+	/// <summary>Points the connection at this document's compiled page (or back to markup).</summary>
+	void ApplyCompiledPage(string xaml) => connection.CompiledPageType = CompiledPageTypeFor(xaml);
+
+	/// <summary>
 	/// Serves the document from <paramref name="owner"/>'s process, which is stopped when the document is disposed.
 	/// <paramref name="afterDispose"/> then runs (for example to delete the document's private run directory).
 	/// </summary>
@@ -54,6 +79,7 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		var viewport = request.Viewport ?? new DesignerViewport { Width = 1280, Height = 720 };
 		viewportWidth = viewport.Width; viewportHeight = viewport.Height; viewportScale = viewport.Dpi;
 		connection.DescribeFrames = BuildTree;
+		ApplyCompiledPage(PrimaryText(snapshot));
 		var result = await connection.LoadXamlAsync(
 			PrimaryText(snapshot), viewport.Width, viewport.Height, viewport.Dpi, false, null, cancellationToken).ConfigureAwait(false);
 		return await WithTreeAsync(Complete(snapshot, result), snapshot, cancellationToken).ConfigureAwait(false);
@@ -69,6 +95,7 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 		if (version >= 0 && snapshot.Version < version)
 			return Rejected(snapshot.SessionId, snapshot.DocumentId, version,
 				$"Stale document version {snapshot.Version}; the surface is at {version}.");
+		ApplyCompiledPage(PrimaryText(snapshot));
 		var result = await connection.UpdateXamlAsync(PrimaryText(snapshot), false, null, cancellationToken).ConfigureAwait(false);
 		return await WithTreeAsync(Complete(snapshot, result), snapshot, cancellationToken).ConfigureAwait(false);
 	}

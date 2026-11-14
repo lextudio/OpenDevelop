@@ -454,6 +454,24 @@ public static class WinUIXamlDesignerDevFlowActions
 		});
 	}
 
+	[DevFlowAction("od.winui-designer.runtime-properties", Description = "Report the renderer's own property catalog for a named element - its CURRENT values (name, value, type, kind, read-only), independent of the source markup; a bound element therefore reports what generated code produced")]
+	public static string RuntimePropertiesAction(string name)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		var properties = view.RuntimePropertiesFor(name);
+		if (properties.Count == 0)
+			return Failure("The renderer reported no properties for '" + name + "'");
+		return JsonSerializer.Serialize(new {
+			success = true,
+			name,
+			properties = properties.Select(property => new {
+				property.Name, property.Value, property.TypeName, property.Kind, property.IsReadOnly
+			}).ToArray()
+		});
+	}
+
 	[DevFlowAction("od.winui-designer.snap-lines", Description = "Report the Grid-track snap lines a named element's parent contributes to drag snapping: the parent's measured track metadata plus every line (position and orthogonal extent), so a test can confirm a move or resize lands on a cell boundary")]
 	public static string SnapLines(string name)
 	{

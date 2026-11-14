@@ -81,6 +81,30 @@ public class SurfaceConnectionTests
 	}
 
 	[Fact]
+	public async Task Compiled_page_type_is_sent_and_cleared_explicitly()
+	{
+		await using var surface = new FakeSurface(async (m, w) => {
+			switch (Type(m)) {
+				case "Hello": await Ready(w); break;
+				case "LoadXaml":
+				case "UpdateXaml":
+					await Frame(w);
+					break;
+			}
+		});
+		await using var conn = await SurfaceConnection.ConnectAsync(await surface.ConnectAsync(), null, Timeout, Ct);
+
+		conn.CompiledPageType = "WinUISample.BoundPage";
+		await conn.LoadXamlAsync("<Page/>", 480, 320, 1.0, false, null, Ct);
+		Assert.Equal("WinUISample.BoundPage", surface.Received.Last().RootElement.GetProperty("compiledType").GetString());
+
+		// The surface keeps a compiled page when the field is absent, so markup mode must clear it.
+		conn.CompiledPageType = null;
+		await conn.UpdateXamlAsync("<Page/>", false, null, Ct);
+		Assert.Equal("", surface.Received.Last().RootElement.GetProperty("compiledType").GetString());
+	}
+
+	[Fact]
 	public async Task Render_error_carries_the_position_and_keeps_the_connection_usable()
 	{
 		int loads = 0;

@@ -173,11 +173,22 @@ public sealed class SurfaceConnection : IAsyncDisposable
 	/// </summary>
 	public bool DescribeFrames { get; set; }
 
-	/// <summary>Adds the options every render request carries (currently <c>describe</c>).</summary>
+	/// <summary>
+	/// Opt-in compiled-page rendering: the full name of a page class in the <c>--user-dll</c> assembly. When set, the surface
+	/// instantiates that class (its generated <c>InitializeComponent</c> loads the compiled XBF, so generated <c>{x:Bind}</c>
+	/// and code-behind run) instead of parsing the sent markup - it shows the project's LAST BUILD. Null/empty parses markup.
+	/// Sent with every render request so leaving the mode takes effect on the next frame.
+	/// </summary>
+	public string? CompiledPageType { get; set; }
+
+	/// <summary>Adds the options every render request carries (currently <c>describe</c> and <c>compiledType</c>).</summary>
 	Dictionary<string, object?> WithOptions(Dictionary<string, object?> message)
 	{
 		if (DescribeFrames)
 			message["describe"] = true;
+		// The surface treats "" as "clear the compiled page and parse markup again"; an absent field
+		// would keep a previous value, so send it every time.
+		message["compiledType"] = CompiledPageType ?? "";
 		return message;
 	}
 
@@ -373,6 +384,7 @@ public sealed class SurfaceConnection : IAsyncDisposable
 					["scale"] = scale,
 					["sampleData"] = false,
 					["documentPath"] = documentPath,
+					["compiledType"] = CompiledPageType ?? "",
 					["paneWidthPx"] = (int)Math.Ceiling(width * scale),
 					["paneHeightPx"] = (int)Math.Ceiling(height * scale),
 					["view"] = new Dictionary<string, object?> { ["fit"] = false, ["zoom"] = 1.0, ["offsetX"] = 0.0, ["offsetY"] = 0.0 },

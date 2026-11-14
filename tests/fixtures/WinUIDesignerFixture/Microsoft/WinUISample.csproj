@@ -8,6 +8,12 @@
     <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
     <WindowsPackageType>None</WindowsPackageType>
     <AppxPackage>false</AppxPackage>
+    <!-- The Surface preview host loads this project's own assembly to instantiate a compiled page
+         (compiled {x:Bind} probe). An unpackaged app's WinAppSDK bootstrap auto-initializer runs as a
+         module initializer when that happens and re-initializes COM on the host's UI thread, so both
+         initializers are off: the host already supplies the runtime. -->
+    <WindowsAppSdkBootstrapInitialize>false</WindowsAppSdkBootstrapInitialize>
+    <WindowsAppSdkUndockedRegFreeWinRTInitialize>false</WindowsAppSdkUndockedRegFreeWinRTInitialize>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
