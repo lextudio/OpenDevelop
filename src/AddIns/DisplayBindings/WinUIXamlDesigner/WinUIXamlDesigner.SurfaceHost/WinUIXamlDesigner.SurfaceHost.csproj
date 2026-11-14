@@ -1,11 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- Client for the upstream WinUI "Surface" renderer (microsoft/WinAppVSCE PR #323, surface/): the
        line-delimited JSON wire, the provisioner result contract and the launch rules. It is
        framework-neutral (no WPF, no Visual Studio, no Windows App SDK reference) so it can be unit-tested
        against an in-process fake surface on any platform. The DDP runtime host that adapts it to
        IWinUIXamlRuntimeHost is a separate step. See doc/technotes/winui-designer-landscape.md section 7. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>ICSharpCode.WinUIXamlDesigner.SurfaceHost</RootNamespace>

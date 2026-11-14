@@ -1,6 +1,6 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <RootNamespace>WpfThemeFixture</RootNamespace>
     <Nullable>enable</Nullable>
     <!-- A design-time-only fixture, never actually launched: its themes/*.xaml files are

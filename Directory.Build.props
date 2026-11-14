@@ -1,4 +1,12 @@
-<Project>
+﻿<Project>
+  <PropertyGroup>
+    <!-- The published LibreWPF closure ships lib/net10.0 only. Its assemblies are compatible with a
+         net11 consumer, but LibreWPF.Sdk derives these package folders from TargetFramework, so pin
+         them back; a later LibreWPF.Sdk release can map net11 itself and this block can go. -->
+    <_ProGpuWpfManagedTransportRuntimeTfm>net10.0</_ProGpuWpfManagedTransportRuntimeTfm>
+    <_ProGpuWpfCanonicalWinFormsRuntimeTfm>net10.0</_ProGpuWpfCanonicalWinFormsRuntimeTfm>
+    <_ProGpuWpfPortableWinFormsCompatRuntimeTfm>net10.0</_ProGpuWpfPortableWinFormsCompatRuntimeTfm>
+  </PropertyGroup>
   <PropertyGroup>
     <!-- LibreWPF.Sdk defaults its net10 support packages (incl. System.Security.Cryptography.Xml/Pkcs) to 10.0.11, which trips NU1902/NU1903; 10.0.13 is the patched release. -->
     <ProGpuWpfNet10SupportPackageVersion>10.0.13</ProGpuWpfNet10SupportPackageVersion>

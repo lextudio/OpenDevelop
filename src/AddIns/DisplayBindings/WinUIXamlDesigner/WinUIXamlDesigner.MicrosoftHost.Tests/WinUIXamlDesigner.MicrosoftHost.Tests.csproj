@@ -1,10 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- Runs the EXACT test sources of WinUIXamlDesigner.UnoHost.Tests against the Microsoft WinUI 3
        host. Nothing is duplicated: the .cs below is source-linked, and OPENDEVELOP_WINUIDESIGNER_HOST_DLL
        (set by the runner) is the only difference - it redirects the suite's HostDll() to the
        Microsoft child. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

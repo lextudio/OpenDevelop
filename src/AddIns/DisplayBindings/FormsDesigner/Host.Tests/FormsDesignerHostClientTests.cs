@@ -680,10 +680,10 @@ public sealed class FormsDesignerHostClientTests
 			? Path.GetFullPath(overridden)
 		#if MICROSOFT_FORMS_DESIGNER_HOST
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-				"../../../../Host/bin/Debug/net10.0-windows/MicrosoftFormsDesigner.Host.dll"));
+				"../../../../Host/bin/Debug/net11.0-windows/MicrosoftFormsDesigner.Host.dll"));
 		#else
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-				"../../../../Host/bin/Debug/net10.0-windows/FormsDesigner.Host.dll"));
+				"../../../../Host/bin/Debug/net11.0-windows/FormsDesigner.Host.dll"));
 		#endif
 
 	/// <summary>The fixture assembly whose types the CHILD must resolve. Overridable alongside
@@ -695,10 +695,10 @@ public sealed class FormsDesignerHostClientTests
 			? Path.GetFullPath(overridden)
 		#if MICROSOFT_FORMS_DESIGNER_HOST
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-				"../../../../Host.Tests/CustomControl/bin/Debug/net10.0-windows/FormsDesigner.CustomControlFixture.dll"));
+				"../../../../Host.Tests/CustomControl/bin/Debug/net11.0-windows/FormsDesigner.CustomControlFixture.dll"));
 		#else
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-				"../../../../Host.Tests/CustomControl/bin/Debug/net10.0-windows/FormsDesigner.CustomControlFixture.dll"));
+				"../../../../Host.Tests/CustomControl/bin/Debug/net11.0-windows/FormsDesigner.CustomControlFixture.dll"));
 		#endif
 
 	[Fact]

@@ -2,7 +2,7 @@
   <PropertyGroup>
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>InProcessDependency</OpenDevelopAddinKind>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.PackageManagement.Cmdlets</RootNamespace>
     <AssemblyName>PackageManagement.Cmdlets</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>

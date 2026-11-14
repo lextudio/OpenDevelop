@@ -1,4 +1,4 @@
-<Project Sdk="LibreWPF.Sdk">
+﻿<Project Sdk="LibreWPF.Sdk">
   <PropertyGroup>
     <!-- The sources annotate nullability with '?' throughout; the annotation context must be
          enabled for those annotations to be legal, without turning the warning context on for
@@ -6,7 +6,7 @@
     <Nullable>annotations</Nullable>
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.FormsDesigner</RootNamespace>
     <AssemblyName>FormsDesigner</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
@@ -127,7 +127,7 @@
 
   <Target Name="CopyMicrosoftFormsDesignerHost" AfterTargets="Build">
     <ItemGroup>
-      <_MicrosoftFormsHostFiles Include="$(MSBuildThisFileDirectory)..\MicrosoftHost\Host\bin\$(Configuration)\net10.0-windows\**\*" />
+      <_MicrosoftFormsHostFiles Include="$(MSBuildThisFileDirectory)..\MicrosoftHost\Host\bin\$(Configuration)\net11.0-windows\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(_MicrosoftFormsHostFiles)"
           DestinationFiles="@(_MicrosoftFormsHostFiles->'$(OutputPath)MicrosoftHost\%(RecursiveDir)%(Filename)%(Extension)')"

@@ -1,10 +1,10 @@
-<Project Sdk="LibreWPF.Sdk">
+﻿<Project Sdk="LibreWPF.Sdk">
   <PropertyGroup>
     <!-- The sources annotate nullability with '?'; the annotation context makes that legal without turning the warning context on. -->
     <Nullable>annotations</Nullable>
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <RootNamespace>BlueprintBinding</RootNamespace>
     <AssemblyName>BlueprintBinding</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>

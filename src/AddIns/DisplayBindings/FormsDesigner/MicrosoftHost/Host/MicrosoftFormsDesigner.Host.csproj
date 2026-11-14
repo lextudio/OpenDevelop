@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- Microsoft-WindowsDesktop build of the out-of-process WinForms designer host.
 
        Each project under MicrosoftHost/ gets its OWN directory (Host/, Remote/, Host.Tests/):
@@ -6,7 +6,7 @@
        sibling projects' directories and compile their sources and obj/ generated files
        (CS0101/CS0579 on GitVersionInformation and the assembly attributes). -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <OutputType>Exe</OutputType>
     <AssemblyName>MicrosoftFormsDesigner.Host</AssemblyName>
     <RootNamespace>ICSharpCode.FormsDesigner.MicrosoftHost</RootNamespace>

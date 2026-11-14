@@ -382,9 +382,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       # The journeys build net11.0-android / net11.0-ios fixtures, so they need an SDK 11 and its workloads beside the
-      # SDK 10 this job runs the archive on. Install it into ~/.dotnet instead of the job's own root and leave PATH
+      # SDK 11 this job runs the archive on. Install it into ~/.dotnet instead of the job's own root and leave PATH
       # alone: SdkRootCandidates.WithSdk11 finds that folder and the journeys register it with od.sdk.add-custom-root
-      # (the same opt-in as Tools > Options > .NET SDK), while the archive's net10.0 test host keeps its runtime.
+      # (the same opt-in as Tools > Options > .NET SDK), while the archive's net11.0 test host keeps its runtime.
       - name: Install the .NET 11 SDK for the device journeys
         if: (matrix.job == 'mobile-android' && steps.kvm.outputs.available == 'true') || matrix.needs_ios_simulator
         shell: bash

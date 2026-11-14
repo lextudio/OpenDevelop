@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <!-- Force transitive dependencies onto the versions pinned here; without it a package can
@@ -138,12 +138,12 @@
          action failing inside ICSharpCode.ILSpy.App.Initialize(). -->
     <PackageVersion Include="System.Composition.AttributedModel" Version="10.0.11" />
     <PackageVersion Include="System.Data.SqlClient" Version="4.9.1" />
-    <PackageVersion Include="System.IO.Packaging" Version="11.0.0-preview.5.26302.115" />
+    <PackageVersion Include="System.IO.Packaging" Version="11.0.0-rc.2.26504.105" />
     <!-- Patched releases of transitive deps pulled in by LibreWPF; 10.0.11 trips NU1902/NU1903. -->
-    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
-    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.13" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="11.0.0-rc.2.26504.105" />
+    <PackageVersion Include="System.Security.Cryptography.Xml" Version="11.0.0-rc.2.26504.105" />
     <PackageVersion Include="System.Net.Http.Json" Version="11.0.0-preview.5.26302.115" />
-    <PackageVersion Include="System.Windows.Extensions" Version="11.0.0-preview.5.26302.115" />
+    <PackageVersion Include="System.Windows.Extensions" Version="11.0.0-rc.2.26504.105" />
     <PackageVersion Include="TomsToolbox.Composition.Analyzer" Version="2.24.0" />
     <!-- ICSharpCode.Core references this directly for MessageBus<T>'s WeakEventSource<T> (moved
          from ILSpyAddIn's own MessageBus.cs, which used the same package transitively via

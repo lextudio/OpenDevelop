@@ -1,9 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- Microsoft-WPF build of the out-of-process design surface host. Source-links the same host
        implementation the LibreWPF host compiles (../../WpfDesign.SurfaceHost), so the two stay a
        single implementation with two runtime targets. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <OutputType>Exe</OutputType>
     <AssemblyName>MicrosoftWpfDesign.SurfaceHost</AssemblyName>
     <UseWPF>true</UseWPF>

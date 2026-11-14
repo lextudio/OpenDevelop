@@ -1,4 +1,4 @@
-<Project Sdk="LibreWPF.Sdk">
+﻿<Project Sdk="LibreWPF.Sdk">
   <!-- Compatibility layer implementing the public Microsoft Visual Studio Editor Platform
        text model over AvalonEdit (see doc/technotes/vs-editor-api.md). This first PR is a pure
        text-model spike: no view, no tagging, no classification, no MEF, no projection.
@@ -14,7 +14,7 @@
        doc/technotes/licensing-audit.md).
   -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <RootNamespace>LeXtudio.OpenDevelop.VSEditor</RootNamespace>
     <AssemblyName>OpenDevelop.VSEditorCompat</AssemblyName>
     <Nullable>enable</Nullable>

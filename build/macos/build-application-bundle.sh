@@ -10,7 +10,7 @@ fi
 config="${DIST_CONFIG:-Release}"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$script_dir/../.." && pwd)"
-base_dir="$repo_root/src/Main/SharpDevelop/bin/${config}/net10.0-windows"
+base_dir="$repo_root/src/Main/SharpDevelop/bin/${config}/net11.0-windows"
 bundle_root="$repo_root/OpenDevelop.app"
 bundle_macos="$bundle_root/Contents/MacOS"
 
@@ -184,7 +184,7 @@ rm -rf "$bundle_macos"/runtimes/win* "$bundle_macos"/runtimes/linux* "$bundle_ma
 # Make the Addin SDK part of the installed IDE rather than a separately published
 # NuGet package. The resolver is built as part of SharpDevelop's project graph.
 sdk_source="$repo_root/src/SDK/OpenDevelop.Addin.Sdk/Sdk"
-resolver_source="$repo_root/src/SDK/OpenDevelop.Addin.SdkResolver/bin/${config}/net10.0"
+resolver_source="$repo_root/src/SDK/OpenDevelop.Addin.SdkResolver/bin/${config}/net11.0"
 if [[ ! -d "$sdk_source" || ! -f "$resolver_source/OpenDevelop.Addin.SdkResolver.dll" ]]; then
   echo "OpenDevelop Addin SDK/resolver output was not built" >&2
   exit 1

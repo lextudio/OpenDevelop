@@ -2,7 +2,7 @@
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; config="${DIST_CONFIG:-Release}"; rid="${DIST_LINUX_RID:?DIST_LINUX_RID is required}"
 case "$rid" in linux-x64) other=linux-arm64;; linux-arm64) other=linux-x64;; *) echo "unsupported Linux RID: $rid" >&2; exit 1;; esac
-base="$root/src/Main/SharpDevelop/bin/$config/net10.0-windows"; src="$base/publish"; payload="$root/OpenDevelop-$rid"
+base="$root/src/Main/SharpDevelop/bin/$config/net11.0-windows"; src="$base/publish"; payload="$root/OpenDevelop-$rid"
 [[ -d "$src" && -d "$root/AddIns" ]] || { echo 'host publish or AddIns output is missing' >&2; exit 1; }
 rm -rf "$payload"; mkdir -p "$payload"
 # Microsoft.Build.NuGetSdkResolver is written into the host publish folder by the app's own first
@@ -21,7 +21,7 @@ rsync -a "$root/data/" "$payload/data/"
 rsync -a --exclude '*.pdb' --exclude '**/ref/***' --exclude '**/runtimes/win*/***' --exclude '**/runtimes/osx*/***' --exclude "**/runtimes/$other/***" --exclude '**/runtimes/linux-arm/***' --exclude 'CliclickSharp*' --exclude '*.lib' --exclude '*.exp' --exclude '*.dylib' --exclude '*.a' "$root/AddIns/" "$payload/AddIns/"
 # The SDK/resolver are product files: add-ins created by an installed IDE resolve them from the
 # application root, not from the source checkout. Match the macOS bundle layout.
-resolver="$root/src/SDK/OpenDevelop.Addin.SdkResolver/bin/$config/net10.0"
+resolver="$root/src/SDK/OpenDevelop.Addin.SdkResolver/bin/$config/net11.0"
 [[ -f "$resolver/OpenDevelop.Addin.SdkResolver.dll" ]] || { echo 'AddIn SDK resolver output is missing' >&2; exit 1; }
 mkdir -p "$payload/Sdks/OpenDevelop.Addin.Sdk/Sdk" "$payload/SdkResolvers/OpenDevelop.Addin.SdkResolver"
 rsync -a "$root/src/SDK/OpenDevelop.Addin.Sdk/Sdk/" "$payload/Sdks/OpenDevelop.Addin.Sdk/Sdk/"

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- The DDP child process for the Surface backend. It is NOT a WinUI process: it speaks the shared
        designer RPC to the IDE (DesignerChildHost) and talks to one upstream Surface.exe per document
        through WinUIXamlDesigner.SurfaceHost. That is why it needs no Windows App SDK or Visual Studio
@@ -6,7 +6,7 @@
        Launch arguments: port and token (as every DDP child), plus surface-exe (required) and
        surface-args (optional), each written with two leading hyphens. See Program.cs. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

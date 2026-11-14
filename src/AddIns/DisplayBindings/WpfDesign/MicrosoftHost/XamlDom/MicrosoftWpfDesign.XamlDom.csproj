@@ -1,9 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- Microsoft-WPF build of externals/WpfDesigner WpfDesign.XamlDom. See
        Core/MicrosoftWpfDesign.Core.csproj for why the upstream assembly split and the
        one-directory-per-project layout are both load-bearing rather than cosmetic. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <AssemblyName>ICSharpCode.MicrosoftWpfDesign.XamlDom</AssemblyName>
     <RootNamespace>ICSharpCode.WpfDesign.XamlDom</RootNamespace>
     <UseWPF>true</UseWPF>

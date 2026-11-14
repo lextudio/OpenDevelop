@@ -1,4 +1,4 @@
-<Project Sdk="LibreWPF.Sdk">
+﻿<Project Sdk="LibreWPF.Sdk">
   <!-- The shared design canvas every UI framework's designer depends on: the surface (toolbar,
        viewport, frame, selection, gestures, overlays) and its backend-neutral controller. A UI
        addin declares <Dependency addin="ICSharpCode.DesignerCanvas"/>, imports
@@ -8,7 +8,7 @@
   <PropertyGroup>
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.SharpDevelop.Designer.Surface</RootNamespace>
     <AssemblyName>ICSharpCode.DesignerCanvas</AssemblyName>
     <UseWPF>true</UseWPF>

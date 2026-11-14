@@ -414,7 +414,7 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             psi.UseShellExecute = false;
             psi.RedirectStandardOutput = true;
             psi.RedirectStandardError = true;
-            foreach (var a in new[] { "run", "--project", OpenDevelopProjectPath, "-f", "net10.0-windows", "--no-build" })
+            foreach (var a in new[] { "run", "--project", OpenDevelopProjectPath, "-f", "net11.0-windows", "--no-build" })
                 psi.ArgumentList.Add(a);
         }
 		// Keep a test run independent from the developer's persisted layout and UI language.

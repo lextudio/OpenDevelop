@@ -1,11 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- Microsoft-side build of the FormsDesigner.Remote client. Source-links the same client; the
        ONLY difference from the original project is that it drops that project's build-only
        ProjectReference to the LibreWinForms host binary, which would otherwise pull LibreWinForms
        into a run whose whole point is that the Microsoft adaptation stands alone. The Microsoft
        test project references the Microsoft host instead. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <AssemblyName>MicrosoftFormsDesigner.Remote</AssemblyName>
     <RootNamespace>ICSharpCode.FormsDesigner.OutOfProcess</RootNamespace>
     <Nullable>enable</Nullable>

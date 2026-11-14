@@ -111,7 +111,7 @@ if ($List) {
 # package outputs before copying and does not copy them again, so the folder can end up without PresentationFramework even
 # though the manifest still lists its libraries; the per-step numbers are what caught that on the runner (193 dlls with
 # the file present after the first build, 173 and missing after a rebuild).
-$hostDeps = 'src/Main/SharpDevelop/bin/Debug/net10.0-windows/OpenDevelop.deps.json'
+$hostDeps = 'src/Main/SharpDevelop/bin/Debug/net11.0-windows/OpenDevelop.deps.json'
 $hostDir = Split-Path $hostDeps -Parent
 function Get-HostDepsState {
     if (-not (Test-Path $hostDeps)) { return 'absent' }

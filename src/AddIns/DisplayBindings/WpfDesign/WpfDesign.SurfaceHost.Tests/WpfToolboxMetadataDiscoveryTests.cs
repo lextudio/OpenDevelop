@@ -13,10 +13,10 @@ public sealed class WpfToolboxMetadataDiscoveryTests
 	public void DiscoversPublicCustomControlThroughMetadataOnly()
 	{
 		var fixture = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-			"../../../../SurfaceHost.Tests/Fixtures/CustomControlFixture/bin/Debug/net10.0-windows/CustomControlFixture.dll"));
+			"../../../../SurfaceHost.Tests/Fixtures/CustomControlFixture/bin/Debug/net11.0-windows/CustomControlFixture.dll"));
 		if (!File.Exists(fixture))
 			fixture = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-				"../../../../WpfDesign.SurfaceHost.Tests/Fixtures/CustomControlFixture/bin/Debug/net10.0-windows/CustomControlFixture.dll"));
+				"../../../../WpfDesign.SurfaceHost.Tests/Fixtures/CustomControlFixture/bin/Debug/net11.0-windows/CustomControlFixture.dll"));
 		Assert.True(File.Exists(fixture), "CustomControlFixture must be built before this test runs: " + fixture);
 		Assert.DoesNotContain(AppDomain.CurrentDomain.GetAssemblies(), assembly =>
 			string.Equals(assembly.GetName().Name, "CustomControlFixture", StringComparison.Ordinal));

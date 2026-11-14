@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <!--
       This is the native apphost the user actually double-clicks. Everything else in the
@@ -21,7 +21,7 @@
       with and overwrite.
     -->
     <AssemblyName>OpenDevelop.Bootstrap</AssemblyName>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <OutputType>WinExe</OutputType>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

@@ -48,7 +48,7 @@ $expectedArchitecture = switch -Regex ($expectedRid) {
     default { throw "Cannot derive an architecture from RID '$expectedRid'." }
 }
 
-if (-not $PayloadRoot) { $PayloadRoot = Join-Path $repoRoot 'src/Main/SharpDevelop/bin/Debug/net10.0-windows' }
+if (-not $PayloadRoot) { $PayloadRoot = Join-Path $repoRoot 'src/Main/SharpDevelop/bin/Debug/net11.0-windows' }
 if (Test-Path $PayloadRoot) { $PayloadRoot = (Resolve-Path $PayloadRoot).Path }
 
 if (-not $RunnerOnly) {

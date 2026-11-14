@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- Microsoft-WPF build of externals/WpfDesigner WpfDesign (upstream ICSharpCode.WpfDesign).
        Mirrors the upstream project one-for-one INSTEAD of merging all three source trees into a
        single assembly: the WPF markup compiler's pass 1 resolves an XmlnsDefinition-mapped xmlns
@@ -10,7 +10,7 @@
        directory share one obj/, and project.assets.json is not project-name-qualified, so the last
        restore wins and every other project silently reads a foreign dependency graph. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <AssemblyName>ICSharpCode.MicrosoftWpfDesign</AssemblyName>
     <RootNamespace>ICSharpCode.WpfDesign</RootNamespace>
     <UseWPF>true</UseWPF>

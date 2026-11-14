@@ -1,9 +1,9 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- Builds and deploys Microsoft's WinUI XAML language server for Microsoft WinUI projects.
        The upstream server is managed here (rather than its Windows-only Native AOT VS Code
        payload), so OpenDevelop can retain its cross-platform dotnet-exec LSP host. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <OutputType>Library</OutputType>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <Nullable>enable</Nullable>

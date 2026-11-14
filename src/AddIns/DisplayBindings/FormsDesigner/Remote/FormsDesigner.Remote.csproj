@@ -1,10 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <!-- The sources annotate nullability with '?' throughout; the annotation context must be
          enabled for those annotations to be legal, without turning the warning context on for
          legacy files that were never audited. -->
     <Nullable>annotations</Nullable>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <AssemblyName>FormsDesigner.Remote</AssemblyName>
     <RootNamespace>ICSharpCode.FormsDesigner.OutOfProcess</RootNamespace>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>

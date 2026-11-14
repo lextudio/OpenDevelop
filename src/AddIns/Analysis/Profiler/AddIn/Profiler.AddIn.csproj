@@ -1,11 +1,11 @@
-<Project Sdk="LibreWPF.Sdk">
+﻿<Project Sdk="LibreWPF.Sdk">
   <!-- The IDE side of the Profiler: commands, the capture window, and the WPF report views over
        OpenDevelop.Profiler.Core. Replaces the SharpDevelop-era add-in kept under Frontend/ and
        Controller/ (CLR profiler hooks, x86, .NET Framework 4.5); see doc/technotes/profiler.md. -->
   <PropertyGroup>
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <RootNamespace>OpenDevelop.Profiler.AddIn</RootNamespace>
     <AssemblyName>OpenDevelop.Profiler.AddIn</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>

@@ -1,11 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- Microsoft-WPF build of the WpfDesign.SurfaceHost.Tests CustomControlFixture. Source-links
        the SAME fixture control so both runtimes exercise identical types; only the WPF
        implementation underneath differs. AssemblyName/RootNamespace deliberately match the
        LibreWPF fixture so the XAML inside the shared tests (clr-namespace:CustomControlFixture;
        assembly=CustomControlFixture) needs no per-runtime variant. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <RootNamespace>CustomControlFixture</RootNamespace>
     <AssemblyName>CustomControlFixture</AssemblyName>
     <UseWPF>true</UseWPF>

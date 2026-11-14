@@ -148,7 +148,7 @@ internal sealed class IsolatedIde : IDisposable
         string dll = Environment.GetEnvironmentVariable("OD_IT_IDE_DLL") is { Length: > 0 } custom
             ? Path.GetFullPath(custom)
             : Path.Combine(Path.GetDirectoryName(OpenDevelopAppFixture.LocateOpenDevelopProject())!,
-                "bin", "Debug", "net10.0-windows", "OpenDevelop.dll");
+                "bin", "Debug", "net11.0-windows", "OpenDevelop.dll");
         Assert.True(File.Exists(dll),
             $"The IDE build '{dll}' was not found; building tests/OpenDevelop.IntegrationTests builds it (or set OD_IT_IDE_DLL).");
         return dll;

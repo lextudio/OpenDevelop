@@ -18,7 +18,7 @@
     `using ICSharpCode.TreeView;` need repointing to `ICSharpCode.ILSpyX.TreeView`.
   -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <RootNamespace>ICSharpCode.TreeView</RootNamespace>
     <AssemblyName>ICSharpCode.TreeView</AssemblyName>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>

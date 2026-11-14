@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- Runs the EXACT test sources of WpfDesign.SurfaceHost.Tests against the Microsoft WPF host.
        Nothing is duplicated: the .cs below is source-linked, and the two OPENDEVELOP_* variables
        set here are the only difference - they redirect the suite's HostDll()/CustomControlFixtureDll()
@@ -6,7 +6,7 @@
        LibreWPF.Sdk project, which would drag LibreWPF into a run whose whole point is that the
        Microsoft adaptation stands alone. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <OutputType>Exe</OutputType>

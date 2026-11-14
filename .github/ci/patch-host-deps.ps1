@@ -25,7 +25,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not $HostDirectory) {
-    $HostDirectory = Join-Path $PSScriptRoot '../../src/Main/SharpDevelop/bin/Debug/net10.0-windows'
+    $HostDirectory = Join-Path $PSScriptRoot '../../src/Main/SharpDevelop/bin/Debug/net11.0-windows'
 }
 $HostDirectory = (Resolve-Path $HostDirectory).Path
 if (-not $DepsPath) { $DepsPath = Join-Path $HostDirectory 'OpenDevelop.deps.json' }

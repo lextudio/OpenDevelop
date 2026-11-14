@@ -40,10 +40,10 @@ public sealed class WpfSurfaceHostRpcTests
 			? Path.GetFullPath(overridden)
 		#if MICROSOFT_WPF_DESIGNER_HOST
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-				"../../../../SurfaceHost/bin/Debug/net10.0-windows/MicrosoftWpfDesign.SurfaceHost.dll"));
+				"../../../../SurfaceHost/bin/Debug/net11.0-windows/MicrosoftWpfDesign.SurfaceHost.dll"));
 		#else
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-				"../../../../WpfDesign.SurfaceHost/bin/Debug/net10.0-windows/WpfDesign.SurfaceHost.dll"));
+				"../../../../WpfDesign.SurfaceHost/bin/Debug/net11.0-windows/WpfDesign.SurfaceHost.dll"));
 		#endif
 
 	internal static DesignerDocumentSnapshot Snapshot(long version, string xaml, string projectAssemblyPath = "") => new() {
@@ -2482,9 +2482,9 @@ public sealed class WpfSurfaceHostRpcTests
 			? Path.GetFullPath(overridden)
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
 			#if MICROSOFT_WPF_DESIGNER_HOST
-				"../../../../SurfaceHost.Tests/Fixtures/CustomControlFixture/bin/Debug/net10.0-windows/CustomControlFixture.dll"));
+				"../../../../SurfaceHost.Tests/Fixtures/CustomControlFixture/bin/Debug/net11.0-windows/CustomControlFixture.dll"));
 			#else
-				"../../../../WpfDesign.SurfaceHost.Tests/Fixtures/CustomControlFixture/bin/Debug/net10.0-windows/CustomControlFixture.dll"));
+				"../../../../WpfDesign.SurfaceHost.Tests/Fixtures/CustomControlFixture/bin/Debug/net11.0-windows/CustomControlFixture.dll"));
 			#endif
 
 	[Fact]

@@ -1,7 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- Microsoft-WPF build of the out-of-process XAML preview host. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <OutputType>Exe</OutputType>
     <AssemblyName>MicrosoftWpfPreview.Host</AssemblyName>
     <UseWPF>true</UseWPF>

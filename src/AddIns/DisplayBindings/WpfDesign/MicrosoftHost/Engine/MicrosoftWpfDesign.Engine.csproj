@@ -1,10 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!-- Microsoft-WPF build of externals/WpfDesigner WpfDesign.Designer (upstream
        ICSharpCode.WpfDesign.Designer). Carries only the Designer source tree and references the
        other two, mirroring upstream; see Core/MicrosoftWpfDesign.Core.csproj for why that split
        is load-bearing rather than cosmetic. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
     <AssemblyName>ICSharpCode.MicrosoftWpfDesign.Designer</AssemblyName>
     <RootNamespace>ICSharpCode.WpfDesign.Designer</RootNamespace>
     <UseWPF>true</UseWPF>

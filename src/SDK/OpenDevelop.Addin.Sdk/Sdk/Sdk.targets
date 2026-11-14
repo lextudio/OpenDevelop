@@ -3,7 +3,7 @@
     <OpenDevelopTrimHostAssemblies Condition="'$(OpenDevelopTrimHostAssemblies)' == ''">true</OpenDevelopTrimHostAssemblies>
     <OpenDevelopPruneDeploymentAssets Condition="'$(OpenDevelopPruneDeploymentAssets)' == ''">true</OpenDevelopPruneDeploymentAssets>
     <OpenDevelopAddinKind Condition="'$(OpenDevelopAddinKind)' == ''">InProcess</OpenDevelopAddinKind>
-    <OpenDevelopHostBin Condition="'$(OpenDevelopHostBin)' == '' And '$(OpenDevelopRepoRoot)' != ''">$(OpenDevelopRepoRoot)src/Main/SharpDevelop/bin/$(Configuration)/net10.0-windows/</OpenDevelopHostBin>
+    <OpenDevelopHostBin Condition="'$(OpenDevelopHostBin)' == '' And '$(OpenDevelopRepoRoot)' != ''">$(OpenDevelopRepoRoot)src/Main/SharpDevelop/bin/$(Configuration)/net11.0-windows/</OpenDevelopHostBin>
     <OpenDevelopHostManifest Condition="'$(OpenDevelopHostManifest)' == '' And '$(OpenDevelopHostBin)' != ''">$(OpenDevelopHostBin)OpenDevelop.host-assemblies.txt</OpenDevelopHostManifest>
   </PropertyGroup>
   <!-- Run/Debug support: make the addin project startable so F5 launches a second OpenDevelop
