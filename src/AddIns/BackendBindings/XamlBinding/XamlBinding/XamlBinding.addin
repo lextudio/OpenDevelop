@@ -33,6 +33,12 @@
 
 	<Runtime>
 		<Import assembly = "ICSharpCode.XamlBinding.dll"/>
+		<!-- The XAML-LSP CodeCompletionBinding below is Base's LspCodeCompletionBinding, and
+		     AddIn.FindType only probes this addin's own <Runtime> imports, so Base must be
+		     imported explicitly (same as CssBinding/HtmlBinding/TypeScriptBinding/BlueprintBinding).
+		     Without it every keystroke in a .xaml file reported
+		     "Cannot find class: ...LspCodeCompletionBinding" and XAML completion never ran. -->
+		<Import assembly = ":ICSharpCode.SharpDevelop"/>
 	</Runtime>
 
 	<Path name = "/Workspace/Icons">
