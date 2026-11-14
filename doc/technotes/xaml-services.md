@@ -23,7 +23,7 @@ OpenDevelop should select the correct designer for the same editor workflow base
 | WPF Designer | `src/AddIns/DisplayBindings/WpfDesign/` and `externals/WpfDesigner/` | Added to the main solution, uses `LibreWPF.Sdk`; it is the official WPF backend. See [`wpf-designer.md`](wpf-designer.md) |
 | WinForms Designer | `src/AddIns/DisplayBindings/FormsDesigner/` | The C# backend has moved to a CodeDOM-free Roslyn `BasicDesignerLoader`; `.Designer.cs` round-trip, legacy format migration, shared Toolbox Pad, and real drag-drop tests are all complete; the VB Roslyn backend is not yet done. See [`winforms-designer.md`](winforms-designer.md) |
 | XAML language server | `externals/winappvsce/` | A profile-aware server supports WPF, WinUI and Uno `.xaml`; framework detection cannot rely on file extension alone. Each framework addin owns its runtime profiles and routing is by owning project — see [`xaml-language-servers.md`](xaml-language-servers.md) |
-| WinUI/Uno Designer | `src/AddIns/DisplayBindings/WinUIXamlDesigner/` | New AddIn and unified routing established; the early WPF `XamlReader` compatibility preview was judged a wrong approach and reverted; wiring up the original XAML Studio renderer and the Uno WPF host. See [`winui-designer.md`](winui-designer.md) |
+| WinUI/Uno Designer | `src/AddIns/DisplayBindings/WinUIXamlDesigner/` | Out-of-process Uno host on every platform and the Microsoft WinUI host on Windows; the ProGPU/XAML Studio renderer was removed on 2026-11-09. See [`winui-designer.md`](winui-designer.md) |
 | ProGPU designer host, XAML Studio ProGPU port, ProGPU XAML packages | (removed 2026-11-09) | The in-process ProGPU WinUI designer path was deleted: upstream ProGPU removed its XAML compiler packages (`ProGPU.Xaml*`, `ProGPU.WinUI.Designer`), and the Uno out-of-process host is the supported WinUI path. See [`designer-common.md`](designer-common.md#removed-profile) |
 
 ### Actual State of WinForms Round-Trip and Toolbox
@@ -62,8 +62,8 @@ Moved to [`winui-designer.md`](winui-designer.md).
  WinForms backend  WPF backend   WinUI backend
  preview RPC       WpfDesign     WPF host adapter or preview RPC
        │             │               │
- WinForms object   WPF XamlDom    XAML Studio renderer
- model/services    and designer   + isolated WinUI/Uno runtime
+ WinForms object   WPF XamlDom    project-runtime renderer
+ model/services    and designer   (Uno or WinUI), isolated
 ```
 
 The framework-neutral contracts should be extracted from the provider patterns UnoDevelop has already validated and placed in the shell/base layer:
@@ -98,10 +98,10 @@ Moved to [`winui-designer.md`](winui-designer.md).
 | Phase | Content | Completion Criteria | Status |
 |---|---|---|---|
 | 0 | Fix the docs and inventory the three backends | Clear OpenDevelop/UnoDevelop boundaries and known gaps | done |
-| 1 | WinUI/Uno host spike | Both the WPF compatibility renderer and Uno runtime routes are abandoned; the ProGPU-in-WPF host renders standard controls through the XAML Studio + ProGPU pipeline. Verified end-to-end against `tests/fixtures/WinUIDesignerFixture/Uno/MainPage.xaml` on macOS: detected as Uno, compiled by ProGPU, materialized into a WinUI `FrameworkElement`, rendered offscreen, and presented into the WPF document tab | done |
+| 1 | WinUI/Uno host spike | Both the WPF compatibility renderer and Uno runtime routes are abandoned; the ProGPU-in-WPF host renders standard controls through the XAML Studio + ProGPU pipeline. Verified end-to-end against `tests/fixtures/WinUIDesignerFixture/Uno/MainPage.xaml` on macOS: detected as Uno, compiled by ProGPU, materialized into a WinUI `FrameworkElement`, rendered offscreen, and presented into the WPF document tab | done (ProGPU path removed 2026-11-09) |
 | 2 | Unified framework detection | `XamlFrameworkDetector` routes in Uno→WinUI→WPF order; unit tests for WPF/WinUI/Uno/Unknown added; the XAML language server is routed from the same result (`XamlDialectRegistry.ResolveLanguageServerFramework`, see [xaml-language-servers.md](xaml-language-servers.md)) | done |
 | 3 | Extract common provider/selection/sync contracts | WPF and WinForms backends wire in through adapters with no feature regression | todo |
-| 4 | WinUI/Uno read-only MVP | AddIn/Source/Design routing, ProGPU materialization, diagnostics, last-good preview retention, Outline, and Source-to-Design refresh are all in place and covered by integration tests | done |
+| 4 | WinUI/Uno read-only MVP | AddIn/Source/Design routing, ProGPU materialization, diagnostics, last-good preview retention, Outline, and Source-to-Design refresh are all in place and covered by integration tests | done (ProGPU path removed 2026-11-09; Uno and Microsoft hosts continue) |
 | 5 | WinUI/Uno basic editing | Toolbox insertion, selection, Properties changes, deletion and Undo/Redo all land as source edits, driven through the shell's shared Toolbox and Properties pads. Selection works from the Outline *and* by clicking the rendered surface, and Toolbox insertion works via a real synthetic mouse drag that resolves the drop point to the container under the cursor. Covered by `WinUIDesigner_ToolboxInsertSelectEditDeleteUndoRedo_AllLandAsSourceEdits`, `WinUIDesigner_ClickOnDesignSurface_SelectsSourceElementInPropertiesPad` and `WinUIDesigner_DragToolboxItemOntoDesignSurface_InsertsIntoDroppedContainer` | done |
 | 6 | Complete all three designers | Required WinForms out-of-process host, WinForms VB backend with modern Roslyn codegen, and a consistent base experience for WPF/WinUI/Uno | todo |
 | 7 | Advanced WinUI/Uno | Project resources, custom controls, and isolated loading for both profiles; evaluate `x:Bind`/code-behind | backlog |

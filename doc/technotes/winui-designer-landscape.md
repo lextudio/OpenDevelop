@@ -7,7 +7,7 @@ Measured 2026-11-11/12 against:
 | OpenDevelop | `607e38fc05aa34772eba5954015dfd1b4550debf` | this checkout |
 | `microsoft/WinAppVSCE` PR #323 | `6e4b3887e7975413dc26f58012a4e3296fbb6c55` (`zateutsch-xaml-previewer`, draft) | GitHub PR head |
 | `0x5bfa/WinUIDesigner` | `456640e04fd2ae0f9e738c71503889844cf4060b` (`main`, v1.4.0) | GitHub main |
-| XAML Studio | `d711d64fed7d07d5c2dda545d255d1007588ab78` (`externals/xamlstudio`, v2 `dev`) | submodule of this checkout |
+| XAML Studio | `d711d64fed7d07d5c2dda545d255d1007588ab78` (`externals/xamlstudio`, v2 `dev`) | analysed before the submodule was removed on 2026-11-14 |
 
 This note compares the four technical approaches that have actually rendered WinUI/XAML in this
 product line, not their feature marketing: XAML Studio's standalone renderer, and the three current
@@ -120,7 +120,8 @@ IDE shell added in the same commit (`WinUIXamlDocumentEditor`, `WinUIXamlToolbox
 
 `externals/xamlstudio` is still a pinned submodule (`d711d64`), but **no project references it**:
 a search for `xamlstudio` in `*.csproj`, `*.props`, `*.targets`, `*.sln` and `*.slnx` outside
-`externals/` returns nothing.
+`externals/` returns nothing. The submodule itself was removed on 2026-11-14; this analysis is kept
+against that revision, and its source links point at the public fork, not a local path.
 
 ### 1.4 What XAML Studio is, as an engine
 
@@ -210,21 +211,19 @@ Why it is a previewer, not a designer:
 - **As a thesis** it is the cleanest proof that *previewer ≠ designer*: it has selection, a property
   panel, a visual tree and visual states, and still cannot edit a document.
 
-### 1.7 Why the old description still circulates
+### 1.7 Cleanup after the removal (2026-11-14)
 
-These are documentation defects, not evidence of a live dependency. They should be corrected so the
-next reader is not misled the same way:
+The submodule and the remaining stale references were removed in one pass:
 
-- The `IWinUIXamlRuntimeHost` doc comment still says "Implemented by the independent XAML
-  Studio/Uno runtime assembly".
-  [`WinUIXamlHost.cs`](../../src/AddIns/DisplayBindings/WinUIXamlDesigner/WinUIXamlDesigner.AddIn/WinUIXamlHost.cs)
-- [`winui-designer.md`](winui-designer.md) §"Reuse Boundary with UnoDevelop and XAML Studio" still
-  describes `XamlRenderService` as the renderer and says it "should compile into a standalone
-  WinUI/Uno renderer assembly". That assembly existed — `XamlStudio.Toolkit.ProGPU` — and was
-  deleted with the ProGPU profile.
-- [`xaml-services.md`](xaml-services.md) still lists "wiring up the original XAML Studio renderer" as
-  the WinUI designer's state.
-- [`build-from-source.md`](build-from-source.md) still names the renderer as a build input.
+- `externals/xamlstudio` was deleted from the index and `.gitmodules`; `init-submodules.sh` no
+  longer initializes it, so CI no longer downloads it.
+- A leftover, git-ignored `.opendevelop-distribution-*.slnx` (generated before the ProGPU removal)
+  still listed the deleted `XamlStudio.Toolkit.ProGPU.csproj`; it was deleted. `dist.ps1` regenerates
+  that solution from `OpenDevelop.Mvp.slnx`, which no longer contains the project.
+- The `IWinUIXamlRuntimeHost` comment now names the Uno/WinUI runtime, not "XAML Studio/Uno".
+- `winui-designer.md`, `xaml-services.md` and `licensing-audit.md` no longer describe XAML Studio as
+  a current renderer or dependency; `in-process-analysis.md` marks the baseline as analysed before
+  removal.
 
 ### 1.8 What does survive
 
@@ -1449,28 +1448,22 @@ Still open: ARM64 (this machine is AMD64; only x64 was exercised).
 - Line counts: `find <dir> -name '*.cs' -not -path '*/obj/*' -not -path '*/bin/*' | xargs wc -l`,
   and `git ls-tree`/worktree checkout for the PR commit. Counts exclude generated code and tests
   unless stated.
-- OpenDevelop facts were checked in this checkout (`607e38fc05`), including the absence of build
-  references to `externals/xamlstudio` and the presence of DDP v70 in
+- OpenDevelop facts were checked in this checkout at comparison time (`607e38fc05`), including the
+  absence of build references to `externals/xamlstudio` and the presence of DDP v70 in
   [`DesignerProtocol.cs`](../../src/Main/Designer/Designer.Remote/DesignerProtocol.cs#L119).
 - WinAppVSCE facts were checked against PR head `6e4b3887e797` in a temporary worktree; the
   repository's `main` worktree was left untouched. Documents that exist only in the PR history
   (`docs/designer-workstreams.md`) are linked at the commit that introduced them (`f70889e`).
 - WinUIDesigner facts were checked against `main` `456640e04fd2`.
-- XAML Studio facts were checked in `externals/xamlstudio` at `d711d64`: the app is a UAP project
-  with the `Microsoft.UI.Xaml` (WinUI 2) package, the toolkit is 3,612 lines and the app 7,851. Its
-  renderer returns a live `object Element` with no bounds/pixels/tree, and
-  `XamlXmlTreeCoordinator` names UWP-only members (`BackgroundSizing`, `SemanticZoomOwner`,
-  `IsZoomedInView`), which is why it cannot compile against WinUI 3.
+- XAML Studio facts were checked in `externals/xamlstudio` at `d711d64` before the submodule was
+  removed (2026-11-14): the app is a UAP project with the `Microsoft.UI.Xaml` (WinUI 2) package, the
+  toolkit is 3,612 lines and the app 7,851. Its renderer returns a live `object Element` with no
+  bounds/pixels/tree, and `XamlXmlTreeCoordinator` names UWP-only members (`BackgroundSizing`,
+  `SemanticZoomOwner`, `IsZoomedInView`), which is why it cannot compile against WinUI 3.
 - Known stale statements found during the comparison (do not trust them over the code):
   - `in-process-analysis.md` says the canvas is 2282 lines; it is 3,364 in the three core files.
   - `surface/README.md` says the provisioner accepts x64 only; `HostArch`/P9 support ARM64.
   - `surface/Surface/RenderHost.cs` has old JPEG comments; the wire `Frame` is PNG.
-  - `xaml-services.md` and `build-from-source.md` still describe the retired XAML Studio renderer as
-    current.
-  - `winui-designer.md` §"Reuse Boundary with UnoDevelop and XAML Studio" still describes
-    `XamlRenderService` as the renderer; it was the ProGPU profile's, deleted on 2026-11-09.
-  - `WinUIXamlHost.cs`'s `IWinUIXamlRuntimeHost` comment still says "Implemented by the independent
-    XAML Studio/Uno runtime assembly"; the current Uno and Microsoft hosts are separate code.
 - The WinUIDesigner issue list was read on 2026-11-11 (`#1`–`#6`).
 - The WinAppVSCE design issues (`#54`, `#56`, `#59`, `#61`) and `microsoft/winappCli#636` were read
   on 2026-11-12 with `gh issue view`. Only their public text was read; B4b/B4c was not found as a
@@ -1479,8 +1472,8 @@ Still open: ARM64 (this machine is AMD64; only x64 was exercised).
 
 ## See also
 
-- `externals/xamlstudio` — the fourth baseline (UWP + WinUI 2), upstream `dotnet/XAMLStudio` v2
-  `dev`, pinned at `d711d64`.
+- XAML Studio — the fourth baseline (UWP + WinUI 2), upstream `dotnet/XAMLStudio` v2 `dev`,
+  analysed at `d711d64`; its submodule was removed from this checkout on 2026-11-14.
 - [`winui-designer.md`](winui-designer.md) — OpenDevelop's WinUI/Uno runtime, loading contract and
   corpus history.
 - [`designer-common.md`](designer-common.md) — DDP, host lifecycle, shell/backend boundary.

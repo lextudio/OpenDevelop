@@ -24,11 +24,14 @@ The audit must be repeated when a project adds or changes a `Compile`, `Page`,
 
 ## Not part of the released product without a separate traced use
 
-`cps` and
-`xamlstudio` have repository-level licenses but no direct
-source-link in the application projects found by this audit. They may be build
-or test dependencies. A future payload copy, source link, or bundled binary
+`cps` has a repository-level license but no direct
+source-link in the application projects found by this audit. It may be a build
+or test dependency. A future payload copy, source link, or bundled binary
 must add a file-level entry above before release.
+
+`xamlstudio` is no longer part of the checkout: it was removed on 2026-11-14 after the
+ProGPU/XAML Studio renderer was deleted (2026-11-09). Its MIT license is retained in the history of
+this audit, not in the shipped payload.
 
 `SharpDbg.Cli` is not source-linked: `Debugger.AddIn.csproj` restores it as the
 `LeXtudio.SharpDbg.Cli` package and copies its complete out-of-process adapter

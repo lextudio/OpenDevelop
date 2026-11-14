@@ -28,9 +28,11 @@ classified by destination.
 | **WinForms** | SharpDevelop's in-process WinForms designer + the shared in-process designer library | **git history only** — see correction 3 and §9.1 | initial inventory complete | resource/complex-editor parity remains |
 | **WinForms (secondary)** | `mono/monodevelop` @ `ba01d2d6d3`, `MonoDevelop.DesignerSupport` | `externals/monodevelop/main/src/addins/MonoDevelop.DesignerSupport` | 84 `.cs` | analysed; partial value only |
 | **WinForms (secondary)** | Stetic — the GTK# designer, `MonoDevelop.GtkCore` | `externals/monodevelop/main/src/addins/MonoDevelop.GtkCore` | 258 `.cs` / ~49 800 lines | analysed; three transferable ideas |
-| **WinUI** | `lextudio/xamlstudio` @ `d711d64` | `externals/xamlstudio` | 135 `.cs` / ~14 600 lines | analysed |
+| **WinUI** | `lextudio/xamlstudio` @ `d711d64` | submodule `externals/xamlstudio`, **removed 2026-11-14** | 135 `.cs` / ~14 600 lines | analysed (historical) |
 
-The WPF and WinUI baselines are open source and present as submodules. The WinForms baseline is in
+The WPF baseline is still a submodule. The WinUI baseline was analysed at `d711d64`; its submodule
+was removed on 2026-11-14 because the ProGPU/XAML Studio renderer it supported was deleted on
+2026-11-09. The WinForms baseline is in
 repository history rather than a checkout; its focused initial inventory is complete in correction 3
 and section 9. The Forms-specific parity work that inventory named is delivered, and section 7 now carries
 the protocol notes through v65; the Windows-side verification is what section 9 still defers.

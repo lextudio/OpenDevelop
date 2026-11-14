@@ -42,7 +42,7 @@ Modern SDK-style projects and the `.slnx` format are supported through modern pr
 
 At the same time, OpenDevelop is selectively recovering useful technology from other open-source IDE lineages instead of attempting to reinvent every subsystem.
 
-MonoDevelop and Visual Studio for Mac are sources of technologies such as T4, NuGet integration, and code-coverage infrastructure. ILSpy is integrated as a first-class assembly exploration and decompilation subsystem. XAML Studio contributes another generation of XAML designer technology.
+MonoDevelop and Visual Studio for Mac are sources of technologies such as T4, NuGet integration, and code-coverage infrastructure. ILSpy is integrated as a first-class assembly exploration and decompilation subsystem. XAML Studio informed the first WinUI designer generation, which was retired in 2026.
 
 The result is no longer simply "SharpDevelop on .NET 10."
 
@@ -102,9 +102,12 @@ This is intentionally selective. OpenDevelop does not attempt to revive the enti
 
 ### XAML Studio
 
-[XAML Studio](https://github.com/lextudio/xamlstudio) contributes modern XAML designer technology and another important piece of the open-source XAML tooling story.
+[XAML Studio](https://github.com/lextudio/xamlstudio) informed the first OpenDevelop WinUI designer:
+its renderer powered the in-process ProGPU profile from August 2026 until that profile was removed in
+November 2026. It remains an important piece of the open-source XAML tooling story, and the
+comparison and lessons are kept in the designer technotes.
 
-Its integration is especially relevant as OpenDevelop expands visual design beyond the original SharpDevelop WPF designer.
+That experience is what led to the current out-of-process Uno and Microsoft WinUI hosts.
 
 ### Visual Studio Editor API
 
@@ -214,7 +217,7 @@ This has several advantages.
 
 The designer can run against the framework and runtime it actually targets. A crash in designer code does not have to take down the IDE. The same designer implementation can potentially be consumed by multiple editors. And design tooling no longer has to be treated as a private implementation detail of one development environment.
 
-OpenDevelop's WPF and WinForms designer work, the XAML Studio integration, and the existing VS Code WPF tooling provide practical foundations for this direction.
+OpenDevelop's WPF and WinForms designer work, the earlier XAML Studio integration, and the existing VS Code WPF tooling provide practical foundations for this direction.
 
 ## What OpenDevelop can do
 
@@ -242,7 +245,7 @@ ILSpy-based source recovery is being developed to make third-party binaries and 
 
 OpenDevelop carries forward the SharpDevelop visual-designer tradition while moving it toward an out-of-process architecture.
 
-Current work includes WPF and Windows Forms design, with XAML Studio technology contributing to newer XAML/WinUI design scenarios.
+Current work includes WPF and Windows Forms design, plus out-of-process Uno and Microsoft WinUI hosts; the XAML Studio-derived renderer was retired in 2026.
 
 ### Testing and code coverage
 

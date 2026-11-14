@@ -627,7 +627,7 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 }
 
 /// <summary>
-/// Implemented by the independent XAML Studio/Uno runtime assembly. Microsoft.UI.Xaml objects
+/// Implemented by the independent Uno/WinUI runtime assembly. Microsoft.UI.Xaml objects
 /// never cross this interface; only the WPF hosting surface does.
 /// </summary>
 /// <summary>Optional: the runtime can preview on an iOS Simulator (or Android emulator) as well as the desktop. Lets the

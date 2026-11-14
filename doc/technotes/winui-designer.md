@@ -249,10 +249,10 @@ The complete `WinUIGalleryDesignerTests` Microsoft-host corpus then passed 25/25
 this real SettingsCard acceptance case.
 
 This technote is the dedicated home for the WinUI-family designer: architecture decisions, the
-XAML Studio/ProGPU integration boundary, packaging workflow, the current state, and the
-real-world preview problem catalog (updated 2026-08-15). The cross-designer roadmap (WinForms + WPF +
-WinUI together), framework detection, provider contracts, phases, and the test matrix live in
-[`xaml-services.md`](xaml-services.md).
+historical XAML Studio/ProGPU integration boundary (removed 2026-11-09), packaging workflow, the
+current state, and the real-world preview problem catalog (updated 2026-08-15). The cross-designer
+roadmap (WinForms + WPF + WinUI together), framework detection, provider contracts, phases, and the
+test matrix live in [`xaml-services.md`](xaml-services.md).
 
 The parent workbench now shares `Designer.Shell.DesignerSelectionController` with the other four
 designers for the element forest, stable-ID selection restoration, and Properties adapter
@@ -288,26 +288,41 @@ There are **two supported runtime profiles** (a third, ProGPU, existed until 202
 
 ## Architecture
 
-### Reuse Boundary with UnoDevelop and XAML Studio
+### Reuse Boundary with UnoDevelop and the retired XAML Studio renderer
 
-UnoDevelop's `src/AddIns/DisplayBindings/XamlDesigner/` has implemented native `Microsoft.UI.Xaml` Source/Design secondary views, a Toolbox provider, an Outline provider, Properties Pad wiring, and integration tests. OpenDevelop reuses that IDE wiring approach but does not re-implement the renderer: the original `XamlRenderService` in `externals/xamlstudio/XamlStudio.Toolkit/Services/XamlRenderService/` and its models/extensions are the upstream code, consumed through linked source or a standalone toolkit project, with only the narrow adaptations required to compile. Its algorithms must not be rewritten as a WPF XAML parser, nor maintained as a behavior-forked copy.
+UnoDevelop's `src/AddIns/DisplayBindings/XamlDesigner/` is the reference for the IDE wiring:
+native `Microsoft.UI.Xaml` Source/Design secondary views, a Toolbox provider, an Outline provider,
+Properties Pad wiring and integration tests. OpenDevelop reuses that *shell* approach. It does not
+reuse UnoDevelop's renderer: the current Uno and Microsoft WinUI children are OpenDevelop's own
+`DesignHost`/`DesignRpc`, compiled against the project's runtime.
 
-UnoDevelop/XAML Studio's UI files cannot directly become OpenDevelop WPF visuals: the former's control types are `Microsoft.UI.Xaml.*`, while the latter's shell and document views are `System.Windows.*`. The two visual trees must be isolated by an explicit host, similar to how the WinForms designer embeds WPF through `WindowsFormsHost` rather than loading WinForms controls as WPF controls.
+The renderer that *was* reused is historical: XAML Studio's `XamlRenderService` powered the
+in-process ProGPU profile from 2026-08-13 until 2026-11-09, when `76f51cc6e7` deleted the ProGPU
+host and `XamlStudio.Toolkit.ProGPU` (2,040 lines). The `externals/xamlstudio` submodule was removed
+on 2026-11-14. Its source, if it is ever needed for reference, is the upstream
+`https://github.com/lextudio/xamlstudio` repository at `d711d64`; nothing in this checkout links it.
+
+UnoDevelop/XAML Studio's UI files could not directly become OpenDevelop WPF visuals: the former's
+control types are `Microsoft.UI.Xaml.*`, while the latter's shell and document views are
+`System.Windows.*`. The two visual trees must be isolated by an explicit host, similar to how the
+WinForms designer embeds WPF through `WindowsFormsHost` rather than loading WinForms controls as WPF
+controls. That isolation boundary is the part that survives; the XAML Studio code does not.
 
 ### External References and Dependencies
 
 ```text
 externals/
-├── xamlstudio/       `https://github.com/lextudio/xamlstudio` submodule; linked reuse of the original renderer source
 ├── vscode-wpf/
 │   ├── external/WpfDesigner/   OpenDevelop's WPF designer engine
 │   └── external/wxsg/          XAML language services and framework profiles
 └── AXSG (included transitively by wxsg)    XAML analysis/generation foundation
 ```
 
-The submodules are pinned to the WinUI migration commit of `origin/unodevelop`, and the XAML Studio renderer already uses `Microsoft.UI.Xaml`; it still cannot compile into the WPF shell, but should compile into a standalone WinUI/Uno renderer assembly. Upstream still contains UWP Storage/Media assumptions; the port should isolate those APIs behind small platform adapters while preserving upstream file identity and licenses; it must not be replaced by WPF's `System.Windows.Markup.XamlReader`.
-
-OpenDevelop owns the `externals/xamlstudio` submodule directly; it must not fetch source indirectly through a sibling directory in the UnoDevelop parent repository. The current ingestion baseline is commit `d711d64fed7d07d5c2dda545d255d1007588ab78`; when upgrading the submodule, the renderer compilation, standard control rendering, and error-recovery tests must be re-run.
+No renderer source is linked from a submodule. The Uno child uses Uno's own
+`Microsoft.UI.Xaml.Markup.XamlReader`; the Microsoft child uses WinUI's `XamlReader`, a reflection
+metadata provider and the project's compiled `.xbf`/PRI inputs. Do not reintroduce a linked-source
+renderer from a submodule: the ProGPU profile is the worked example of why that does not survive an
+upstream runtime change.
 
 ### Runtime Routing Decision (2026-08-15)
 
@@ -615,7 +630,7 @@ be undone.
 |---|---|---|
 | Document model | XML/XAML nodes, stable IDs, source spans, diagnostics, text edits | AXSG/wxsg and UnoDevelop's UI-free logic |
 | Render protocol | Load/Update, viewport, theme, diagnostics, visual-tree snapshot, selection | New; compatible with both in-process and out-of-process implementations |
-| Renderer | Runtime-specific materialization: ProGPU compiler pipeline, Uno `XamlReader` + `RenderTargetBitmap`, or the future native WinUI adapter | XAML Studio + ProGPU packages for ProGPU; project runtime for OOP adapters |
+| Renderer | Runtime-specific materialization: Uno `XamlReader` + `RenderTargetBitmap`, or the Microsoft WinUI adapter | project runtime for the out-of-process adapters (the ProGPU/XAML Studio renderer was removed) |
 | Runtime host | Explicitly selected ProGPU in-process surface, Uno child, or future Windows App SDK child | `IWinUIXamlRuntimeHost` and optional capability interfaces |
 | OpenDevelop adapter | WPF secondary view, host lifecycle, Toolbox/Outline/Properties wiring | OpenDevelop shell + provider contracts |
 | Editing operations | Insert, delete, move, resize, set property → versioned text edits | Three backends share command semantics; each generates its own edits |
