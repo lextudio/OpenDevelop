@@ -31,12 +31,16 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 	public SurfaceDesignDocument(SurfaceConnection connection) => this.connection = connection;
 
 	/// <summary>
-	/// <c>OD_WINUI_COMPILED=1</c> opts into compiled-page rendering: the surface instantiates the document's own page class
-	/// (named by its <c>x:Class</c>) from the project assembly instead of parsing the markup, which is what makes generated
-	/// <c>{x:Bind}</c> and code-behind run. It shows the project's LAST BUILD. Off by default: the text-authoritative
-	/// renderer is the normal mode.
+	/// Opts into compiled-page rendering: the surface instantiates the document's own page class (named by its
+	/// <c>x:Class</c>) from the project assembly instead of parsing the markup, which is what makes generated
+	/// <c>{x:Bind}</c> and code-behind run. It shows the project's LAST BUILD, so it is a reference for what the build
+	/// renders, not the live preview (see winui-designer-bindings.md). Off by default: the text-authoritative renderer is
+	/// the normal mode. <c>OD_SURFACE_COMPILED</c> is the name the landscape/earlier child-level implementation used;
+	/// both are accepted so the documented invocation and the IDE-level one work.
 	/// </summary>
-	static readonly bool CompiledPagesEnabled = Environment.GetEnvironmentVariable("OD_WINUI_COMPILED") == "1";
+	static readonly bool CompiledPagesEnabled =
+		Environment.GetEnvironmentVariable("OD_WINUI_COMPILED") == "1"
+		|| Environment.GetEnvironmentVariable("OD_SURFACE_COMPILED") == "1";
 
 	static readonly XNamespace XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
 

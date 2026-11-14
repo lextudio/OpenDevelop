@@ -1521,6 +1521,17 @@ in-process re-parse, no restart). Real `{x:Bind}` is a hot-reload problem, not a
 whose own WinAppSDK bootstrap auto-initializer is on must not have its assembly loaded into the surface (every XAML object then fails
 with `0x8001010E`).
 
+**Compiled-page route re-added as a reference (2026-11-14).** With the C++ toolchain installed (Visual Studio 2026 Build
+Tools plus the ARM64 tools, so the hot-reload TAP builds), the fork's `compiledType` is reconnected through
+`SurfaceConnection.CompiledPageType` and `SurfaceDesignDocument`'s `x:Class` detection, under `OD_WINUI_COMPILED=1` (the
+earlier child-level `OD_SURFACE_COMPILED=1` is accepted too). It is still the last build, so it is a **reference** for what
+the build renders, not the live preview: on `BoundPage.xaml` it reports the bound value (`Text = "Bound from code-behind"`)
+where markup mode reports it empty, at 21.5 s warm open against 13 s, and a source edit does not reach it until the
+project is rebuilt. `od.winui-designer.rebuild-compiled` is not restored. The live tier is specified in
+`winui-designer-bindings.md` (plan step 8): evaluate each `{x:Bind}` against one design-time page instance and substitute
+the values into the markup, so XAML-only edits stay live and only code-behind/type changes need a build. §7.1's compiled
+preview application remains the fidelity direction.
+
 **Move and resize on the Surface runtime (verified in the IDE, 2026-11).** The shell's drag-to-source mapping
 (`ApplyElementBounds`: Canvas.Left/Top or Margin by alignment, Width/Height) is runtime-agnostic and runs from the bounds the described
 frame supplies. `od.winui-designer.nudge` moved the selected button by +20,+10 (screen bounds 488,372 -> 508,382) through a Margin

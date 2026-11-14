@@ -87,6 +87,20 @@ The evaluator must run where WinUI and the user assembly are loaded - the **Surf
 | `{Binding}` + design-time data as the normal mode | It is not `x:Bind`: no function bindings, no compiled member access, different null/fallback rules |
 | Keep the compiled preview only | Correct values, but every binding edit is a rebuild + host restart - the opposite of a live designer |
 
+## Relationship to the landscape and the plan
+
+- `winui-designer-landscape.md` §7.1 already specified this compiled-page route and measured it (fork `e397491`,
+  `compiledType`, the `0x8001010E` bootstrap guard, `BOUND VALUE 42`/`7`, last build and a rebuild+restart trigger).
+  §7.8 records that the upstream surface never runs generated binding code, and the appendix "Compiled-page route
+  dropped (2026-11)" records the earlier decision to drop it because a compiled page is not a live preview.
+- This note therefore does not reopen that decision: the compiled page stays the **reference** mode, re-added once the
+  C++ toolchain existed, and the mechanism here is the **live** tier that the landscape calls a hot-reload problem.
+  `od.winui-designer.rebuild-compiled` is not restored; the default preview is not a build.
+- The landscape's §7.1 "compiled preview application" (real XAML compiler/PRI, `built|cached|degraded|failed`, a rebuild
+  policy) remains the fidelity direction; the evaluator is what makes the default preview show real values *between*
+  builds. If the evaluator hits an expression it cannot honour, falling back to the compiled reference is the honest
+  answer rather than a placeholder.
+
 ## Done when
 
 1. `BoundPage.xaml` shows `Text = "Bound from code-behind"` from markup mode, with no

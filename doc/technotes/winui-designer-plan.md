@@ -39,7 +39,12 @@ Dates are 2026-11.
 ## 3. Removed
 
 - The **compiled-page route** (`compiledType`, `UseCompiledPages`, `OD_WINUI_COMPILED`, `rebuild-compiled`): it showed the last build,
-  so XAML edits needed a rebuild and a host restart. The fork keeps its unused optional `compiledType` message.
+  so XAML edits needed a rebuild and a host restart. The fork keeps its optional `compiledType` message, and the
+  `0x8001010E` bootstrap finding stayed in the surface host. **Re-added on 2026-11-14 as an opt-in reference**, not as the
+  live preview: once the C++ toolchain existed, `SurfaceConnection.CompiledPageType`/`SurfaceDesignDocument` reconnect
+  `x:Class` -> `compiledType` under `OD_WINUI_COMPILED=1` (the earlier `OD_SURFACE_COMPILED=1` is still accepted), for what the
+  *build* renders. It is measured in step 5, it shows the last build, and `rebuild-compiled` is not restored. The live
+  mechanism is step 8 (`winui-designer-bindings.md`).
 
 ## 4. Plan, in order
 
