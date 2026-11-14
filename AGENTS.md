@@ -426,7 +426,7 @@ Manual WinUI repro: port 9299, match the observed backend. For `microsoft`, firs
 with Visual Studio MSBuild (below); then launch the already-built shell with `--no-build`:
 
 ```bash
-OD_TEST_MODE=1 OD_WINUI_RUNTIME=microsoft dotnet run --project src/Main/SharpDevelop/SharpDevelop.csproj -f net10.0-windows --no-build
+OD_TEST_MODE=1 OD_WINUI_RUNTIME=microsoft dotnet run --project src/Main/SharpDevelop/SharpDevelop.csproj -f net11.0-windows --no-build
 ```
 
 WinUI needs a built Unpackaged profile. After a configuration change, close all document views and
@@ -440,6 +440,43 @@ The Microsoft WinUI host needs Visual Studio MSBuild (not plain `dotnet`), match
 `-p:DisableGitVersionTask=true`. Build the shared WinUI client through
 `WinUIXamlDesigner.UnoDesignHost`, not merely the AddIn project. Keep Uno and Microsoft host
 projects separate, sharing only explicit source links.
+
+## .NET 11 with net10 stragglers
+
+The IDE product — shell, Base/Core, every AddIn, the AddIn SDK and tools — targets
+`net11.0`/`net11.0-windows` (commit `0f522a1576`). A few projects deliberately stay older; they are
+current targets, not stale output, so never "upgrade" or delete their `bin`/`obj`:
+
+| Path | TFM | Why |
+|---|---|---|
+| `src/Main/Designer/Designer.Remote` + `Designer.Server` | `net9.0;net10.0;net11.0` | child-side protocol, loaded on the designed app's CLR; net11 is for the IDE's own hosts |
+| `WinUIXamlDesigner.UnoHost` | `net10.0-desktop` (+ ios/android) | Uno Platform has no net11 head yet |
+| `WinUIXamlDesigner.MicrosoftHost` | `net9.0/net10.0-windows10.0.19041.0` | Windows App SDK WinUI |
+| `WpfHotReload.Agent` + `.Microsoft` (`WpfHotReload.Agent.Shared.props`) | `net10.0-windows` | injected into the debuggee |
+| `tests/fixtures/**` | net10 | compatibility fixtures |
+
+Package-internal `lib/net10.0` and `runtimes/*/lib/net10.0` folders are the LibreWPF closure's only
+assets, not TFM choices: `Directory.Build.props` pins `_ProGpuWpf*RuntimeTfm` back to net10. Never
+retarget or delete those paths.
+
+Recognise a mixed tree:
+
+- `FileNotFoundException: Could not load file or assembly 'System.Runtime, Version=11.0.0.0'` at
+  startup: a net10 host was pointed at net11 AddIn DLLs (or the reverse). The bin TFM and the
+  `AddIns` TFM disagree; run `bin/<Configuration>/net11.0-windows/OpenDevelop`, the folder the
+  current build produces.
+- `Name 'ICSharpCode.X' is used by '.../net10.0-windows/X.addin' and '.../net11.0-windows/X.addin'`,
+  usually with `Cannot find class` for several unrelated add-ins: duplicate TFM deployment folders.
+  Delete the stale `AddIns/**/net10.0-windows` directory and rebuild that add-in.
+- `Cannot find class` for a single class and no duplicate-name error is a manifest problem, not a
+  TFM one: `AddIn.FindType` searches only the codon's own add-in `<Runtime>` imports, so a class
+  living in another assembly needs its `<Import>` (e.g. `:ICSharpCode.SharpDevelop`); see issue #34.
+
+`ApplicationRootPath` is found by walking up for `data/resources/languages/LanguageDefinition.xml`
+(the repo root), so the app always loads the root `AddIns/` wherever its bin folder sits. DevFlow
+actions are invoked with POST. To find stale output, compare each project's current
+`TargetFrameworks` against `bin|obj/**/net10*` and delete only the mismatches; never blanket-delete
+`AddIns/`, which is the live net11 deployment.
 
 ## Builds, packages, icons
 
