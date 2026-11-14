@@ -5590,6 +5590,8 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         var xamlPath = Path.Combine(solutionDirectory, "SamplePane.xaml");
 
         await _app.EnsureSolutionOpenAsync(solutionPath);
+        var appXamlPath = Path.Combine(solutionDirectory, "App.xaml");
+        Assert.True((await _app.InvokeAsync("od.open-file", appXamlPath)).GetProperty("opened").GetBoolean());
         var openFileResult = await _app.InvokeAsync("od.open-file", xamlPath);
         Assert.True(openFileResult.GetProperty("opened").GetBoolean());
         var status = await WaitForWpfDesignerStatusAsync(expectedRootItemType: "UserControl", timeoutSeconds: 30, reactivatePath: xamlPath, expectedCell: cell);
@@ -5602,6 +5604,12 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         Assert.Equal("PaneTitle", selected.GetProperty("selectedName").GetString());
         Assert.Equal("PaneTitle", selected.GetProperty("propertiesPadSelectedName").GetString());
         Assert.Equal("TextBlock", selected.GetProperty("propertiesPadSelectedType").GetString());
+        Assert.False(string.IsNullOrEmpty(selected.GetProperty("outlineSelectedId").GetString()), selected.ToString());
+        Assert.True(string.Equals(xamlPath, selected.GetProperty("sourceFile").GetString(),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal), selected.ToString());
+        Assert.True(selected.GetProperty("sourceLine").GetInt32() > 0, selected.ToString());
+        Assert.True(selected.GetProperty("sourceColumn").GetInt32() > 0, selected.ToString());
+        Assert.Contains("PaneTitle", selected.GetProperty("sourceLineText").GetString(), StringComparison.Ordinal);
 
         var listSelected = await _app.InvokeAsync("od.wpf-designer.select", "PaneList");
         Assert.True(listSelected.GetProperty("success").GetBoolean(), listSelected.ToString());

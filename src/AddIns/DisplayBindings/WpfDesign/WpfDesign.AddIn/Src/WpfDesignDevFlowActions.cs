@@ -238,13 +238,20 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 				return JsonSerializer.Serialize(new { success = false, error = "Designer element not found: " + elementName });
 
 			surface.SelectElementId(node.Id);
+			var source = viewContent.NavigateSelectionToSource();
+			var outline = viewContent.OutlineContent as ICSharpCode.SharpDevelop.Widgets.DocumentOutlineControl;
 
 			var selectedObject = viewContent!.PropertyContainer.SelectedObject as WpfSurfaceElementPropertyAdapter;
 			return JsonSerializer.Serialize(new {
 				success = true,
 				selectedName = node.Name,
 				propertiesPadSelectedName = selectedObject?.GetComponentName(),
-				propertiesPadSelectedType = selectedObject?.GetClassName()
+				propertiesPadSelectedType = selectedObject?.GetClassName(),
+				outlineSelectedId = outline?.SelectedNode?.Id,
+				sourceFile = source?.FileName,
+				sourceLine = source?.Line,
+				sourceColumn = source?.Column,
+				sourceLineText = source?.LineText
 			});
 		}
 

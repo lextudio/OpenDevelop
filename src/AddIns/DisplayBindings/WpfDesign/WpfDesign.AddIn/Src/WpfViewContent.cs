@@ -26,6 +26,8 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
+using System.Xml;
+using System.Xml.Linq;
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
@@ -105,6 +107,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 			readonly Stack<UndoEntry> redoStack = new();
 			readonly DesignerCommandController commands = new();
 		string? lastKnownGoodXaml;
+		string? sourceLocationCacheText;
+		readonly Dictionary<string, (int Line, int Column)?> sourceLocationCache = new();
 
 			public bool CanUndo => commands.CanExecute("Undo");
 			public bool CanRedo => commands.CanExecute("Redo");
@@ -503,7 +507,94 @@ namespace ICSharpCode.WpfDesign.AddIn
 			syncingOutlineSelection = true;
 			try { outline.SelectNodesById(surfaceControl?.SelectedElementIds ?? Array.Empty<string>()); }
 			finally { syncingOutlineSelection = false; }
+			// The source editor is the other view of this same OpenedFile.  Keep its caret on
+			// the selected XAML element without activating it: the side-by-side workbench then
+			// shows designer, Outline and source as one selection rather than making a canvas
+			// click throw the user out of Design view.
+			NavigateSelectionToSource();
 			CommandManager.InvalidateRequerySuggested();
+		}
+
+		/// <summary>Maps the selected protocol node back to its XAML start tag and updates the
+		/// sibling source editor. The protocol path is a child-index path from the markup root;
+		/// a real x:Name is preferred because it remains stable across object-property syntax.</summary>
+		public sealed record SourceLocation(string FileName, int Line, int Column, string LineText);
+
+		public SourceLocation? NavigateSelectionToSource()
+		{
+			var node = surfaceControl?.SelectedNode;
+			if (node == null || node.IsTemplatePart || !node.IsDesignable)
+				return null;
+			var editor = FindSourceEditor();
+			if (editor == null)
+				return null;
+			var sourceText = editor.Document.Text;
+			if (!string.Equals(sourceLocationCacheText, sourceText, StringComparison.Ordinal)) {
+				sourceLocationCacheText = sourceText;
+				sourceLocationCache.Clear();
+			}
+			var key = node.Path + "\0" + node.Name + "\0" + node.Type;
+			if (!sourceLocationCache.TryGetValue(key, out var location)) {
+				location = FindSourceLocation(sourceText, node);
+				sourceLocationCache.Add(key, location);
+			}
+			if (location == null)
+				return null;
+			editor.JumpTo(location.Value.Line, location.Value.Column);
+			var line = sourceText.Split('\n')[location.Value.Line - 1].TrimEnd('\r');
+			return new SourceLocation(editor.FileName.ToString(), location.Value.Line, location.Value.Column, line);
+		}
+
+		ICSharpCode.SharpDevelop.Editor.ITextEditor? FindSourceEditor()
+		{
+			var window = WorkbenchWindow;
+			if (window != null)
+				foreach (var content in window.ViewContents)
+					if (content != this && content.GetService(typeof(ICSharpCode.SharpDevelop.Editor.ITextEditor)) is ICSharpCode.SharpDevelop.Editor.ITextEditor editor
+						&& FileUtility.IsEqualFileName(editor.FileName, PrimaryFile.FileName))
+						return editor;
+			return SD.FileService.GetOpenFile(PrimaryFile.FileName)?.GetService(typeof(ICSharpCode.SharpDevelop.Editor.ITextEditor)) as ICSharpCode.SharpDevelop.Editor.ITextEditor;
+		}
+
+		static (int Line, int Column)? FindSourceLocation(string text, DesignerElementNode node)
+		{
+			try {
+				var document = XDocument.Parse(text, LoadOptions.PreserveWhitespace | LoadOptions.SetLineInfo);
+				var root = document.Root;
+				if (root == null)
+					return null;
+				// Prefer the protocol path: x:Name is unique only inside a XAML namescope, while
+				// the path is document-wide. Object-property syntax can add a path the simple XML
+				// walk does not represent, so a named element is the intentional fallback there.
+				XElement? element = FindElementAtPath(root, node.Path);
+				if (element == null || !string.Equals(element.Name.LocalName, node.Type, StringComparison.Ordinal)
+					|| node.Name != null && !element.Attributes().Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == node.Name))
+					element = !string.IsNullOrEmpty(node.Name)
+						? root.DescendantsAndSelf().FirstOrDefault(candidate => candidate.Attributes().Any(attribute => attribute.Name.LocalName == "Name" && attribute.Value == node.Name))
+						: null;
+				if (element == null || !string.Equals(element.Name.LocalName, node.Type, StringComparison.Ordinal))
+					return null;
+				var info = (IXmlLineInfo)element;
+				return info.HasLineInfo() ? (info.LineNumber, info.LinePosition) : null;
+			} catch (XmlException) {
+				return null;
+			}
+		}
+
+		static XElement? FindElementAtPath(XElement root, string path)
+		{
+			var current = root;
+			if (string.IsNullOrEmpty(path))
+				return current;
+			foreach (var segment in path.Split(',')) {
+				if (!int.TryParse(segment, out var index))
+					return null;
+				var children = current.Elements().Where(element => !element.Name.LocalName.Contains('.', StringComparison.Ordinal)).ToArray();
+				if (index < 0 || index >= children.Length)
+					return null;
+				current = children[index];
+			}
+			return current;
 		}
 
 		/// <summary>F2 uses the same <c>design/rename</c> mutation as Properties, then asks Roslyn
