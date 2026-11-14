@@ -7,14 +7,15 @@
     <!-- The desktop head is always built. The iOS head needs the iOS workload and Xcode, which not every
          machine (or CI lane) has, so it is opt-in: -p:UnoDesignHostMobile=true. -->
     <UnoDesignHostMobile Condition="'$(UnoDesignHostMobile)' == ''">false</UnoDesignHostMobile>
-    <TargetFrameworks>net10.0-desktop</TargetFrameworks>
-    <TargetFrameworks Condition="'$(UnoDesignHostMobile)' == 'true'">net10.0-desktop;net10.0-ios;net10.0-android</TargetFrameworks>
+    <TargetFrameworks>net11.0-desktop</TargetFrameworks>
+    <TargetFrameworks Condition="'$(UnoDesignHostMobile)' == 'true'">net11.0-desktop;net11.0-ios;net11.0-android</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <UnoSingleProject>true</UnoSingleProject>
-    <!-- Every head renders with Skia. Uno 7 drops the native iOS/Android renderers (its package has no
-         net10.0-ios/-android flavour), so the mobile heads are Skia from the start: Uno.UI.dll becomes the Skia
-         flavour, whose Application is not a UIApplicationDelegate, so the iOS entry point goes through
-         UnoPlatformHostBuilder.UseAppleUIKit() instead of UIApplication.Main(typeof(App)). -->
+    <!-- Every head renders with Skia. Uno 7 drops the native iOS/Android renderers (its package ships
+         no iOS/Android-native renderer for any TFM), so the mobile heads are Skia from the start:
+         Uno.UI.dll becomes the Skia flavour, whose Application is not a UIApplicationDelegate, so the
+         iOS entry point goes through UnoPlatformHostBuilder.UseAppleUIKit() instead of
+         UIApplication.Main(typeof(App)). -->
     <UnoFeatures>SkiaRenderer</UnoFeatures>
     <!-- Older Uno.Sdk versions inject Uno.UI.HotDesign (and Uno.UI.App.Mcp) into every Exe
          project. Neither package carries a license: their nuspec has only "all rights reserved"
@@ -27,7 +28,7 @@
     <OpenDevelopAddin>true</OpenDevelopAddin>
     <OpenDevelopAddinKind>OutOfProcessHost</OpenDevelopAddinKind>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-ios'">
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net11.0-ios'">
     <!-- A device head is one RID-specific app (simulator / emulator ABI), deployed as a bundle or APK rather than
          loaded into the IDE, so the AnyCPU AddIn rule of a distribution build does not apply to it. -->
     <OpenDevelopAllowRidSpecificAddin>true</OpenDevelopAllowRidSpecificAddin>
@@ -36,7 +37,7 @@
     <ApplicationId>com.lextudio.opendevelop.unodesignhost</ApplicationId>
     <ValidateXcodeVersion Condition="'$(ValidateXcodeVersion)' == ''">false</ValidateXcodeVersion>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net11.0-android'">
     <!-- A device head is one RID-specific app (simulator / emulator ABI), deployed as a bundle or APK rather than
          loaded into the IDE, so the AnyCPU AddIn rule of a distribution build does not apply to it. -->
     <OpenDevelopAllowRidSpecificAddin>true</OpenDevelopAllowRidSpecificAddin>
@@ -55,10 +56,10 @@
     <!-- Unconditional: the desktop head must not compile the mobile application definition either (the SDK globs *.xaml into Page). -->
     <Page Remove="Platforms/Mobile/App.xaml" />
   </ItemGroup>
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-ios' Or '$(TargetFramework)' == 'net10.0-android'">
+  <ItemGroup Condition="'$(TargetFramework)' == 'net11.0-ios' Or '$(TargetFramework)' == 'net11.0-android'">
     <ApplicationDefinition Include="Platforms/Mobile/App.xaml" />
   </ItemGroup>
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-ios'">
+  <ItemGroup Condition="'$(TargetFramework)' == 'net11.0-ios'">
     <InterfaceDefinition Include="Platforms/iOS/LaunchScreen.storyboard" />
   </ItemGroup>
   <ItemGroup>
@@ -69,7 +70,7 @@
   <!-- Deploy the whole runnable child (dll + deps + runtimeconfig + native libs) into the addin's
        own folder, next to ICSharpCode.WinUIXamlDesigner.dll, so the WPF side can find and spawn
        it from the deployed AddIns tree exactly like it does at dev time. -->
-  <Target Name="DeployToAddIns" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net10.0-desktop'">
+  <Target Name="DeployToAddIns" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net11.0-desktop'">
     <ItemGroup>
       <HostOutput Include="$(TargetDir)**" />
     </ItemGroup>
@@ -84,7 +85,7 @@
 
   <!-- The iOS head ships as an app bundle beside the desktop head ("UnoHost.iOS"), where the designer finds it and installs
        it into a simulator on demand. A bundle is a directory tree with symlinks, so it is copied with cp -R, not MSBuild's Copy. -->
-  <Target Name="DeployIosHostToAddIns" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net10.0-ios' And $([MSBuild]::IsOSPlatform('OSX'))">
+  <Target Name="DeployIosHostToAddIns" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net11.0-ios' And $([MSBuild]::IsOSPlatform('OSX'))">
     <PropertyGroup>
       <_IosDeployRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../../../AddIns/DisplayBindings/WinUIXamlDesigner/UnoHost.iOS'))</_IosDeployRoot>
     </PropertyGroup>
@@ -92,7 +93,7 @@
   </Target>
 
   <!-- The Android head ships as an APK beside the desktop head ("UnoHost.Android"); the designer adb-installs it into the emulator. -->
-  <Target Name="DeployAndroidHostToAddIns" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net10.0-android'">
+  <Target Name="DeployAndroidHostToAddIns" AfterTargets="Build" Condition="'$(TargetFramework)' == 'net11.0-android'">
     <PropertyGroup>
       <_AndroidDeployRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../../../AddIns/DisplayBindings/WinUIXamlDesigner/UnoHost.Android'))</_AndroidDeployRoot>
     </PropertyGroup>

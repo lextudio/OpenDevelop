@@ -121,12 +121,14 @@ public static class MicrosoftWinUIDesignRuntimeHostBootstrap
 					if (json.RootElement.TryGetProperty("runtimeOptions", out var options)
 						&& options.TryGetProperty("tfm", out var tfm)) {
 						var value = tfm.GetString();
+						if (value?.StartsWith("net11.", StringComparison.OrdinalIgnoreCase) == true) return "net11.0";
+						if (value?.StartsWith("net10.", StringComparison.OrdinalIgnoreCase) == true) return "net10.0";
 						if (value?.StartsWith("net9.", StringComparison.OrdinalIgnoreCase) == true) return "net9.0";
 					}
 				}
-			} catch { /* A missing/stale project evaluation falls back to the IDE's net10 child. */ }
+			} catch { /* A missing/stale project evaluation falls back to the IDE's own net11 child. */ }
 		}
-		return "net10.0";
+		return "net11.0";
 	}
 
 	/// <summary>

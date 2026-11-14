@@ -3,8 +3,9 @@
     <!-- A compiled WinUI control's generated metadata and native XAML resources must execute
          inside the designed app's CLR/runtime graph. Build one child per supported CLR major;
          MicrosoftWinUIDesignRuntimeHostBootstrap selects it from the app runtimeconfig. -->
-    <TargetFrameworks>net9.0-windows10.0.19041.0;net10.0-windows10.0.19041.0</TargetFrameworks>
+    <TargetFrameworks>net9.0-windows10.0.19041.0;net10.0-windows10.0.19041.0;net11.0-windows10.0.19041.0</TargetFrameworks>
     <HostRuntimeDirectory Condition="'$(TargetFramework)' == 'net9.0-windows10.0.19041.0'">net9.0</HostRuntimeDirectory>
+    <HostRuntimeDirectory Condition="'$(TargetFramework)' == 'net11.0-windows10.0.19041.0'">net11.0</HostRuntimeDirectory>
     <HostRuntimeDirectory Condition="'$(HostRuntimeDirectory)' == ''">net10.0</HostRuntimeDirectory>
     <!-- Normally inherited from central package management.  A compatible child may override
          this at build time so a self-contained designed app runs against its own Windows App SDK
