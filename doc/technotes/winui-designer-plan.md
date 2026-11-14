@@ -26,7 +26,7 @@ Dates are 2026-11.
 | Hit-test and selection from the frame (no native mode) | `SurfaceDesignDocument.HitTestAsync` | fake-surface and real-surface DDP tests |
 | Layout metadata (package 0.4.0): margin, parent kind, Grid row/col/span and tracks, Canvas position, z-index, orientation | `FrameLayout` -> `GridTracks`, `LayoutInsets`, `ZIndex` | real-surface probe of Grid, Canvas, StackPanel |
 | Property catalog: the renderer's full property list per element in the Properties pad | `DescribeElement`, `design/describe-properties`, `WinUIXamlElementPropertyAdapter` | IDE: about 70 properties for a Button, enum and boolean dropdowns, an edit through the pad |
-| Move and resize as source edits | `ApplyElementBounds`; hooks `nudge`, `resize` | IDE: +20,+10 move, 98x32 -> 200x48 resize, one Undo restores |
+| Move and resize as source edits | `WinUIXamlMarginEditor.TryDelta` (Margin, alignment-aware), `ApplyElementBounds`; hooks `nudge`, `resize` | IDE: +20,+10 move, 98x32 -> 200x48 resize, one Undo restores. Pointer: a real press/stepped drag/release moved 60x30 and authored `Margin="60,30,0,0"`, a handle drag grew 98x32 to 168x72 with `Width`/`Height`, one Undo each |
 | Toolbox drop at a point: the measured Grid cell (`Grid.Row`/`Grid.Column`), `Canvas.Left`/`Top`, or the StackPanel child index, as one source edit | `WinUIXamlDropPlacement`, `WinUIXamlDocumentEditor.Insert(..., before, attached)`, hook `drop` | 60 tests; IDE: a Button dropped at (600,400) in `DropGrid` authored `Grid.Row="1" Grid.Column="1"`, at (30,20) in `DropCanvas` authored `Canvas.Left="30" Canvas.Top="20"`, one Undo each |
 | Edits keep the author's layout (declaration, line endings, untouched tags) | `WinUIXamlDocumentEditor.PreserveLayout` | 47 tests, `tests/OpenDevelop.WinUIXamlDocument.Tests` |
 | Native-live window over the canvas (opt-in), follows the canvas, falls back to the last snapshot if the renderer dies | `UnoDesignRuntimeHost.NativeLive.cs`, `od.winui-designer.native-live` | IDE: on, off, on, killed renderer, window follows maximize |
@@ -53,9 +53,27 @@ Each step ends with a committed change, tests where the code has an executable s
    on a Canvas sets `Canvas.Left`/`Top`, and one Undo removes it. Verified in the IDE on the Surface
    backend, in `tests/fixtures/WinUIDesignerFixture/Microsoft/DropPage.xaml`; the unit tests pin the
    same rule and the undo step.
-3. **Real pointer verification.** The IDE runs hidden in this environment, so pointer drags were never exercised. Run the same
-   move, resize and drop journeys with a visible IDE and real input (the integration suite's pointer rules in `AGENTS.md`), and
-   record which of the action-driven checks the pointer path confirms or contradicts.
+3. **Real pointer verification.** Done on Windows with a visible IDE (Surface backend). The journeys confirm the
+   action-driven checks and contradict one of them (a second, empty Undo step after a resize), now fixed:
+   - **Selection**: a real press/release on the element's screen centre switched the selection from `TitleText` to
+     `PrimaryButton`, and the selection outline and handle still hug the rendered element afterwards.
+   - **Move**: a press, eight stepped held-button moves and a release moved `PrimaryButton` by (60,30) in design units
+     (screen scale 1.0), rendered it 60x30 screen units from where it was, and authored `Margin="60,30,0,0"`.
+   - **Resize**: a press on the reported handle and a (70,40) stepped drag grew it from 98x32 to 168x72 and authored
+     `Width="168"`/`Height="72"`, i.e. the same commit the `resize` hook produces.
+   - **Undo**: one Undo per gesture restored the geometry and removed the authored attribute from the saved file.
+   - **Coordinates**: the delivered press arrived at window (375,181) for screen (393,222) with client origin (18,41);
+     `query-element-screen-bounds` equals `surface-geometry.element`; `od.pointer-target` names the design surface's
+     `Image`. The screen-to-design conversion the drag uses is therefore confirmed, not just assumed.
+   - **Contradiction, fixed**: a resize gesture used to leave a second, empty Undo step, because its commit wrote the
+     unchanged `Margin` (`SetAttribute` records history even for a no-op). The Margin math now lives in
+     `WinUIXamlMarginEditor.TryDelta`, which asks for no edit when the position delta rounds to zero;
+     `MarginEditorTests` pins that rule and the pointer journey confirms one entry per gesture.
+   The **drop** journey is not pointer-verifiable here: the Surface backend advertises no toolbox catalog, so the pad has
+   no rows (`toolboxItemCount = 0`) and `od.winui-designer.toolbox.query-item-bounds Button` fails, while the Uno and
+   Microsoft child hosts that would report one are not deployed on this machine. Its commit side (design point -> Grid
+   cell / Canvas position, one Undo) is unaffected and stays covered by the `drop` hook and the unit tests; a real
+   OLE drag needs one of those hosts.
 4. **Selection chrome from frame bounds.** Handles, the selection outline and snapping guides drawn by the shell from the described
    bounds; snap to Grid track edges and sibling edges using the layout metadata. No renderer change needed.
 5. **Hot-reload spike for real `{x:Bind}`.** Question: can `WinUIHotReload.Agent` attach to the Surface process (self-injection,
@@ -77,11 +95,14 @@ Out of scope for now: visual states and storyboards, template editing, a data-bi
   seen by NuGet caches: bump the version.
 - **Round-trip.** The editor now preserves untouched layout, but the edited tag itself is still reflowed and two identical tags may
   swap layout. The corpus baseline (`real-files-baseline.txt`) makes any change visible.
-- **Unverified here.** Real pointer input, high DPI and focus behaviour, the `design/set-bounds` incremental path (the Surface refuses it,
-  so resize is a full re-render), and anything on macOS/Linux (the Surface is Windows-only).
+- **Unverified here.** High DPI and focus behaviour, whether the Surface accepts the incremental `design/set-bounds`
+  edit or silently falls back to a full reload (the commit works either way and reports no distinction), the pointer
+  drag from the Toolbox (no deployed backend reports a catalog), and anything on macOS/Linux (the Surface is
+  Windows-only).
 - **The Surface host advertises no toolbox catalog**, so its Toolbox pad stays empty and a real drag cannot start there; the `drop`
   hook therefore falls back to the control type name when the pad is empty, and still requires the pad to offer the control when it
-  has rows. A real drag journey needs a backend whose child reports a catalog.
+  has rows. A real drag journey needs a backend whose child reports a catalog; the pointer journey confirmed the pad has zero rows
+  and `toolbox.query-item-bounds` fails, so the drop is verified through its hook and unit tests only.
 - **Process.** Commits so far skipped the `build/opencode-review.ps1` review at the owner's instruction; CI results are ignored for now.
   ARM64 is not a priority.
 
@@ -97,3 +118,10 @@ Then, over DevFlow (`POST http://localhost:9299/api/v1/invoke/actions/<name>`, b
 `query-element-screen-bounds`, `export-png`, `undo`. The first open after a surface package change re-provisions the matched host
 (several minutes); later opens use the cache. Build the deployed pieces with `-p:SkipWinUIHotReloadTap=true` and stop the IDE first, or
 the copy into `AddIns\...\SurfaceHost` fails on locked files.
+
+For a real pointer gesture, follow the integration suite's rules: `od.activate` (and require `foregrounded`), `od.pointer-events`
+with `true` to reset, `POST /api/v1/ui/actions/press`, stepped `drag-move`s, `release` in **screen** coordinates from
+`od.winui-designer.surface-geometry` or `query-element-screen-bounds`; then poll `od.pointer-events` (the native press can be
+queued past the endpoint's return) and treat a zero `count` as a delivery failure, not a designer bug. A press/release without
+movement selects; a press on the reported `handle` resizes. Read `MainPage.xaml` after `Ctrl+S` to confirm the authored
+`Margin`/`Width`/`Height`, then `undo` and save again so the fixture stays clean.

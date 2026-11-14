@@ -18,6 +18,8 @@
              Link="Linked\WinUIXamlDocumentEditor.cs" />
     <Compile Include="..\..\src\AddIns\DisplayBindings\WinUIXamlDesigner\WinUIXamlDesigner.AddIn\WinUIXamlDropPlacement.cs"
              Link="Linked\WinUIXamlDropPlacement.cs" />
+    <Compile Include="..\..\src\AddIns\DisplayBindings\WinUIXamlDesigner\WinUIXamlDesigner.AddIn\WinUIXamlMarginEditor.cs"
+             Link="Linked\WinUIXamlMarginEditor.cs" />
     <PackageReference Include="xunit.v3" />
     <ProjectReference Include="..\..\src\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <!-- The measured baseline of the real files, updated on purpose (OD_UPDATE_BASELINE=1), never by accident. -->

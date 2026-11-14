@@ -1858,26 +1858,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		var sizeDeltaY = info.EndHeight - info.StartHeight;
 
 		if (!ApplyCanvasPositionDelta(element, positionDeltaX, positionDeltaY)) {
-			var (left, top, right, bottom) = ParseMargin((string)element.Attribute("Margin"));
-			var deltaX = (int)Math.Round(positionDeltaX);
-			var deltaY = (int)Math.Round(positionDeltaY);
-			switch ((string)element.Attribute("HorizontalAlignment"))
-			{
-				case "Right": right -= deltaX; break;
-				case "Center": left += deltaX; right -= deltaX; break;
-				default: left += deltaX; break;
-			}
-			switch ((string)element.Attribute("VerticalAlignment"))
-			{
-				case "Bottom": bottom -= deltaY; break;
-				case "Center": top += deltaY; bottom -= deltaY; break;
-				default: top += deltaY; break;
-			}
-
-			if (left != 0 || top != 0 || right != 0 || bottom != 0)
-				editor.SetAttribute(element, "Margin", FormatMargin(left, top, right, bottom));
-			else
-				editor.SetAttribute(element, "Margin", null);
+			// A handle drag is a pure resize: its position delta rounds to zero, and there is then
+			// nothing to write (an unchanged SetAttribute would still push an empty undo entry).
+			if (WinUIXamlMarginEditor.TryDelta(element, positionDeltaX, positionDeltaY, out var margin))
+				editor.SetAttribute(element, "Margin", margin);
 		}
 		var sizeChanged = Math.Abs(sizeDeltaX) > 0.01 || Math.Abs(sizeDeltaY) > 0.01;
 		if (sizeChanged)
@@ -2049,72 +2033,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 				continue;
 			if (ApplyCanvasPositionDelta(element, dx, dy))
 				continue;
-			var (left, top, right, bottom) = ParseMargin((string)element.Attribute("Margin"));
-			var deltaX = (int)Math.Round(dx);
-			var deltaY = (int)Math.Round(dy);
-			switch ((string)element.Attribute("HorizontalAlignment"))
-			{
-				case "Right":
-					right -= deltaX;
-					break;
-				case "Center":
-					left += deltaX;
-					right -= deltaX;
-					break;
-				default:
-					left += deltaX;
-					break;
-			}
-			switch ((string)element.Attribute("VerticalAlignment"))
-			{
-				case "Bottom":
-					bottom -= deltaY;
-					break;
-				case "Center":
-					top += deltaY;
-					bottom -= deltaY;
-					break;
-				default:
-					top += deltaY;
-					break;
-			}
-			if (left != 0 || top != 0 || right != 0 || bottom != 0)
-				editor.SetAttribute(element, "Margin", FormatMargin(left, top, right, bottom));
-			else
-				editor.SetAttribute(element, "Margin", null);
+			if (WinUIXamlMarginEditor.TryDelta(element, dx, dy, out var margin))
+				editor.SetAttribute(element, "Margin", margin);
 		}
 		ApplyDocumentChange();
-	}
-
-	static (double Left, double Top, double Right, double Bottom) ParseMargin(string value)
-	{
-		if (string.IsNullOrWhiteSpace(value))
-			return (0, 0, 0, 0);
-		var parts = value.Split(',');
-		if (parts.Length == 1 && double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var all))
-			return (all, all, all, all);
-		if (parts.Length == 2
-			&& double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var lr)
-			&& double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var tb))
-			return (lr, tb, lr, tb);
-		if (parts.Length == 4
-			&& double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var l)
-			&& double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var t)
-			&& double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var r)
-			&& double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out var b))
-			return (l, t, r, b);
-		return (0, 0, 0, 0);
-	}
-
-	/// <summary>Keeps the source compact: "v", "h v", or "l t r b".</summary>
-	static string FormatMargin(double left, double top, double right, double bottom)
-	{
-		if (left == right && top == bottom)
-			return left == top
-				? left.ToString(CultureInfo.InvariantCulture)
-				: $"{left.ToString(CultureInfo.InvariantCulture)},{top.ToString(CultureInfo.InvariantCulture)}";
-		return $"{left.ToString(CultureInfo.InvariantCulture)},{top.ToString(CultureInfo.InvariantCulture)}," +
-			$"{right.ToString(CultureInfo.InvariantCulture)},{bottom.ToString(CultureInfo.InvariantCulture)}";
 	}
 
 	/// <summary>
