@@ -780,6 +780,20 @@
       "note": "Exercises breakpoint inspection, stepping, restart and attaching to an independently started process. On the hosted macOS runner every attach hung in ICorDebug.DebugActiveProcess until ci.yml granted system.privilege.taskport (a24f882e56); with it, both debugger entries passed runs 40582707365 and 40595645276. On Windows ARM64 one case failed until e2dc739e95 mapped the x64 build job's source paths onto the ARM64 workspace; it then passed runs 40662664664 and 40671568295."
     },
     {
+      "id": "net11-async-debugger-journey",
+      "batch": 4,
+      "lane": "integration-stable",
+      "measuredSeconds": 58,
+      "timeoutMinutes": 15,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-method", "OpenDevelop.IntegrationTests.Net11ProjectIntegrationTests.Net11AsyncProject_DebuggerStopsStepsAndKeepsTheUserAsyncFrameOnTop", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "platforms": { "windows-x64": "observe", "macos-arm64": "observe", "linux-x64": "observe", "windows-arm64": "observe", "linux-arm64": "observe" },
+      "note": "Desktop .NET 11 debugger coverage, starting as observe until hosted evidence permits promotion: creates an async net11.0 app after explicitly registering SDK 11, stops after await Task.Delay(), verifies the user async frame remains on top rather than a runtime state-machine frame, inspects/evaluates a local, then steps to the next source statement. Promote Windows x64 and macOS ARM64 to required after two green hosted runs. Net10 fixtures remain the compatibility coverage; this journey is the net11 runtime-specific path."
+    },
+    {
       "id": "code-coverage-journeys",
       "batch": 4,
       "lane": "integration-stable",

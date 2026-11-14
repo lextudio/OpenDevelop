@@ -54,6 +54,7 @@ static class SdkRootCandidates
         // The same candidates DOTNET_ROOT and the well-known install layouts use. The device lanes put an
         // SDK 11 into ~/.dotnet without touching PATH, so the journey and the SDK the job runs on never clash.
         Add(Environment.GetEnvironmentVariable("DOTNET_ROOT"));
+        Add(Path.GetDirectoryName(Environment.ProcessPath));
         Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dotnet"));
         Add("/usr/local/share/dotnet");
         Add("/usr/share/dotnet");

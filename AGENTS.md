@@ -27,20 +27,16 @@ Keep this file concise and operational. Read the referenced technote only when t
     `global.json` (`LibreWPF.Sdk`) and `Directory.Build.props` (`ProGpuWpfLibreWinFormsPackageVersion`,
     `ProGpuPackageVersion`). To take a newer LibreWPF, move all three to a version GitHub Packages
     has, then sync and rebuild.
-  - **Same rule for the other lextudio GitHub Packages dependencies (local development):** download with the
-    `gh` CLI into the fixed local feed `artifacts/openavalon-feed` through `sync-openavalon-feed.ps1`, and restore
-    from there. Never point a local build at `nuget.pkg.github.com` with a token in `NuGetPackageSourceCredentials_*`
-    or `NuGet.config`; only CI does that. The script pins versions in `Directory.Packages.props`: the AvalonEdit and
-    AvalonDock forks, DevFlow and LibGhostty.Net.
-  - **SharpDbg is the exception: consume it straight from GitHub Packages.** `LeXtudio.SharpDbg.Cli` and
-    `LeXtudio.SharpDbg.AndroidAgent` are published by the separate `sharpdbg` checkout's
-    `publish-opendevelop-packages.yml` (a sibling repository, `../sharpdbg`; it is no longer a submodule).
-    They are restored directly from the `lextudio_github` source, not synchronized into the local feed. A local
-    restore needs the token in the environment, e.g.
-    `NuGetPackageSourceCredentials_lextudio_github="Username=<you>;Password=$(gh auth token);ValidAuthenticationTypes=Basic"`.
-    The adapter and the agents carry their own closure, including SharpDbg's own MIT `SharpDbg.DapProtocol`; the
-    `OmniSharp.Extensions.*` DAP fork is no longer used. To take a new SharpDbg version, publish the two packages
-    from that workflow, then move `SharpDbgCliVersion` and `SharpDbgAndroidAgentVersion` in `Directory.Packages.props`.
+  - **Same rule for every other lextudio GitHub Packages dependency, including SharpDbg (local development):**
+    `sync-openavalon-feed.ps1` downloads the pinned packages with the `gh` CLI into the fixed local feed
+    `artifacts/openavalon-feed`, and local restores use that feed only. Never point a local build at
+    `nuget.pkg.github.com` with a token in `NuGetPackageSourceCredentials_*` or `NuGet.config`; only CI restores
+    directly from GitHub Packages with its own token. Besides the AvalonEdit/AvalonDock forks, DevFlow and
+    LibGhostty.Net, the sync includes `LeXtudio.SharpDbg.Cli` and `LeXtudio.SharpDbg.AndroidAgent` from the
+    sibling `../sharpdbg` checkout's `publish-opendevelop-packages.yml` workflow. The adapter and agents carry
+    their own closure, including SharpDbg's MIT `SharpDbg.DapProtocol`; the `OmniSharp.Extensions.*` DAP fork is
+    no longer used. To take a new SharpDbg version, publish both packages, move `SharpDbgCliVersion` and
+    `SharpDbgAndroidAgentVersion` together in `Directory.Packages.props`, then run the sync before local builds.
   - **Take a republish:** openavalon republishes under the same version, which no NuGet cache can
     tell apart. `openavalon-closure.json` names the openavalon commit whose publish run this checkout
     consumes; after a publish you want, set it to that commit. `sync-openavalon-feed.ps1` writes it

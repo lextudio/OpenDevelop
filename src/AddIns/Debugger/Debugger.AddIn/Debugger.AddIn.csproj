@@ -128,7 +128,9 @@
     </ItemGroup>
     <Delete Files="@(StaleSharpDbgFiles)" />
     <ItemGroup>
-      <SharpDbgFiles Include="$(PkgLeXtudio_SharpDbg_Cli)\lib\net10.0\**\*.*" />
+      <!-- SharpDbg is a net11-only debugger payload. Keep this path aligned with the package
+           target framework so a rebuilt IDE never retains an earlier adapter from AddIns/Debugger. -->
+      <SharpDbgFiles Include="$(PkgLeXtudio_SharpDbg_Cli)\lib\net11.0\**\*.*" />
       <!-- SharpDbg.Cli is an OUT-OF-PROCESS program that happens to be deployed inside an
            in-process addin's folder. It resolves its dependencies through its own deps.json, from
            its own directory - it cannot fall back to the host's base directory the way an
