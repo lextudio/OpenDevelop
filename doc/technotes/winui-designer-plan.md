@@ -31,6 +31,7 @@ Dates are 2026-11.
 | Edits keep the author's layout (declaration, line endings, untouched tags) | `WinUIXamlDocumentEditor.PreserveLayout` | 47 tests, `tests/OpenDevelop.WinUIXamlDocument.Tests` |
 | Native-live window over the canvas (opt-in), follows the canvas, falls back to the last snapshot if the renderer dies | `UnoDesignRuntimeHost.NativeLive.cs`, `od.winui-designer.native-live` | IDE: on, off, on, killed renderer, window follows maximize |
 | Outline selection by element name, and the unnamed root | `DocumentOutlineControl.ResolveDisplayedId`, `WinUIXamlDesignerViewContent.SelectSourceElement`/`OnOutlineSelectionChanged` | 3 UI-fact tests; IDE: clicking `[Page]`, `[Grid]`, `RootStack`, `TitleText` and `PrimaryButton` keeps the row selected and draws exactly that element's box |
+| Selection handles, outline and snapping guides from the described bounds | shared `DesignSurface` adorner layer; `GridTrackSnapLines` + `SnapGuideCalculator.Line` in `DesignSurfaceController` | 5 UI-fact snap tests; IDE: a real drag 4 units short of a measured column divider lands exactly on it (`Margin="120,0,0,0"`), a resize edge likewise (`Width="120"`), and a position away from every line stays put |
 | Guard: a project whose own WinAppSDK bootstrap initializer is on is not loaded into the surface | `SurfaceDesignRuntimeHostBootstrap` | measured: otherwise every XAML object fails with `0x8001010E` |
 
 ## 3. Removed
@@ -75,8 +76,18 @@ Each step ends with a committed change, tests where the code has an executable s
    Microsoft child hosts that would report one are not deployed on this machine. Its commit side (design point -> Grid
    cell / Canvas position, one Undo) is unaffected and stays covered by the `drop` hook and the unit tests; a real
    OLE drag needs one of those hosts.
-4. **Selection chrome from frame bounds.** Handles, the selection outline and snapping guides drawn by the shell from the described
-   bounds; snap to Grid track edges and sibling edges using the layout metadata. No renderer change needed.
+4. **Selection chrome from frame bounds.** Done. The shared canvas already drew the eight resize handles, the selection
+   outline, the alignment guides and the layout-inset labels from the bounds the designer hands it, so no renderer change
+   was needed; what was missing was the *Grid* half of snapping. `GridTrackSnapLines` projects a Grid parent's outer
+   edges and its measured row/column dividers (only when the runtime described the layout) into
+   `SnapGuideCalculator` lines, and both the move and the handle-resize paths now snap to those lines as well as to
+   sibling edges. Every line is limited to the Grid's own orthogonal extent, so it only catches a gesture that overlaps
+   the Grid. Verified in the IDE with real pointer drags on `DropPage.xaml`: a move put 4 units short of the 120 column
+   divider commits x=120 and `Margin="120,0,0,0"`; a handle drag whose edge lands on 116 commits `Width="120"`; a
+   position away from every line stays at x=50; one Undo per gesture restores the document. The fixture's `DropCanvas` is
+   now explicitly 120x60 and top-left aligned - a Stretch-aligned element with an explicit size is centred in its cell,
+   so its measured x is not its authored Margin and a snap could not be observed from the commit. `snap-lines` reports
+   the lines and the parent's measured track counts for this check.
 5. **Hot-reload spike for real `{x:Bind}`.** Question: can `WinUIHotReload.Agent` attach to the Surface process (self-injection,
    `InitializeXamlDiagnosticsEx` on its own pid) and patch a compiled page's visual tree in place? Needs a surface that
    instantiates the project's page (the removed `compiledType` message is the starting point) plus the agent as a startup hook. Done
@@ -99,7 +110,8 @@ Out of scope for now: visual states and storyboards, template editing, a data-bi
 - **Unverified here.** High DPI and focus behaviour, whether the Surface accepts the incremental `design/set-bounds`
   edit or silently falls back to a full reload (the commit works either way and reports no distinction), the pointer
   drag from the Toolbox (no deployed backend reports a catalog), and anything on macOS/Linux (the Surface is
-  Windows-only).
+  Windows-only). Grid-track snapping uses the *measured* track offsets: a Grid with padding or a border offsets its
+  tracks by more than its own bounds origin, and that difference has not been measured yet.
 - **The Surface host advertises no toolbox catalog**, so its Toolbox pad stays empty and a real drag cannot start there; the `drop`
   hook therefore falls back to the control type name when the pad is empty, and still requires the pad to offer the control when it
   has rows. A real drag journey needs a backend whose child reports a catalog; the pointer journey confirmed the pad has zero rows
@@ -125,4 +137,6 @@ with `true` to reset, `POST /api/v1/ui/actions/press`, stepped `drag-move`s, `re
 `od.winui-designer.surface-geometry` or `query-element-screen-bounds`; then poll `od.pointer-events` (the native press can be
 queued past the endpoint's return) and treat a zero `count` as a delivery failure, not a designer bug. A press/release without
 movement selects; a press on the reported `handle` resizes. Read `MainPage.xaml` after `Ctrl+S` to confirm the authored
-`Margin`/`Width`/`Height`, then `undo` and save again so the fixture stays clean.
+`Margin`/`Width`/`Height`, then `undo` and save again so the fixture stays clean. A gesture commits through a full document
+reload, so poll `query-element-bounds` for the settled value instead of assuming a fixed delay. `snap-lines <name>` shows the
+Grid-track lines the selected element's parent contributes to a drag.

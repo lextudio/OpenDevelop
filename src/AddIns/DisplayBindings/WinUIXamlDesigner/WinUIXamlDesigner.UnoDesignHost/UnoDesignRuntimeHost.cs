@@ -1778,6 +1778,8 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 
 	#endregion
 
+	public object SnapLineDiagnostics(string name) => canvas.SnapLineDiagnostics(name);
+
 	public string DescribeElementState(string name) => canvas.DescribeElementState(name);
 
 	public string FrameProfile()

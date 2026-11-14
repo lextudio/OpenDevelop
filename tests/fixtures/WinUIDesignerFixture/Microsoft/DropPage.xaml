@@ -3,7 +3,9 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       Background="#FFEEEEEE">
     <!-- Fixed tracks and a small Canvas with a background so a Toolbox drop has measured
-         geometry to land in: the empty cell row 1 / column 1, and Canvas.Left/Top. -->
+         geometry to land in: the empty cell row 1 / column 1, and Canvas.Left/Top. The Canvas
+         is explicitly sized and top-left aligned so its measured bounds are its authored
+         position (a Stretch-aligned element with an explicit size is centered in its cell). -->
     <Grid x:Name="DropGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="60" />
@@ -13,6 +15,7 @@
             <ColumnDefinition Width="120" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
-        <Canvas x:Name="DropCanvas" Background="#10808080" />
+        <Canvas x:Name="DropCanvas" Background="#10808080" Width="120" Height="60"
+                HorizontalAlignment="Left" VerticalAlignment="Top" />
     </Grid>
 </Page>

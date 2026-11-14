@@ -421,6 +421,15 @@ public static class WinUIXamlDesignerDevFlowActions
 		});
 	}
 
+	[DevFlowAction("od.winui-designer.snap-lines", Description = "Report the Grid-track snap lines a named element's parent contributes to drag snapping: the parent's measured track metadata plus every line (position and orthogonal extent), so a test can confirm a move or resize lands on a cell boundary")]
+	public static string SnapLines(string name)
+	{
+		var view = ActivateDesigner();
+		if (view == null)
+			return Failure("No WinUI/Uno designer is active");
+		return JsonSerializer.Serialize(new { success = true, lines = view.SnapLineDiagnostics(name) });
+	}
+
 	[DevFlowAction("od.winui-designer.query-element-bounds", Description = "Get a named element's bounds in DESIGN units - the space a Toolbox drop point (od.winui-designer.drop x y) is expressed in; independent of zoom and pan")]
 	public static string QueryElementBounds(string name)
 	{

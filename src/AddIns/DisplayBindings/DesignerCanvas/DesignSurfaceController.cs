@@ -686,9 +686,42 @@ public sealed class DesignSurfaceController : IDisposable
 				entry.Value.Width, entry.Value.Height, entry.Value.BaselineOffset));
 		// Alignment guides should describe a relationship visible to the user: do not snap an
 		// element to an unrelated row/column that happens to share an edge coordinate.
+		var (verticalLines, horizontalLines) = ParentGridSnapLines(dragName);
 		return SnapGuideCalculator.ApplySnap(start, deltaX, deltaY, siblingBounds,
 			nodesByName.TryGetValue(dragName, out var selected) ? selected.BaselineOffset : null,
-			requireOverlap: true);
+			requireOverlap: true, verticalLines: verticalLines, horizontalLines: horizontalLines);
+	}
+
+	/// <summary>The parent Grid's own edges and measured track dividers, when the dragged element
+	/// sits in a Grid whose layout the runtime described.</summary>
+	(IReadOnlyList<SnapGuideCalculator.Line> Vertical, IReadOnlyList<SnapGuideCalculator.Line> Horizontal) ParentGridSnapLines(string name)
+		=> GridTrackSnapLines.For(parentByName.TryGetValue(name, out var parent) ? parent : null);
+
+	/// <summary>The Grid-track snap lines and measured track metadata behind a named element's drag
+	/// snapping, as the shell sees them - the probe for "snap to Grid track edges".</summary>
+	public object SnapLineDiagnostics(string name)
+	{
+		parentByName.TryGetValue(name, out var parent);
+		var (vertical, horizontal) = ParentGridSnapLines(name);
+		return new {
+			name,
+			parent = parent == null ? null : new {
+				parent.Id,
+				parent.Name,
+				parent.Type,
+				parent.X,
+				parent.Y,
+				parent.Width,
+				parent.Height,
+				tracks = parent.GridTracks == null ? null : new {
+					parent.GridTracks.Accepted,
+					rows = parent.GridTracks.RowTracks.Count,
+					columns = parent.GridTracks.ColumnTracks.Count
+				}
+			},
+			vertical = vertical.Select(line => new { line.Position, line.OrthogonalStart, line.OrthogonalEnd }).ToArray(),
+			horizontal = horizontal.Select(line => new { line.Position, line.OrthogonalStart, line.OrthogonalEnd }).ToArray()
+		};
 	}
 
 	(double DX, double DY, IReadOnlyList<(bool IsVertical, double Position)> Guides) ApplyResizeSnap(double deltaX, double deltaY)
@@ -700,12 +733,14 @@ public sealed class DesignSurfaceController : IDisposable
 			&& parentByName.TryGetValue(entry.Key, out var parent)
 			&& ReferenceEquals(parent, selectedParent))
 			.Select(entry => (entry.Value.X, entry.Value.Y, entry.Value.Width, entry.Value.Height)).ToArray();
+		var (verticalLines, horizontalLines) = ParentGridSnapLines(dragName);
 		var raw = ApplyHandle(start, deltaX, deltaY);
 		var guides = new List<(bool, double)>();
 		if (dragHandle.Contains('e') || dragHandle.Contains('w'))
 		{
 			var edge = dragHandle.Contains('e') ? raw.X + raw.Width : raw.X;
-			var snapped = SnapGuideCalculator.SnapEdge(true, edge, raw.Y, raw.Y + raw.Height, siblings);
+			var snapped = SnapGuideCalculator.SnapEdge(true, edge, raw.Y, raw.Y + raw.Height, siblings,
+				lines: verticalLines);
 			deltaX += snapped.Correction;
 			if (snapped.Guide is double guide) guides.Add((true, guide));
 			// The vertical-edge correction can move the horizontal overlap interval used by
@@ -716,7 +751,8 @@ public sealed class DesignSurfaceController : IDisposable
 		if (dragHandle.Contains('n') || dragHandle.Contains('s'))
 		{
 			var edge = dragHandle.Contains('s') ? raw.Y + raw.Height : raw.Y;
-			var snapped = SnapGuideCalculator.SnapEdge(false, edge, raw.X, raw.X + raw.Width, siblings);
+			var snapped = SnapGuideCalculator.SnapEdge(false, edge, raw.X, raw.X + raw.Width, siblings,
+				lines: horizontalLines);
 			deltaY += snapped.Correction;
 			if (snapped.Guide is double guide) guides.Add((false, guide));
 		}

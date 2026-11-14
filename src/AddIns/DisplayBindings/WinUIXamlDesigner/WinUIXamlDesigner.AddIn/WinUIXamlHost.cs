@@ -314,6 +314,10 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 			view.ResetDesignSize();
 	}
 
+	/// <summary>The Grid-track snap lines behind a named element's drag snapping.</summary>
+	public object SnapLineDiagnostics(string name)
+		=> (runtime as IWinUIXamlDesignView)?.SnapLineDiagnostics(name);
+
 	/// <summary>The rendered element tree (protocol model), for the Document Outline pad.</summary>
 	public DesignerElementNode? ElementTree => (runtime as IWinUIXamlRuntimeHost)?.ElementTree;
 
@@ -934,6 +938,9 @@ public interface IWinUIXamlDesignView
 	(double Width, double Height)? GetDesignSize();
 	void SetDesignSize(double width, double height);
 	void ResetDesignSize();
+	/// <summary>The Grid-track snap lines and measured track metadata behind a named element's drag
+	/// snapping, as the shell sees them - the probe for "snap to Grid track edges".</summary>
+	object SnapLineDiagnostics(string name);
 }
 
 /// <summary>

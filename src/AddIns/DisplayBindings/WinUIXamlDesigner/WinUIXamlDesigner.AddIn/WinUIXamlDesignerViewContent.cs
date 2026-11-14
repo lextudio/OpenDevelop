@@ -167,6 +167,9 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	public bool SelectComponentTrayItem(string id) => previewHost.SelectComponentTrayItem(id);
 
 	public Rect? QueryElementScreenBounds(string name) => previewHost.QueryElementScreenBounds(name);
+
+	/// <summary>The Grid-track snap lines behind a named element's drag snapping.</summary>
+	public object SnapLineDiagnostics(string name) => previewHost.SnapLineDiagnostics(name);
 	/// <summary>The element's bounds in DESIGN units - the space a Toolbox drop point is
 	/// expressed in (see <see cref="InsertFromToolbox(string, string, (double X, double Y)?)"/>).</summary>
 	public (double X, double Y, double Width, double Height)? QueryElementBounds(string name) => previewHost.QueryElementBounds(name);

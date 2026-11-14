@@ -20,6 +20,13 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		/// top, middle or bottom edge.</summary>
 		public readonly record struct Target(double X, double Y, double Width, double Height, double? BaselineOffset = null);
 
+		/// <summary>
+		/// One container guide line on one axis - a Grid's column/row divider or its outer edge.
+		/// Unlike a <see cref="Target"/> it contributes a single line, and only to gestures whose
+		/// interval overlaps <see cref="OrthogonalStart"/>..<see cref="OrthogonalEnd"/>.
+		/// </summary>
+		public readonly record struct Line(double Position, double OrthogonalStart, double OrthogonalEnd);
+
 		public static (double DX, double DY, IReadOnlyList<(bool IsVertical, double Position)> Guides) ApplySnap(
 			(double X, double Y, double Width, double Height) startRect,
 			double deltaX, double deltaY,
@@ -33,14 +40,18 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		}
 
 		/// <summary>As <see cref="ApplySnap((double, double, double, double), double, double, IEnumerable{Target}, double?, double, bool)"/>,
-		/// with optional measured text baselines. Baseline candidates only match another baseline.</summary>
+		/// with optional measured text baselines. Baseline candidates only match another baseline.
+		/// <paramref name="verticalLines"/>/<paramref name="horizontalLines"/> add container guides
+		/// (a Grid's track dividers and outer edges), each restricted to its own orthogonal range.</summary>
 		public static (double DX, double DY, IReadOnlyList<(bool IsVertical, double Position)> Guides) ApplySnap(
 			(double X, double Y, double Width, double Height) startRect,
 			double deltaX, double deltaY,
 			IEnumerable<Target> siblingBounds,
 			double? ownBaselineOffset,
 			double tolerance = 8.0,
-			bool requireOverlap = false)
+			bool requireOverlap = false,
+			IEnumerable<Line>? verticalLines = null,
+			IEnumerable<Line>? horizontalLines = null)
 		{
 			var guides = new List<(bool, double)>();
 			var verticalCandidates = new List<(double Position, double OrthogonalStart, double OrthogonalEnd)>();
@@ -56,6 +67,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 				if (baselineOffset is double siblingBaseline)
 					horizontalCandidates.Add((y + siblingBaseline, x, x + width, true));
 			}
+			// Added after the sibling edges so an exact tie prefers a visible element relationship.
+			foreach (var line in verticalLines ?? Enumerable.Empty<Line>())
+				verticalCandidates.Add((line.Position, line.OrthogonalStart, line.OrthogonalEnd));
+			foreach (var line in horizontalLines ?? Enumerable.Empty<Line>())
+				horizontalCandidates.Add((line.Position, line.OrthogonalStart, line.OrthogonalEnd, false));
 
 			var (ex, ey, ew, eh) = (startRect.X + deltaX, startRect.Y + deltaY, startRect.Width, startRect.Height);
 			var ownV = new[] { ex, ex + ew / 2, ex + ew };
@@ -109,15 +125,19 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 			=> start < otherEnd && otherStart < end;
 
 		/// <summary>Finds the nearest sibling edge/centre for one actively dragged edge. Used by
-		/// resize gestures, whose moving edge is not representable as a translation delta.</summary>
+		/// resize gestures, whose moving edge is not representable as a translation delta.
+		/// <paramref name="lines"/> adds container guides (Grid track dividers and outer edges) on
+		/// the axis being resized.</summary>
 		public static (double Correction, double? Guide) SnapEdge(
 			bool vertical, double position, double orthogonalStart, double orthogonalEnd,
 			IEnumerable<(double X, double Y, double Width, double Height)> siblingBounds,
-			double tolerance = 8.0, bool requireOverlap = true)
+			double tolerance = 8.0, bool requireOverlap = true,
+			IEnumerable<Line>? lines = null)
 		{
 			var candidates = siblingBounds.SelectMany(bounds => vertical
 				? new[] { (bounds.X, bounds.Y, bounds.Y + bounds.Height), (bounds.X + bounds.Width / 2, bounds.Y, bounds.Y + bounds.Height), (bounds.X + bounds.Width, bounds.Y, bounds.Y + bounds.Height) }
-				: new[] { (bounds.Y, bounds.X, bounds.X + bounds.Width), (bounds.Y + bounds.Height / 2, bounds.X, bounds.X + bounds.Width), (bounds.Y + bounds.Height, bounds.X, bounds.X + bounds.Width) });
+				: new[] { (bounds.Y, bounds.X, bounds.X + bounds.Width), (bounds.Y + bounds.Height / 2, bounds.X, bounds.X + bounds.Width), (bounds.Y + bounds.Height, bounds.X, bounds.X + bounds.Width) })
+				.Concat((lines ?? Enumerable.Empty<Line>()).Select(line => (line.Position, line.OrthogonalStart, line.OrthogonalEnd)));
 			if (requireOverlap)
 				candidates = candidates.Where(candidate => Overlaps(orthogonalStart, orthogonalEnd, candidate.Item2, candidate.Item3));
 			var matches = candidates.OrderBy(candidate => Math.Abs(candidate.Item1 - position)).ToArray();
