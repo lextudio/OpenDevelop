@@ -30,6 +30,7 @@ Dates are 2026-11.
 | Toolbox drop at a point: the measured Grid cell (`Grid.Row`/`Grid.Column`), `Canvas.Left`/`Top`, or the StackPanel child index, as one source edit | `WinUIXamlDropPlacement`, `WinUIXamlDocumentEditor.Insert(..., before, attached)`, hook `drop` | 60 tests; IDE: a Button dropped at (600,400) in `DropGrid` authored `Grid.Row="1" Grid.Column="1"`, at (30,20) in `DropCanvas` authored `Canvas.Left="30" Canvas.Top="20"`, one Undo each |
 | Edits keep the author's layout (declaration, line endings, untouched tags) | `WinUIXamlDocumentEditor.PreserveLayout` | 47 tests, `tests/OpenDevelop.WinUIXamlDocument.Tests` |
 | Native-live window over the canvas (opt-in), follows the canvas, falls back to the last snapshot if the renderer dies | `UnoDesignRuntimeHost.NativeLive.cs`, `od.winui-designer.native-live` | IDE: on, off, on, killed renderer, window follows maximize |
+| Outline selection by element name, and the unnamed root | `DocumentOutlineControl.ResolveDisplayedId`, `WinUIXamlDesignerViewContent.SelectSourceElement`/`OnOutlineSelectionChanged` | 3 UI-fact tests; IDE: clicking `[Page]`, `[Grid]`, `RootStack`, `TitleText` and `PrimaryButton` keeps the row selected and draws exactly that element's box |
 | Guard: a project whose own WinAppSDK bootstrap initializer is on is not loaded into the surface | `SurfaceDesignRuntimeHostBootstrap` | measured: otherwise every XAML object fails with `0x8001010E` |
 
 ## 3. Removed

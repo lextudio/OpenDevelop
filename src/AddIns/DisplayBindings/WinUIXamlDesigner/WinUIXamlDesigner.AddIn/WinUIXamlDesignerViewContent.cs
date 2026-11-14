@@ -1803,7 +1803,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 		componentTraySelection = false;
 			SelectedElementName = null;
 			propertyContainer.SelectedObject = new WinUIXamlElementPropertyAdapter(element, editor.Document?.Root, SetAttributeThroughEditor, SetEventThroughEditor, EditRichTextBlock, value => editor.TryGetRichTextRuns(value, out _), RuntimeProperties);
-			if (string.IsNullOrEmpty(path))
+			// NULL means no path is known; the EMPTY string is the document root's own path (see
+			// DesignSurfaceController.FindNodeByPath), which ShowSelectionAtPath can draw like any
+			// other - conflating the two made "[Page]" in the Outline clear the selection instead.
+			if (path == null)
 				previewHost.ClearSelection();
 			else
 				previewHost.ShowSelectionAtPath(path, element.Name.LocalName);
@@ -2107,6 +2110,11 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	{
 		var node = (e.NewValue as TreeViewItem)?.Tag as DesignerElementNode;
 		if (node == null) {
+			// SelectElement's own outline sync can clear the TreeView selection (asking for a name
+			// no row carries, or re-selecting). That is not the user deselecting: treating it as one
+			// nulled SelectedElementName while the surface had already been asked to show the box.
+			if (syncingSelection)
+				return;
 			propertyContainer.SelectedObject = null;
 			SelectedElementName = null;
 			previewHost.ClearSelection();
@@ -2119,12 +2127,12 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 			previewHost.ClearSelection();
 			return;
 		}
-		var selectionPath = !string.IsNullOrEmpty(node.Path) || string.IsNullOrEmpty(node.Id)
-			? node.Path
-			: null;
+		// A runtime node is identified by its PATH, and the document root's path is the EMPTY string
+		// (DesignSurfaceController.FindNodeByPath); only a source-fallback node, which has no runtime
+		// path, cannot be shown on the surface.
+		var selectionPath = node.Path ?? (string.IsNullOrEmpty(node.Id) ? node.Id : null);
 		SelectSourceElement(element, selectionPath);
 	}
-
 	protected override void LoadInternal(OpenedFile file, Stream stream)
 	{
 		using var reader = new StreamReader(stream, leaveOpen: true);

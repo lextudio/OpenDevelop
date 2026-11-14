@@ -5409,15 +5409,21 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var labels = new List<string>();
 			var icons = new List<string>();
 			var labelInk = new List<bool>();
+			var ids = new List<string>();
 			foreach (TreeViewItem root in outline.Items.OfType<TreeViewItem>())
-				CollectOutlineItems(root, names, labels, icons, labelInk);
+				CollectOutlineItems(root, names, labels, icons, labelInk, ids);
 
+			var selectedNode = (outline.SelectedItem as TreeViewItem)?.Tag as DesignerElementNode;
 			return JsonSerializer.Serialize(new {
 				available = true,
 				rootCount = outline.Items.Count,
 				// Name ?? Type per node, depth-first - the same flattened shape the designers'
 				// own status actions report, so a test can compare the two directly.
 				names = names.ToArray(),
+				// Each row's protocol id (a tree path for WinUI/Uno, the name for WinForms). The
+				// root's id can be the empty string, which `name`/`selected` cannot express
+				// (an unnamed root's Name is ""), so selection is also reported by id and label.
+				ids = ids.ToArray(),
 				// What the row literally renders (name, or "[Type]" when unnamed), for a stricter check that
 				// the pad is showing designed elements rather than, say, source symbols.
 
@@ -5429,16 +5435,19 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				// Each row's glyph: "vector" (a VS Image Library DrawingImage), "bitmap" (e.g. a
 				// WinForms toolbox icon), or null when the row has none.
 				icons = icons.ToArray(),
-				selected = (outline.SelectedItem as TreeViewItem)?.Tag is DesignerElementNode selectedNode
-					? selectedNode.Name ?? selectedNode.Type
-					: null
+				selected = selectedNode?.Name ?? selectedNode?.Type,
+				selectedId = selectedNode?.Id,
+				selectedLabel = selectedNode == null ? null : DocumentOutlineControl.GetDisplayText(selectedNode)
 			});
 		}
 
-		static void CollectOutlineItems(TreeViewItem item, List<string> names, List<string> labels, List<string> icons, List<bool> labelInk)
+		static void CollectOutlineItems(TreeViewItem item, List<string> names, List<string> labels, List<string> icons, List<bool> labelInk, List<string> ids)
 		{
-			if (item.Tag is DesignerElementNode node)
+			if (item.Tag is DesignerElementNode node) {
 				names.Add(string.IsNullOrEmpty(node.Name) ? node.Type : node.Name);
+				ids.Add(node.Id);
+			} else
+				ids.Add(null);
 			var texts = DescendantTextBlocks(item).ToList();
 			labels.Add(string.Join("", texts.Select(text => text.Text)).Trim());
 			labelInk.Add(texts.Count > 0 && texts.All(text => text.Foreground switch {
@@ -5449,7 +5458,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			var glyph = (item.Header as Panel)?.Children.OfType<Image>().FirstOrDefault()?.Source;
 			icons.Add(glyph is System.Windows.Media.DrawingImage ? "vector" : glyph != null ? "bitmap" : null);
 			foreach (TreeViewItem child in item.Items.OfType<TreeViewItem>())
-				CollectOutlineItems(child, names, labels, icons, labelInk);
+				CollectOutlineItems(child, names, labels, icons, labelInk, ids);
 		}
 
 		/// <summary>The TextBlocks of one outline row's own header, stopping before nested rows so

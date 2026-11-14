@@ -381,7 +381,9 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			}
 		}
 
-		/// <summary>Programmatically selects the node with the given id (no-op when absent).
+		/// <summary>Programmatically selects the node with the given id (or, when no row carries that
+		/// id, the row whose element has that name - see <see cref="ResolveDisplayedId"/>; no-op when
+		/// absent).
 		/// Goes through the same <see cref="SelectionCommitted"/> path as a user click. NULL
 		/// means "no selection" - the empty string is NOT equivalent: a document ROOT's id is
 		/// itself "" (paths are built root-first), so treating "" the same as null here made the
@@ -406,8 +408,11 @@ namespace ICSharpCode.SharpDevelop.Widgets
 
 		void SetSelectedIds(IEnumerable<string> ids, bool selectPrimary)
 		{
-			var next = (ids ?? Array.Empty<string>()).Where(id => !string.IsNullOrEmpty(id))
-				.Distinct(StringComparer.Ordinal).Where(id => FindDisplayed(id) != null).ToArray();
+			var next = (ids ?? Array.Empty<string>())
+				.Select(ResolveDisplayedId)
+				.Where(id => id != null)
+				.Distinct(StringComparer.Ordinal)
+				.ToArray();
 			selectedIds.Clear();
 			selectedIds.AddRange(next);
 			applyingSelection = true;
@@ -422,6 +427,28 @@ namespace ICSharpCode.SharpDevelop.Widgets
 			} finally {
 				applyingSelection = false;
 			}
+		}
+
+		/// <summary>
+		/// Maps a requested selection to the id the tree actually displays. Rows are keyed by their
+		/// protocol id - a tree PATH for the WinUI/Uno runtime, the control name for WinForms - while
+		/// the shared selection path asks by element NAME (Properties pad, designer actions, the host's
+		/// own outline sync), so a name that is not itself an id resolves to the row that shows it.
+		/// The document root's id is the EMPTY string, which is a real selection and not an absence;
+		/// only a null request means "nothing".
+		/// </summary>
+		string? ResolveDisplayedId(string? requested)
+		{
+			if (requested == null)
+				return null;
+			if (FindDisplayed(requested) != null)
+				return requested;
+			if (requested.Length == 0)
+				return null;
+			foreach (var item in DisplayedItems())
+				if (item.Tag is DesignerElementNode node && string.Equals(node.Name, requested, StringComparison.Ordinal))
+					return node.Id;
+			return null;
 		}
 
 		void RefreshSelectionVisuals(TreeViewItem item)
