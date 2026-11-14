@@ -108,8 +108,10 @@ The evaluator must run where WinUI and the user assembly are loaded - the **Surf
 The mechanism was built end to end and measured on `BoundPage.xaml`, as an opt-in prototype: the shell side
 (`OD_WINUI_LIVE_BINDINGS=1` -> `evaluateBindings`/`designType` on every render request) is real code in
 `SurfaceConnection`/`SurfaceDesignDocument`; the evaluator itself (`BindingEvaluator.cs` plus the render hook in
-`RenderHost`/`FrameServer`) exists only in the deployed `HostSDK/surface/Surface` sources the provisioner compiles,
-so it is not in this repository yet - a package version of the fork is what ships it.
+`RenderHost`/`FrameServer`) was first prototyped in the deployed `HostSDK/surface/Surface` sources and is now in the
+fork: `surface/Surface/BindingEvaluator.cs` with the two render fields and eleven checks in `surface/Surface.Tests`
+(508 passed, 0 failed) on branch `port/live-bindings`, package version 0.5.0. Publishing that package and inverting the
+gate are what make it the default; until then the deployed payload carries the same files and the flag stays opt-in.
 
 What the prototype does:
 
@@ -144,7 +146,7 @@ Measured (WinUISample fixture, warm provisioner cache, x64):
 So the two claims that mattered are true: an `{x:Bind}` in the *markup* preview now shows the real design-time value,
 and a binding edit - a path, a function call, a converter - re-renders at markup speed without a project build or
 renderer restart. The remaining work is `x:DataType` roots, templates, non-text targets with type conversion,
-`BindBack`/two-way, and moving the evaluator from the deployed payload into the fork package.
+`BindBack`/two-way, then publishing the fork package and making the evaluator the default instead of an opt-in.
 
 Three findings worth recording:
 
