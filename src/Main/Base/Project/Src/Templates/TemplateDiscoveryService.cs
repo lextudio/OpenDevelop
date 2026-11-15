@@ -24,6 +24,11 @@ namespace ICSharpCode.SharpDevelop.Templates
     /// </summary>
     public sealed class TemplateDiscoveryService : IDisposable
     {
+        // OpenDevelop itself runs on net11, but a newly-created customer project continues to
+        // target net10 by default. The SDK template pack determines the default TargetFramework
+        // for templates such as Console App, so do not infer this from Environment.Version.
+        const int DefaultProjectTemplateSdkMajor = 10;
+
         readonly Bootstrapper _bootstrapper;
 
         // "unodevelop"/"opendevelop": purely informational (identifies the calling host to
@@ -255,7 +260,8 @@ namespace ICSharpCode.SharpDevelop.Templates
         }
 
         /// <summary>
-        /// The <c>.nupkg</c>s under the running SDK's <c>templates/&lt;version&gt;</c> folder.
+        /// The <c>.nupkg</c>s under the SDK's <c>templates/&lt;version&gt;</c> folder that supplies
+        /// the default project templates.
         /// </summary>
         static IEnumerable<string> EnumerateSdkTemplatePackages()
         {
@@ -269,18 +275,19 @@ namespace ICSharpCode.SharpDevelop.Templates
 
             // One folder per installed runtime (8.0.20, 9.0.9, 10.0.4, ...). Installing every one
             // lets an older pack win for the same template identity: on GitHub's macOS image, which
-            // keeps .NET 8, 9 and 10 side by side, Console App then targeted net8.0 and Blazor had no
-            // net10.0 choice. Take the newest folder of this process's own major version, preferring
-            // a release over a preview, and fall back to every folder when none matches.
+            // keeps several SDKs side by side, Console App can then target an arbitrary old TFM.
+            // Prefer the newest net10 pack, because its template defaults are OpenDevelop's
+            // compatibility baseline even though the IDE process itself is net11. If net10 is not
+            // installed, retain the existing graceful fallback instead of leaving the picker empty.
             var folders = Directory.EnumerateDirectories(templatesRoot).ToArray();
-            var current = folders
+            var preferred = folders
                 .Select(d => (Path: d, Version: ParseTemplateFolderVersion(Path.GetFileName(d))))
-                .Where(f => f.Version.Version?.Major == Environment.Version.Major)
+                .Where(f => f.Version.Version?.Major == DefaultProjectTemplateSdkMajor)
                 .OrderBy(f => f.Version.IsRelease)
                 .ThenBy(f => f.Version.Version)
                 .Select(f => f.Path)
                 .LastOrDefault();
-            return (current is null ? folders : new[] { current })
+            return (preferred is null ? folders : new[] { preferred })
                 .SelectMany(d => Directory.EnumerateFiles(d, "*.nupkg"));
         }
 
