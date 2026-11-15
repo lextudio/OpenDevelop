@@ -411,8 +411,8 @@ jobs:
       # SDK 11 this job runs the archive on. Install it into ~/.dotnet instead of the job's own root and leave PATH
       # alone: SdkRootCandidates.WithSdk11 finds that folder and the journeys register it with od.sdk.add-custom-root
       # (the same opt-in as Tools > Options > .NET SDK), while the archive's net11.0 test host keeps its runtime.
-      # The iOS runner deliberately selects Xcode 27.0 below. Its last compatible workload is in the RC2 SDK; allowing
-      # workload-install to update manifests would replace it with the current 27.2 pack, which refuses Xcode 27.0.
+      # The xcode-27 image includes Xcode 27.2 below, so iOS follows the current SDK/workload channel rather than
+      # keeping a pre-release SDK solely for an older Xcode installation.
       - name: Install the .NET 11 SDK for the device journeys
         if: (matrix.job == 'mobile-android' && steps.kvm.outputs.available == 'true') || matrix.needs_ios_simulator
         shell: bash
@@ -422,20 +422,16 @@ jobs:
           set -euo pipefail
           root="$HOME/.dotnet"
           curl -sSL https://dot.net/v1/dotnet-install.sh -o "$RUNNER_TEMP/dotnet-install.sh"
-          if [ "$WORKLOAD" = ios ]; then
-            bash "$RUNNER_TEMP/dotnet-install.sh" --version 11.0.100-rc.2.26504.105 --install-dir "$root" --no-path
-          else
-            bash "$RUNNER_TEMP/dotnet-install.sh" --channel 11.0 --install-dir "$root" --no-path
-          fi
+          bash "$RUNNER_TEMP/dotnet-install.sh" --channel 11.0 --install-dir "$root" --no-path
           "$root/dotnet" --list-sdks
           sdk=$("$root/dotnet" --list-sdks | awk '$1 ~ /^11\./ { print $1 }' | sort -V | tail -n 1)
           test -n "$sdk"
-          # Keep the selected SDK's workload manifest. In particular, iOS must retain the Xcode-27.0-compatible
-          # RC2 pack rather than updating to 27.2, which requires Xcode 27.2.
+          # Install the current workload set matching the selected SDK. The Xcode 27.2 selection below matches
+          # the current Microsoft.NET.Sdk.iOS 27.2 pack.
           work="$RUNNER_TEMP/workload"
           mkdir -p "$work"
           printf '{"sdk":{"version":"%s","allowPrerelease":true,"rollForward":"disable"}}\n' "$sdk" > "$work/global.json"
-          ( cd "$work" && DOTNET_ROOT="$root" "$root/dotnet" workload install "$WORKLOAD" --skip-manifest-update )
+          ( cd "$work" && DOTNET_ROOT="$root" "$root/dotnet" workload install "$WORKLOAD" )
       - name: Install and boot an Android emulator
         if: matrix.job == 'mobile-android' && steps.kvm.outputs.available == 'true'
         shell: bash
@@ -521,11 +517,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # The image ships Xcode 27.0 beside its 27.1 default (/Applications/Xcode_27.app). The pinned RC2 .NET 11
-          # iOS workload above is compatible with 27.0, while current workload manifests require Xcode 27.2. Select
-          # it for the whole machine here - the IDE's build in the lane resolves Xcode through xcrun.
-          sudo xcode-select -s /Applications/Xcode_27.app
-          # The pinned RC2 workload set needs Xcode 27.0.
+          # The image includes Xcode 27.2 at /Applications/Xcode_27.2.app. Select it so the current .NET 11 iOS
+          # workload (Microsoft.NET.Sdk.iOS 27.2) and the available iOS 27.2 simulator use the same toolchain.
+          # Select it for the whole machine here - the IDE's build in the lane resolves Xcode through xcrun.
+          sudo xcode-select -s /Applications/Xcode_27.2.app
+          # The current .NET 11 iOS workload needs Xcode 27.2.
           xcodebuild -version
           # The journey installs and launches through simctl, and the IDE picks a booted iPhone first, so booting one
           # here keeps the choice unambiguous on an image that carries several runtimes.
