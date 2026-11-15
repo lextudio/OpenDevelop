@@ -274,3 +274,50 @@ provisioner, the standalone `UnoDesignClient`).
    cells have and Surface has only manually (section 6).
 7. **Do not call the Surface "the default" in user-facing text** until 1, 2 and 4 pass: the Options label says "Experimental
    Surface host (recommended)".
+
+### 7.1 Windows run (2026-11-15, x64, Windows 11, Build Tools 2026): results
+
+Committed, each through `build/opencode-review.ps1` (an approved review of the exact tree): `61b919d8cc` (Surface test fixes), `c4b1437be2` (Microsoft host build), `b9336fa6cc` (Uno and runtime gates). Not pushed.
+
+**Surface cell (`Runtime=SurfaceWinUI`): 4 of 4 pass, one method at a time** (first cold run 255 s, then 100-150 s each, `OD_SURFACE_ROOT=C:\wxp\itsurf`).
+The first run failed twice, both bugs in the test: `SurfaceAvailable` was private (xUnit resolves `SkipUnless` by name and needs a
+`public static` member), and `SurfaceHost_SelectElement_ReportsGeometryAndBounds` asserted a `success` member that
+`od.winui-designer.surface-geometry` does not return (its contract is `available`/`frame`/`selection`/`handle`/`element`); it now checks
+`available` and a non-empty `frame`, then `AssertSurfaceGeometryConsistent` after the select. The `WinUI Surface host` status check is kept.
+
+**Fallback and selection, observed in a real IDE** (private `-configdir`, `OD_TEST_MODE=1`):
+
+| Scenario | Result |
+|---|---|
+| default (env unset, nothing stored) | Surface renders, status `Rendered by WinUI Surface host` |
+| `OD_WINUI_RUNTIME=surface`, no `SurfaceHost/` payload | `Create` returns null with no reason; no other factory accepted it, so the designer says only `WinUI 3 runtime host is not installed.` (generic, names neither host) |
+| `surface`, payload present, provisioning fails (over-long `OD_SURFACE_ROOT`) | **no fallback**: status is the Surface's own `cannot start: ... 137 characters ... at most 120`, nothing renders |
+| stored Options value `microsoft` or `uno`, env unset | Surface is not registered; a Microsoft WinUI project goes to the Microsoft host (here: "not installed" until the host was built) |
+
+Text vs code, for the owner to decide: the Options text ("automatically falls back to the Microsoft host") is true only when the payload is absent
+*and* the Microsoft host is deployed, and false when provisioning fails. The generic "not installed" text also hides which host is missing.
+The Options dialog itself has no DevFlow hook, so display, persistence and restart were not clicked through (the pure logic is covered by
+`WinUIRuntimeSelectionTests`); only the stored-value selection above was exercised.
+
+**Microsoft host: needed four source fixes and a Visual Studio component before it could run at all.** `build.ps1` builds it with VS MSBuild, and this Build
+Tools install lacked the `.NET SDK` component (`Microsoft.NetCore.Component.SDK`, added with the VS Installer; without it VS MSBuild reports
+`Could not resolve SDK "Microsoft.NET.Sdk"`). Then, at `2e892ff225`:
+1. `WinUIXamlDesigner.MicrosoftHost.csproj` did not link `TemplateXBindPlan.cs` and `TemplatePlanMarker.cs` (new in `1b19885d62`): CS0246/CS0103.
+2. `UnoHost/DesignHost.cs` used `string.EndsWith(char, StringComparison)`, which exists only on net11, while the Microsoft host also builds for net9 and net10 (CS1503).
+3. `UnoDesignRuntimeHost.ProjectDependencyContext` applied the **Uno 7 requirement to every project**, so a Microsoft WinUI project was rejected with
+   "Uno designer requires Uno Platform 7.x" (and the Surface runs wrote it to the output pad on every open). It is now limited to Uno projects (`isUnoProject`).
+   The first review of that fix found that removing the early return made the packaged, architecture and framework checks run for the Surface host too, writing
+   "pins .NET 10.0.0 ... cannot run on" lines to its output pad; they now run only for hosts without a `childLaunchProvider` (the Microsoft and Uno children, as before), not for the Surface host, and
+   `SurfaceHost_RendersWinUIPage_WithOutlineAndNoDocumentError` asserts the pad has none of those lines (checked not to be vacuous: with the new early return disabled it fails on "pins .NET").
+4. `CanHostRunOnAppFramework` compared a net10 app's pinned .NET with the **IDE process's** runtime (net11 since `0f522a1576`) and refused every framework-dependent
+   net10 app with "cannot run this configuration's runtime graph". The child is already chosen per app CLR major, so it now compares with the selected child's major
+   (`ChildRuntimeMajor`, read from the `MicrosoftHost\netN.M[-windowsappsdk...]` folder; the legacy flat child counts as net10).
+With these, `AddInTests.WinUIOnly_DesignerOpensWinUIProject` (`Runtime=MicrosoftWinUI`) passes. The other 14 Microsoft-cell tests were not run.
+
+**Uno cell: broken on Windows by `1b19885d62`.** `UnoHost/Program.cs` now builds `UnoPlatformHostBuilder.Create().App(...).UseMacOS().Build()`;
+on Windows the child exits at once with `No platform host could be selected`, and the designer shows `Uno design host failed to start: A task was canceled.`
+(`AddInTests.OpenUnoXamlFile_UsesWinUIXamlDesignerInsteadOfWpfDesigner` fails). The Uno fixtures (`UnoHotReloadFixture`) also do not compile here (`InitializeComponent`
+missing). Not fixed: it needs a per-platform host (Win32 on Windows) and a Uno rebuild, which is the commit author's call.
+
+**Not done:** CI (`surfacehost-tests` on a runner, the `SurfaceWinUI` cell as an `observe` entry), the fallback test as an automated test (the scenarios above are scripted
+by hand, `C:\wxp\scenario.ps1`), the Options page click-through, and the toolbox-drag and resize-handle Surface journeys.
