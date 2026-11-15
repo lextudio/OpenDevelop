@@ -20,7 +20,8 @@ namespace OpenDevelop.IntegrationTests;
 public sealed class WinUISurfaceDesignerTests : IDisposable
 {
     const string SurfaceStatusMarker = "WinUI Surface host";
-    static bool SurfaceAvailable => OperatingSystem.IsWindows();
+    // public: xUnit resolves SkipUnless by name and only finds a public static member.
+    public static bool SurfaceAvailable => OperatingSystem.IsWindows();
 
     readonly OpenDevelopAppFixture _app;
     readonly string _sampleDir;
@@ -161,10 +162,15 @@ public sealed class WinUISurfaceDesignerTests : IDisposable
     public async Task SurfaceHost_SelectElement_ReportsGeometryAndBounds()
     {
         await OpenSurfaceDesignerAsync();
-        var geometry = await _app.InvokeAsync("od.winui-designer.surface-geometry");
-        Assert.True(geometry.GetProperty("success").GetBoolean(), geometry.ToString());
+        // surface-geometry has no "success" member (its contract is available/frame/selection/handle/element): a rendered
+        // frame must have a size before anything is selected, and the selection must hug the element afterwards.
+        var frameOnly = await _app.InvokeAsync("od.winui-designer.surface-geometry");
+        Assert.True(frameOnly.GetProperty("available").GetBoolean(), frameOnly.ToString());
+        Assert.True(frameOnly.GetProperty("frame").GetProperty("width").GetDouble() > 0
+            && frameOnly.GetProperty("frame").GetProperty("height").GetDouble() > 0, frameOnly.ToString());
         var selected = await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");
         Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+        OpenDevelopAppFixture.AssertSurfaceGeometryConsistent(await _app.InvokeAsync("od.winui-designer.surface-geometry"), "Surface host");
         var bounds = await _app.InvokeAsync("od.winui-designer.describe-element", "PrimaryButton");
         Assert.True(bounds.GetProperty("success").GetBoolean(), bounds.ToString());
         Assert.False(string.IsNullOrWhiteSpace(bounds.GetProperty("description").GetString()));
