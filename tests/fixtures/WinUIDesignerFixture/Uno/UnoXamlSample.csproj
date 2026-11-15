@@ -1,4 +1,4 @@
-<Project Sdk="Uno.Sdk/6.7.30">
+<Project Sdk="Uno.Sdk/7.0.22">
   <PropertyGroup>
     <!-- Keep this sample a real Uno project: the language server needs the Uno metadata closure,
          not merely a package name, to answer completion and hover requests. -->

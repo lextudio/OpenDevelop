@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -764,6 +765,14 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 				ReportDesigner(error);
 				return (null, null, Directory.Exists(appBin) ? appBin : null, error, null, null);
 			}
+			if (!UsesUno7(depsFile, out var unoVersion))
+			{
+				var error = "Uno designer requires Uno Platform 7.x, but the active build resolves "
+					+ (string.IsNullOrEmpty(unoVersion) ? "no Uno.WinUI package" : "Uno.WinUI " + unoVersion)
+					+ ". Update the project's global.json to Uno.Sdk 7.0.22 or a later 7.x service release, restore and build it, then reopen the designer.";
+				ReportDesigner(error);
+				return (null, null, Directory.Exists(appBin) ? appBin : null, error, null, null);
+			}
 			// A packaged (MSIX) output only works with package identity: its merged resources.pri
 			// hangs the unpackaged child before the handshake ("A task was canceled"), and its
 			// generated XAML metadata provider cannot be created there, so framework markup such as
@@ -805,6 +814,30 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 				+ documentFileName + "'.", e);
 			return (null, null, null, "WinUI designer could not determine the active project's output. Select a buildable Windows App SDK configuration, build it, then close and reopen this document.", null, null);
 		}
+	}
+
+	static bool UsesUno7(string depsFile, out string? version)
+	{
+		version = null;
+		try
+		{
+			using var json = JsonDocument.Parse(File.ReadAllText(depsFile));
+			if (!json.RootElement.TryGetProperty("libraries", out var libraries))
+				return false;
+			foreach (var library in libraries.EnumerateObject())
+			{
+				const string prefix = "Uno.WinUI/";
+				if (!library.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+					continue;
+				version = library.Name[prefix.Length..];
+				return Version.TryParse(version, out var parsed) && parsed.Major == 7;
+			}
+		}
+		catch (Exception e)
+		{
+			LoggingService.Warn("Could not read Uno version from " + depsFile, e);
+		}
+		return false;
 	}
 
 	/// <summary>

@@ -15,6 +15,11 @@ Keep this file concise and operational. Read the referenced technote only when t
   On macOS, use the selected SDK's own `dotnet` consistently for a build; do not splice a Homebrew
   SDK path into another SDK environment. Mixing roots can create false `MSB4018`/`MSB4216` task-host
   and asset-cache failures.
+- **Never use Homebrew's .NET SDK** (`/opt/homebrew/bin/dotnet` or its Cellar root) for this
+  repository, including nested submodules. Invoke the selected SDK's own absolute `dotnet` path;
+  when the fixed host SDK is the selected fallback on this macOS machine, that is
+  `/usr/local/share/dotnet/dotnet`. Do not let a submodule's inherited `DOTNET_ROOT` silently
+  replace it.
 - `SharpDevelop.sln` is stale; use `OpenDevelop.Mvp.slnx`.
 - LibreWPF source lives in the sibling repo `../openavalon` (not in this repo); look there for
   window/ProGPU behaviour, e.g. first-window init and show timing. OpenDevelop consumes it, with

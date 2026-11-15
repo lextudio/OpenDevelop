@@ -127,7 +127,10 @@
     <!-- Only the Microsoft WinUI host references this explicitly; it pins the same version
          Uno.Sdk already brings into WinUIXamlDesigner.UnoHost, so the DesignHost.cs both hosts
          share encodes exported PNGs through one identical Skia build. -->
-    <PackageVersion Include="SkiaSharp" Version="3.119.2" />
+    <PackageVersion Include="SkiaSharp" Version="4.156.0" />
+	<!-- The Uno design-host tests compile a converter into the simulated user assembly. Keep its
+	     reference on the exact Uno 7 runtime resolved by the host SDK. -->
+	<PackageVersion Include="Uno.WinUI" Version="7.0.65" />
     <PackageVersion Include="StreamJsonRpc" Version="2.25.29" />
     <PackageVersion Include="System.CodeDom" Version="10.0.10" />
     <!-- Must match what the ILSpy addin binds to. Transitive pinning is off, so ILSpyAddIn's

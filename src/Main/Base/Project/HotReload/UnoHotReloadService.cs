@@ -76,6 +76,12 @@ public static class UnoHotReloadService
 			diagnostic = "The selected project is not an Uno project.";
 			return false;
 		}
+		if (!UsesUno7(project.FileName.ToString(), out var unoVersion)) {
+			diagnostic = "Uno Hot Reload requires Uno Platform 7.x, but this project's restored assets resolve "
+				+ (string.IsNullOrEmpty(unoVersion) ? "no Uno.WinUI package" : "Uno.WinUI " + unoVersion)
+				+ ". Update global.json to Uno.Sdk 7.0.22 or a later 7.x service release, restore and build the project.";
+			return false;
+		}
 		if (project.ParentSolution?.FileName is not { } solutionFile || !File.Exists(solutionFile)) {
 			diagnostic = "Save the solution before starting Uno Hot Reload.";
 			return false;
@@ -204,6 +210,24 @@ public static class UnoHotReloadService
 			// The regular fallback below retains the normal Run behaviour when a restore is incomplete.
 		}
 		return null;
+	}
+
+	static bool UsesUno7(string projectFile, out string? version)
+	{
+		version = null;
+		var assets = Path.Combine(Path.GetDirectoryName(projectFile) ?? string.Empty, "obj", "project.assets.json");
+		if (!File.Exists(assets)) return false;
+		try {
+			using var document = JsonDocument.Parse(File.ReadAllText(assets));
+			if (!document.RootElement.TryGetProperty("libraries", out var libraries)) return false;
+			foreach (var library in libraries.EnumerateObject()) {
+				const string prefix = "uno.winui/";
+				if (!library.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+				version = library.Name[prefix.Length..];
+				return Version.TryParse(version, out var parsed) && parsed.Major == 7;
+			}
+		} catch (JsonException) { }
+		return false;
 	}
 
 	static int AllocatePort()

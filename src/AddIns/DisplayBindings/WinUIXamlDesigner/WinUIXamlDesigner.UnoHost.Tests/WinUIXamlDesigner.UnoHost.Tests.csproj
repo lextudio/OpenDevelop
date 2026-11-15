@@ -6,9 +6,14 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- This assembly is intentionally a simulated user DLL. Its Uno converter is loaded by the
+         separately launched Uno design host, not by this test process. -->
+    <NoWarn>$(NoWarn);UNOB0025</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\WinUIXamlDesigner.UnoHost\XamlPositionMapper.cs" Link="XamlPositionMapper.cs" />
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\CompileTimeBindingStripper.cs" Link="CompileTimeBindingStripper.cs" />
+	<Compile Include="..\WinUIXamlDesigner.UnoHost\TemplateXBindPlan.cs" Link="TemplateXBindPlan.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
@@ -20,5 +25,8 @@
     <!-- StreamJsonRpc pulls MessagePack transitively; reference it directly so NuGet unifies on the
          centrally pinned release instead of resolving the vulnerable 2.5.x (NU1902/NU1903). -->
     <PackageReference Include="MessagePack" />
+	<!-- The fixture types are loaded by the child as the user's last-built assembly, so this is a
+	     compile-time reference for a real IValueConverter, not an alternative renderer. -->
+	<PackageReference Include="Uno.WinUI" />
   </ItemGroup>
 </Project>

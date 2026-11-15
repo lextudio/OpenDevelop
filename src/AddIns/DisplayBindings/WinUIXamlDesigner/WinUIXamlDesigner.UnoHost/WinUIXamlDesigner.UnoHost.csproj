@@ -1,4 +1,4 @@
-<Project Sdk="Uno.Sdk/6.7.30">
+<Project Sdk="Uno.Sdk/7.0.22">
   <PropertyGroup>
     <!-- The sources annotate nullability with '?' throughout; the annotation context must be
          enabled for those annotations to be legal, without turning the warning context on for

@@ -11,6 +11,8 @@ using Windows.Foundation;
 using Windows.Storage.Streams;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 
@@ -70,6 +72,13 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		public static Func<string, string>? TransformXamlBeforeLoad;
 
 		FrameworkElement? root;
+		// A template can be observed on several stable-frame passes.  Initializing it more
+		// than once would repeatedly attach write-back callbacks (and, worse, could replace
+		// a value the designer has just edited), so its materialization is a one-shot step.
+		readonly HashSet<DependencyObject> initializedTemplateBindings = [];
+		readonly Dictionary<string, List<FrameworkElement>> templateElements = new(StringComparer.Ordinal);
+		object? designDataContext;
+		string? designDataContextType;
 		long frameSequence;
 		string lastPrimaryFileName = "";
 		bool lastViewportIsFixed;
@@ -514,12 +523,15 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 		async Task<DesignerSessionState> LoadDesignAsync(LoadDesignRequest request)
 		{
 			var snapshot = new DesignerSessionState { Accepted = true };
+			initializedTemplateBindings.Clear();
+			templateElements.Clear();
 			// The text the parser last saw: a reported position indexes into it, not into the user's source.
 			string? parsedXaml = null;
 			try
 			{
 				lastXaml = request.Xaml;
 				lastPrimaryFileName = request.FileName;
+				var liveBindingRoot = GetDesignDataContext(request.Xaml);
 				var source = InjectDesignData(request.Xaml, out var designWidth, out var designHeight);
 				designWidthOverride = designWidth;
 				designHeightOverride = designHeight;
@@ -598,6 +610,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 					return snapshot;
 				}
 				root = (FrameworkElement)loaded;
+				ApplyDesignDataContext(root, request.Xaml);
 				// Before any tree is built from it: BuildTree stamps IsDesignable off this set.
 				RefreshSourceBackedElements();
 				HostVisualRoot?.Invoke(previousRoot, root);
@@ -610,7 +623,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// exist once markup from several sources shares one namespace scope. See
 				// XamlDocumentRepair.
 				string Prepare(string markup)
-					=> parsedXaml = XamlDocumentRepair.Apply(TransformXamlBeforeLoad?.Invoke(markup) ?? markup);
+					=> parsedXaml = XamlDocumentRepair.Apply(TransformXamlBeforeLoad?.Invoke(markup) ?? markup, liveBindingRoot);
 			}
 			catch (Exception e)
 			{
@@ -639,6 +652,93 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				return snapshot;
 			}
 		}
+
+		/// <summary>
+		/// Gives rewritten <c>{Binding}</c>s a real page root without ever displaying the compiled
+		/// page. A template inherits its item's DataContext from its ItemsControl, so its rewritten
+		/// bindings continue to resolve against the x:DataType item rather than this page instance.
+		/// A new x:Class invalidates the cache; C# edits require a build, as the child deliberately
+		/// runs only the assembly supplied by the last successful project build.
+		/// </summary>
+		void ApplyDesignDataContext(FrameworkElement renderedRoot, string xaml)
+		{
+			var instance = GetDesignDataContext(xaml);
+			if (instance == null) return;
+			renderedRoot.DataContext = instance;
+			Console.Error.WriteLine($"design-host: live bindings use design-time page instance '{designDataContextType}'.");
+		}
+
+		object? GetDesignDataContext(string xaml)
+		{
+			if (Environment.GetEnvironmentVariable("OD_WINUI_LIVE_BINDINGS") == "0") return null;
+			var typeName = XClassFor(xaml) ?? RootDataTypeFor(xaml);
+			if (string.IsNullOrEmpty(typeName)) return null;
+			try
+			{
+				if (!string.Equals(designDataContextType, typeName, StringComparison.Ordinal))
+				{
+					designDataContext = FindDesignType(typeName) is { } type
+						? Activator.CreateInstance(type)
+						: null;
+					designDataContextType = typeName;
+				}
+				if (designDataContext == null)
+				{
+					Console.Error.WriteLine($"design-host: live bindings have no page instance for '{typeName}'; showing runtime Binding defaults.");
+					return null;
+				}
+				return designDataContext;
+			}
+			catch (Exception e)
+			{
+				Console.Error.WriteLine($"design-host: live bindings could not create '{typeName}': {e.GetBaseException().Message}");
+				return null;
+			}
+		}
+
+		static string? XClassFor(string xaml)
+		{
+			try
+			{
+				var root = System.Xml.Linq.XDocument.Parse(xaml).Root;
+				return root?.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName == "Class"
+					&& attribute.Name.NamespaceName.EndsWith("/xaml", StringComparison.Ordinal))?.Value;
+			}
+			catch (Exception) { return null; }
+		}
+
+		/// <summary>
+		/// A root <c>x:DataType</c> supplies the compile-time root for a page that deliberately has
+		/// no code-behind. Once the repair removes the directive the runtime parser cannot preserve
+		/// that information, so read it from the source before loading and create its public
+		/// parameterless instance as the preview DataContext. Template x:DataType is intentionally
+		/// excluded: an ItemsControl owns those row contexts at runtime.
+		/// </summary>
+		static string? RootDataTypeFor(string xaml)
+		{
+			try
+			{
+				var root = System.Xml.Linq.XDocument.Parse(xaml).Root;
+				var dataType = root?.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName == "DataType"
+					&& attribute.Name.NamespaceName.EndsWith("/xaml", StringComparison.Ordinal))?.Value;
+				if (string.IsNullOrWhiteSpace(dataType)) return null;
+				var separator = dataType.IndexOf(':');
+				if (separator <= 0 || separator == dataType.Length - 1) return null;
+				var xmlns = root!.GetNamespaceOfPrefix(dataType[..separator]).NamespaceName;
+				const string usingPrefix = "using:";
+				return xmlns.StartsWith(usingPrefix, StringComparison.Ordinal)
+					? xmlns[usingPrefix.Length..] + "." + dataType[(separator + 1)..]
+					: null;
+			}
+			catch (Exception) { return null; }
+		}
+
+		static Type? FindDesignType(string typeName)
+			=> HostBootstrap.DesignedApplicationAssembly?.GetType(typeName, false)
+				?? AppDomain.CurrentDomain.GetAssemblies().Select(assembly => {
+					try { return assembly.GetType(typeName, false); }
+					catch (Exception) { return null; }
+				}).FirstOrDefault(type => type != null);
 
 		static void WaitForNativeDebuggerIfRequested()
 		{
@@ -1247,7 +1347,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				snapshot.Diagnostics.Add(new DesignerDiagnostic { Message = snapshot.Error });
 				return snapshot;
 			}
-			var element = FindByName(root, elementId);
+			var element = FindByName(root, elementId)
+				?? FindByAutomationId(root, elementId).OfType<FrameworkElement>().FirstOrDefault()
+				?? FindTemplateElement(elementId);
 			if (element is null)
 			{
 				snapshot.Accepted = false;
@@ -1258,6 +1360,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			try
 			{
 				ApplyPropertyValue(element, propertyName, value);
+				if (XamlDocumentRepair.LastTemplatePlans.FirstOrDefault(plan => plan.Token == elementId && plan.TargetProperty == propertyName) is { } templatePlan
+					&& element is FrameworkElement templateElement)
+					WriteTemplateBack(templateElement.DataContext!, templatePlan.BindBack ?? templatePlan.Expression, element.GetType().GetProperty(propertyName)!.GetValue(element)!);
 				version = Math.Max(version, baseVersion);
 				var result = await FinishLayoutAsync(lastWidth, lastHeight, lastDpi, snapshot);
 				result.SessionId = requestSessionId;
@@ -1562,6 +1667,12 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				// is used to request raster dimensions. Uno commits its headless arrange directly.
 				BoundsLog($"FinishLayout requested={width}x{height} dpi={dpi} rootActual={root.ActualWidth}x{root.ActualHeight} rootDesired={root.DesiredSize.Width}x{root.DesiredSize.Height}");
 				snapshot.Render = await RenderAsync(dpi);
+				var planRoot = HostCaptureRoot?.Invoke(root) ?? root;
+				if (ApplyTemplatePlans(planRoot))
+				{
+					root.UpdateLayout();
+					snapshot.Render = await RenderAsync(dpi);
+				}
 				if (HostAwaitFrame != null) {
 					var stableFrames = 0;
 					var previousGeometry = System.Text.Json.JsonSerializer.Serialize(BuildTree(root, root, "", 0, sourceBackedElements));
@@ -1569,6 +1680,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 					while (stableFrames < 3 && settle.Elapsed < TimeSpan.FromSeconds(2)) {
 						await HostAwaitFrame();
 						HostCommitLayout?.Invoke(root);
+						ApplyTemplatePlans(HostCaptureRoot?.Invoke(root) ?? root);
 						var nextFrame = await RenderAsync(dpi);
 						var nextGeometry = System.Text.Json.JsonSerializer.Serialize(BuildTree(root, root, "", 0, sourceBackedElements));
 						stableFrames = nextFrame.Width == snapshot.Render.Width && nextFrame.Height == snapshot.Render.Height
@@ -1600,6 +1712,7 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			}
 			catch (Exception e)
 			{
+				Console.Error.WriteLine("design-host: layout/capture failed: " + e);
 				snapshot.Diagnostics.Add(new DesignerDiagnostic { Message = e.GetBaseException().Message });
 			}
 			return snapshot;
@@ -1867,6 +1980,9 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 						Name = "TabIndex", Value = control.TabIndex.ToString(CultureInfo.InvariantCulture)
 					});
 				}
+				var automationId = AutomationProperties.GetAutomationId(fe);
+				if (!string.IsNullOrEmpty(automationId))
+					nodeInfo.Properties.Add(new DesignerPropertyInfo { Name = "AutomationId", Value = automationId });
 			}
 			else if (node is UIElement ue)
 			{
@@ -1896,6 +2012,159 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			}
 			return nodeInfo;
 		}
+
+		static IEnumerable<DependencyObject> FindByAutomationId(DependencyObject node, string automationId)
+		{
+			if (string.Equals(AutomationProperties.GetAutomationId(node), automationId, StringComparison.Ordinal))
+				yield return node;
+			for (var index = 0; index < VisualTreeHelper.GetChildrenCount(node); index++)
+				foreach (var match in FindByAutomationId(VisualTreeHelper.GetChild(node, index), automationId))
+					yield return match;
+		}
+
+		FrameworkElement? FindTemplateElement(string token)
+			=> templateElements.TryGetValue(token, out var elements) ? elements.FirstOrDefault() : null;
+
+		bool ApplyTemplatePlans(DependencyObject visualRoot)
+		{
+			var applied = false;
+			foreach (var plan in XamlDocumentRepair.LastTemplatePlans)
+			foreach (var element in FindByTemplateToken(visualRoot, plan.Token).OfType<FrameworkElement>())
+			{
+				if (!templateElements.TryGetValue(plan.Token, out var elements))
+					templateElements.Add(plan.Token, elements = []);
+				if (!elements.Contains(element)) elements.Add(element);
+				if (!initializedTemplateBindings.Add(element))
+					continue;
+				var directProperty = element.GetType().GetProperty(plan.TargetProperty, BindingFlags.Public | BindingFlags.Instance);
+				if (directProperty?.CanWrite != true)
+					continue;
+				var value = EvaluateTemplateExpression(element.DataContext!, plan);
+				directProperty.SetValue(element, ApplyTemplateValue(element, plan, value, directProperty.PropertyType));
+				applied = true;
+			}
+			return applied;
+		}
+
+		static object? ApplyTemplateValue(FrameworkElement element, TemplateXBindPlan plan, object? value, Type targetType)
+		{
+			if (value == null && plan.TargetNullValue != null)
+				return BindingOptionLiteral(plan.TargetNullValue);
+			if (plan.Converter == null) return value;
+			try {
+				var converter = FindTemplateConverter(element, plan.Converter);
+				if (converter == null) return plan.FallbackValue == null ? value : BindingOptionLiteral(plan.FallbackValue);
+				return converter.Convert(value, targetType, BindingOptionLiteral(plan.ConverterParameter), plan.ConverterLanguage);
+			} catch (Exception) {
+				return plan.FallbackValue == null ? value : BindingOptionLiteral(plan.FallbackValue);
+			}
+		}
+
+		static IValueConverter? FindTemplateConverter(FrameworkElement element, string text)
+		{
+			var key = StaticResourceKey(text);
+			if (key == null) return null;
+			for (DependencyObject? current = element; current != null; current = VisualTreeHelper.GetParent(current))
+				if (current is FrameworkElement owner && owner.Resources.TryGetValue(key, out var resource) && resource is IValueConverter converter)
+					return converter;
+			return Application.Current?.Resources.TryGetValue(key, out var applicationResource) == true
+				? applicationResource as IValueConverter : null;
+		}
+
+		static string? StaticResourceKey(string text)
+		{
+			const string prefix = "{StaticResource ";
+			return text.StartsWith(prefix, StringComparison.Ordinal) && text.EndsWith('}')
+				? text[prefix.Length..^1].Trim() : null;
+		}
+
+		static object? BindingOptionLiteral(string? value)
+		{
+			if (value == null) return null;
+			value = value.Trim();
+			return value.Length > 1 && value[0] is '\'' or '"' && value[^1] == value[0] ? value[1..^1] : value;
+		}
+
+		static IEnumerable<DependencyObject> FindByTemplateToken(DependencyObject node, string token)
+		{
+			if (string.Equals(TemplatePlanMarker.GetToken(node), token, StringComparison.Ordinal))
+				yield return node;
+			for (var index = 0; index < VisualTreeHelper.GetChildrenCount(node); index++)
+				foreach (var match in FindByTemplateToken(VisualTreeHelper.GetChild(node, index), token))
+					yield return match;
+		}
+
+		static object? EvaluateTemplateExpression(object context, TemplateXBindPlan plan)
+		{
+			try {
+				var expression = plan.Expression;
+				var open = expression.IndexOf('(');
+				if (open < 0) return TemplateMember(context, expression);
+				if (!expression.EndsWith(')', StringComparison.Ordinal)) return null;
+				var args = SplitTemplateArguments(expression[(open + 1)..^1]).Select(a => TemplateArgument(context, a)).ToArray();
+				var (receiver, methodName, flags) = ResolveTemplateFunctionTarget(context, plan.StaticType, expression[..open]);
+				if (receiver == null || methodName == null) return null;
+				var receiverType = receiver as Type ?? receiver.GetType();
+				var method = receiverType.GetMethods(flags).FirstOrDefault(candidate =>
+					candidate.Name == methodName && ParametersAccept(candidate.GetParameters(), args));
+				return method?.Invoke(method.IsStatic ? null : receiver, args);
+			} catch (TargetInvocationException) {
+				return null;
+			} catch (ArgumentException) {
+				return null;
+			}
+		}
+
+		static (object? Receiver, string? MethodName, BindingFlags Flags) ResolveTemplateFunctionTarget(object context, string? staticType, string target)
+		{
+			if (staticType != null) {
+				var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(staticType, false)).FirstOrDefault(candidate => candidate != null);
+				return (type, target, BindingFlags.Public | BindingFlags.Static);
+			}
+			var separator = target.LastIndexOf('.');
+			if (separator < 0) return (context, target, BindingFlags.Public | BindingFlags.Instance);
+			var receiver = TemplateMember(context, target[..separator]);
+			return (receiver, target[(separator + 1)..], BindingFlags.Public | BindingFlags.Instance);
+		}
+
+		static bool ParametersAccept(ParameterInfo[] parameters, object?[] values)
+		{
+			if (parameters.Length != values.Length) return false;
+			for (var index = 0; index < parameters.Length; index++) {
+				var value = values[index];
+				var parameterType = parameters[index].ParameterType;
+				if (value == null) {
+					if (parameterType.IsValueType && Nullable.GetUnderlyingType(parameterType) == null) return false;
+				} else if (!parameterType.IsInstanceOfType(value)) return false;
+			}
+			return true;
+		}
+		static object? TemplateArgument(object context, string text)
+		{
+			text = text.Trim();
+			if (text.Length > 1 && text[0] is '\'' or '"' && text[^1] == text[0]) return text[1..^1];
+			if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer)) return integer;
+			if (bool.TryParse(text, out var boolean)) return boolean;
+			if (text.Contains('(')) return EvaluateTemplateExpression(context, new TemplateXBindPlan("", "", text, null, null, null));
+			return TemplateMember(context, text);
+		}
+		static IEnumerable<string> SplitTemplateArguments(string text)
+		{
+			var start = 0; var depth = 0;
+			for (var index = 0; index < text.Length; index++) { if (text[index] == '(') depth++; else if (text[index] == ')') depth--; else if (text[index] == ',' && depth == 0) { yield return text[start..index]; start = index + 1; } }
+			if (text.Length > 0) yield return text[start..];
+		}
+		static object? TemplateMember(object value, string path)
+		{
+			object? current = value;
+			foreach (var name in path.Split('.')) {
+				var type = current?.GetType();
+				current = type?.GetProperty(name, BindingFlags.Instance | BindingFlags.Public)?.GetValue(current)
+					?? type?.GetField(name, BindingFlags.Instance | BindingFlags.Public)?.GetValue(current);
+			}
+			return current;
+		}
+		static void WriteTemplateBack(object context, string path, object value) { var property = context.GetType().GetProperty(path); if (property?.CanWrite == true) property.SetValue(context, value); else context.GetType().GetMethod(path)?.Invoke(context, [value]); }
 
 		static DesignerLayoutInsets? BuildCanvasInsets(FrameworkElement element, UIElement root)
 		{

@@ -28,7 +28,7 @@ public sealed class UnoDesignHostRpcTests
 			: MicrosoftHostDll();
 		#else
 			: Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-				"../../../../WinUIXamlDesigner.UnoHost/bin/Debug/net10.0-desktop/WinUIXamlDesigner.UnoHost.dll"));
+				"../../../../WinUIXamlDesigner.UnoHost/bin/Debug/net11.0-desktop/WinUIXamlDesigner.UnoHost.dll"));
 		#endif
 
 	#if MICROSOFT_WINUI_DESIGNER_HOST
@@ -135,6 +135,257 @@ public sealed class UnoDesignHostRpcTests
 		Assert.True(updated.Accepted, updated.Error);
 		Assert.Equal(775, updated.Render!.Width);
 	}
+
+	/// <summary>
+	/// Exercises the real macOS Skia child rather than only the XML rewriter: the child preloads
+	/// this test assembly as its designed app, constructs the x:Class object, and assigns it to the
+	/// parsed root's DataContext. If the rewritten x:Bind did not resolve, its raster would differ
+	/// from the literal control rendering.
+	/// </summary>
+	[Fact]
+	public async Task ChildHost_Renders_a_live_xBind_member_path_from_the_design_page_instance()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		var appBin = AppContext.BaseDirectory;
+		var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(
+			Path.ChangeExtension(host, "runtimeconfig.json"),
+			Path.ChangeExtension(host, "deps.json"),
+			timeout.Token, host, appBin);
+		var bound = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage""
+      xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""80"">
+  <TextBlock Text=""{{x:Bind Title}}"" FontSize=""24"" />
+</Grid>";
+		var literal = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""80"">
+  <TextBlock Text=""Live binding from page"" FontSize=""24"" />
+</Grid>";
+		var blank = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""80"">
+  <TextBlock Text="""" FontSize=""24"" />
+</Grid>";
+
+		var opened = await client.OpenAsync(Document(client, bound), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var expected = await client.UpdateAsync(Document(client, literal, version: 2), timeout.Token);
+		Assert.True(expected.Accepted, expected.Error);
+		Assert.Equal(expected.Render!.Data, opened.Render!.Data);
+		var empty = await client.UpdateAsync(Document(client, blank, version: 3), timeout.Token);
+		Assert.True(empty.Accepted, empty.Error);
+		Assert.NotEqual(empty.Render!.Data, opened.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_Renders_a_safe_root_xBind_function_from_the_design_page_instance()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		var appBin = AppContext.BaseDirectory;
+		var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"),
+			Path.ChangeExtension(host, "deps.json"), timeout.Token, host, appBin);
+		var bound = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage""
+      xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""80""><TextBlock Text=""{{x:Bind Shout(Title)}}"" FontSize=""24"" /></Grid>";
+		var literal = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""80""><TextBlock Text=""LIVE BINDING FROM PAGE!"" FontSize=""24"" /></Grid>";
+
+		var opened = await client.OpenAsync(Document(client, bound), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var expected = await client.UpdateAsync(Document(client, literal, version: 2), timeout.Token);
+		Assert.True(expected.Accepted, expected.Error);
+		Assert.Equal(expected.Render!.Data, opened.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_Renders_a_root_xDataType_member_path_without_code_behind()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		var appBin = AppContext.BaseDirectory;
+		var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"),
+			Path.ChangeExtension(host, "deps.json"), timeout.Token, host, appBin);
+		var bound = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" x:DataType=""local:LiveBindingPage"" Width=""320"" Height=""80""><TextBlock Text=""{{x:Bind Title}}"" FontSize=""24"" /></Grid>";
+		var literal = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""80""><TextBlock Text=""Live binding from page"" FontSize=""24"" /></Grid>";
+
+		var opened = await client.OpenAsync(Document(client, bound), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var expected = await client.UpdateAsync(Document(client, literal, version: 2), timeout.Token);
+		Assert.True(expected.Accepted, expected.Error);
+		Assert.Equal(expected.Render!.Data, opened.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_Renders_a_safe_root_static_xBind_function()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		var appBin = AppContext.BaseDirectory;
+		var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"),
+			Path.ChangeExtension(host, "deps.json"), timeout.Token, host, appBin);
+		var bound = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage"" xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" Width=""320"" Height=""80""><TextBlock Text=""{{x:Bind local:LiveBindingHelpers.Wrap(Title)}}"" FontSize=""24"" /></Grid>";
+		var literal = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""80""><TextBlock Text=""[Live binding from page]"" FontSize=""24"" /></Grid>";
+
+		var opened = await client.OpenAsync(Document(client, bound), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		var expected = await client.UpdateAsync(Document(client, literal, version: 2), timeout.Token);
+		Assert.True(expected.Accepted, expected.Error);
+		Assert.Equal(expected.Render!.Data, opened.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_materializes_xDataType_template_items_from_the_design_page_instance()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		var appBin = AppContext.BaseDirectory;
+		var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"),
+			Path.ChangeExtension(host, "deps.json"), timeout.Token, host, appBin);
+		var bound = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage""
+      xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" Width=""320"" Height=""120"">
+  <ListView ItemsSource=""{{x:Bind Items}}"" Height=""120""><ListView.ItemTemplate><DataTemplate x:DataType=""local:LiveBindingItem""><TextBlock Text=""{{x:Bind Name}}"" FontSize=""18"" /></DataTemplate></ListView.ItemTemplate></ListView>
+</Grid>";
+		var unbound = bound.Replace(" x:Class=\"ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage\"", "", StringComparison.Ordinal);
+
+		var populated = await client.OpenAsync(Document(client, bound), timeout.Token);
+		Assert.True(populated.Accepted, populated.Error);
+		var empty = await client.UpdateAsync(Document(client, unbound, version: 2), timeout.Token);
+		Assert.True(empty.Accepted, empty.Error);
+		Assert.NotEqual(empty.Render!.Data, populated.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_renders_template_member_values_not_just_item_containers()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"),
+			Path.ChangeExtension(host, "deps.json"), timeout.Token, host, AppContext.BaseDirectory);
+		var xaml = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage"" xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" Width=""320"" Height=""120""><ListView ItemsSource=""{{x:Bind Items}}"" Height=""120""><ListView.ItemTemplate><DataTemplate x:DataType=""local:LiveBindingItem""><TextBlock Text=""{{x:Bind Name}}"" FontSize=""18"" /></DataTemplate></ListView.ItemTemplate></ListView></Grid>";
+		var alternate = xaml.Replace("LiveBindingPage", "AlternateLiveBindingPage", StringComparison.Ordinal);
+
+		var first = await client.OpenAsync(Document(client, xaml), timeout.Token);
+		Assert.True(first.Accepted, first.Error);
+		var second = await client.UpdateAsync(Document(client, alternate, version: 2), timeout.Token);
+		Assert.True(second.Accepted, second.Error);
+		Assert.NotEqual(first.Render!.Data, second.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_renders_template_xBind_function_after_materialization()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"), Path.ChangeExtension(host, "deps.json"), timeout.Token, host, AppContext.BaseDirectory);
+		var bound = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage"" xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" Width=""320"" Height=""120""><ListView ItemsSource=""{{x:Bind Items}}"" Height=""120""><ListView.ItemTemplate><DataTemplate x:DataType=""local:LiveBindingItem""><TextBlock Text=""{{x:Bind Shout(Name)}}"" FontSize=""18"" /></DataTemplate></ListView.ItemTemplate></ListView></Grid>";
+		var literal = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""120""><ListView Height=""120""><ListViewItem><TextBlock Text=""TEMPLATE ITEM ONE!"" FontSize=""18"" /></ListViewItem><ListViewItem><TextBlock Text=""TEMPLATE ITEM TWO!"" FontSize=""18"" /></ListViewItem></ListView></Grid>";
+		var opened = await client.OpenAsync(Document(client, bound), timeout.Token); Assert.True(opened.Accepted, opened.Error);
+		var expected = await client.UpdateAsync(Document(client, literal, version: 2), timeout.Token); Assert.True(expected.Accepted, expected.Error);
+		Assert.Equal(expected.Render!.Data, opened.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_renders_static_template_xBind_function_after_materialization()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"), Path.ChangeExtension(host, "deps.json"), timeout.Token, host, AppContext.BaseDirectory);
+		var bound = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage"" xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" Width=""320"" Height=""120""><ListView ItemsSource=""{{x:Bind Items}}"" Height=""120""><ListView.ItemTemplate><DataTemplate x:DataType=""local:LiveBindingItem""><TextBlock Text=""{{x:Bind local:LiveBindingHelpers.Wrap(Name)}}"" FontSize=""18"" /></DataTemplate></ListView.ItemTemplate></ListView></Grid>";
+		var literal = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""120""><ListView Height=""120""><ListViewItem><TextBlock Text=""[Template item one]"" FontSize=""18"" /></ListViewItem><ListViewItem><TextBlock Text=""[Template item two]"" FontSize=""18"" /></ListViewItem></ListView></Grid>";
+		var opened = await client.OpenAsync(Document(client, bound), timeout.Token); Assert.True(opened.Accepted, opened.Error);
+		var expected = await client.UpdateAsync(Document(client, literal, version: 2), timeout.Token); Assert.True(expected.Accepted, expected.Error);
+		Assert.Equal(expected.Render!.Data, opened.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_renders_nested_template_xBind_function_arguments()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"), Path.ChangeExtension(host, "deps.json"), timeout.Token, host, AppContext.BaseDirectory);
+		var bound = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage"" xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" Width=""320"" Height=""120""><ListView ItemsSource=""{{x:Bind Items}}"" Height=""120""><ListView.ItemTemplate><DataTemplate x:DataType=""local:LiveBindingItem""><TextBlock Text=""{{x:Bind Shout(Shout(Name))}}"" FontSize=""18"" /></DataTemplate></ListView.ItemTemplate></ListView></Grid>";
+		var literal = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""120""><ListView Height=""120""><ListViewItem><TextBlock Text=""TEMPLATE ITEM ONE!!"" FontSize=""18"" /></ListViewItem><ListViewItem><TextBlock Text=""TEMPLATE ITEM TWO!!"" FontSize=""18"" /></ListViewItem></ListView></Grid>";
+		var opened = await client.OpenAsync(Document(client, bound), timeout.Token); Assert.True(opened.Accepted, opened.Error);
+		var expected = await client.UpdateAsync(Document(client, literal, version: 2), timeout.Token); Assert.True(expected.Accepted, expected.Error);
+		Assert.Equal(expected.Render!.Data, opened.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_renders_uno_style_template_member_function()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"), Path.ChangeExtension(host, "deps.json"), timeout.Token, host, AppContext.BaseDirectory);
+		var bound = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage"" xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" Width=""320"" Height=""120""><ListView ItemsSource=""{{x:Bind Items}}"" Height=""120""><ListView.ItemTemplate><DataTemplate x:DataType=""local:LiveBindingItem""><TextBlock Text=""{{x:Bind Name.ToUpper()}}"" FontSize=""18"" /></DataTemplate></ListView.ItemTemplate></ListView></Grid>";
+		var literal = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""120""><ListView Height=""120""><ListViewItem><TextBlock Text=""TEMPLATE ITEM ONE"" FontSize=""18"" /></ListViewItem><ListViewItem><TextBlock Text=""TEMPLATE ITEM TWO"" FontSize=""18"" /></ListViewItem></ListView></Grid>";
+		var opened = await client.OpenAsync(Document(client, bound), timeout.Token); Assert.True(opened.Accepted, opened.Error);
+		var expected = await client.UpdateAsync(Document(client, literal, version: 2), timeout.Token); Assert.True(expected.Accepted, expected.Error);
+		Assert.Equal(expected.Render!.Data, opened.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_renders_uno_style_template_static_format_function()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"), Path.ChangeExtension(host, "deps.json"), timeout.Token, host, AppContext.BaseDirectory);
+		var bound = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage"" xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" xmlns:sys=""using:System"" Width=""320"" Height=""120""><ListView ItemsSource=""{{x:Bind Items}}"" Height=""120""><ListView.ItemTemplate><DataTemplate x:DataType=""local:LiveBindingItem""><TextBlock Text=""{{x:Bind sys:String.Format('Formatted {{0}}', Name)}}"" FontSize=""18"" /></DataTemplate></ListView.ItemTemplate></ListView></Grid>";
+		var literal = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""120""><ListView Height=""120""><ListViewItem><TextBlock Text=""Formatted Template item one"" FontSize=""18"" /></ListViewItem><ListViewItem><TextBlock Text=""Formatted Template item two"" FontSize=""18"" /></ListViewItem></ListView></Grid>";
+		var opened = await client.OpenAsync(Document(client, bound), timeout.Token); Assert.True(opened.Accepted, opened.Error);
+		var expected = await client.UpdateAsync(Document(client, literal, version: 2), timeout.Token); Assert.True(expected.Accepted, expected.Error);
+		Assert.Equal(expected.Render!.Data, opened.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_applies_template_xBind_converter_from_real_uno_resources()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"), Path.ChangeExtension(host, "deps.json"), timeout.Token, host, AppContext.BaseDirectory);
+		var bound = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage"" xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" Width=""320"" Height=""120""><Grid.Resources><local:TemplatePrefixConverter x:Key=""prefix""/></Grid.Resources><ListView ItemsSource=""{{x:Bind Items}}"" Height=""120""><ListView.ItemTemplate><DataTemplate x:DataType=""local:LiveBindingItem""><TextBlock Text=""{{x:Bind Name.ToUpper(), Converter={{StaticResource prefix}}}}"" FontSize=""18"" /></DataTemplate></ListView.ItemTemplate></ListView></Grid>";
+		var literal = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""120""><ListView Height=""120""><ListViewItem><TextBlock Text=""converter:TEMPLATE ITEM ONE"" FontSize=""18"" /></ListViewItem><ListViewItem><TextBlock Text=""converter:TEMPLATE ITEM TWO"" FontSize=""18"" /></ListViewItem></ListView></Grid>";
+		var opened = await client.OpenAsync(Document(client, bound), timeout.Token); Assert.True(opened.Accepted, opened.Error);
+		var expected = await client.UpdateAsync(Document(client, literal, version: 2), timeout.Token); Assert.True(expected.Accepted, expected.Error);
+		Assert.Equal(expected.Render!.Data, opened.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_applies_template_xBind_target_null_value()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"), Path.ChangeExtension(host, "deps.json"), timeout.Token, host, AppContext.BaseDirectory);
+		var bound = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage"" xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" Width=""320"" Height=""120""><ListView ItemsSource=""{{x:Bind Items}}"" Height=""120""><ListView.ItemTemplate><DataTemplate x:DataType=""local:LiveBindingItem""><TextBlock Text=""{{x:Bind Nothing(), TargetNullValue='(no value)'}}"" FontSize=""18"" /></DataTemplate></ListView.ItemTemplate></ListView></Grid>";
+		var literal = $@"<Grid xmlns=""{Ns}"" xmlns:x=""{XNs}"" Width=""320"" Height=""120""><ListView Height=""120""><ListViewItem><TextBlock Text=""(no value)"" FontSize=""18"" /></ListViewItem><ListViewItem><TextBlock Text=""(no value)"" FontSize=""18"" /></ListViewItem></ListView></Grid>";
+		var opened = await client.OpenAsync(Document(client, bound), timeout.Token); Assert.True(opened.Accepted, opened.Error);
+		var expected = await client.UpdateAsync(Document(client, literal, version: 2), timeout.Token); Assert.True(expected.Accepted, expected.Error);
+		Assert.Equal(expected.Render!.Data, opened.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_writes_template_BindBack_to_the_item_setter()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60)); var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"), Path.ChangeExtension(host, "deps.json"), timeout.Token, host, AppContext.BaseDirectory);
+		var xaml = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.MutableBindingPage"" xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" Width=""320"" Height=""120""><ListView ItemsSource=""{{x:Bind Items}}""><ListView.ItemTemplate><DataTemplate x:DataType=""local:MutableBindingItem""><StackPanel><TextBox Text=""{{x:Bind Name, Mode=TwoWay, BindBack=SetName}}""/><TextBlock Text=""{{x:Bind Name}}"" FontSize=""18""/></StackPanel></DataTemplate></ListView.ItemTemplate></ListView></Grid>";
+		var expectedXaml = xaml.Replace("MutableBindingPage", "MutableBindingPageAfter", StringComparison.Ordinal);
+		var opened = await client.OpenAsync(Document(client, xaml), timeout.Token); Assert.True(opened.Accepted, opened.Error);
+		var edited = await client.SetPropertyAsync(opened.Version, "__od_xbind_0", "Text", "after", timeout.Token);
+		Assert.True(edited.Accepted, edited.Error);
+		var expected = await client.UpdateAsync(Document(client, expectedXaml, version: edited.Version + 1), timeout.Token);
+		Assert.True(expected.Accepted, expected.Error);
+		Assert.Equal(expected.Render!.Data, edited.Render!.Data);
+	}
+
+	[Fact]
+	public async Task ChildHost_exposes_a_materialized_template_automation_marker()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+		var host = HostDll();
+		using var client = await UnoDesignClient.StartAsync(Path.ChangeExtension(host, "runtimeconfig.json"),
+			Path.ChangeExtension(host, "deps.json"), timeout.Token, host, AppContext.BaseDirectory);
+		var xaml = $@"<Grid x:Class=""ICSharpCode.WinUIXamlDesigner.UnoHost.Tests.LiveBindingPage"" xmlns=""{Ns}"" xmlns:x=""{XNs}"" xmlns:local=""using:ICSharpCode.WinUIXamlDesigner.UnoHost.Tests"" xmlns:automation=""using:Microsoft.UI.Xaml.Automation"" Width=""320"" Height=""120""><ListView ItemsSource=""{{x:Bind Items}}"" Height=""120""><ListView.ItemTemplate><DataTemplate x:DataType=""local:LiveBindingItem""><TextBlock automation:AutomationProperties.AutomationId=""od-template-probe"" Text=""{{x:Bind Name}}"" /></DataTemplate></ListView.ItemTemplate></ListView></Grid>";
+		var opened = await client.OpenAsync(Document(client, xaml), timeout.Token);
+		Assert.True(opened.Accepted, opened.Error);
+		Assert.Contains(Flatten(opened.Tree!), node => node.Properties.Any(property => property.Name == "AutomationId" && property.Value == "od-template-probe"));
+
+		static IEnumerable<DesignerElementNode> Flatten(DesignerElementNode node)
+			=> new[] { node }.Concat(node.Children.SelectMany(Flatten));
+	}
+
+
+
+
+
+
 
 	/// <summary>
 	/// A named size preset is not Auto: its height is part of the requested viewport even when
@@ -703,4 +954,52 @@ public sealed class UnoDesignHostRpcTests
 		while (!condition())
 			await Task.Delay(25, wait.Token);
 	}
+}
+
+public sealed class LiveBindingPage
+{
+	public string Title => "Live binding from page";
+	public string Shout(string value) => value.ToUpperInvariant() + "!";
+	public IReadOnlyList<LiveBindingItem> Items { get; } = [new("Template item one"), new("Template item two")];
+}
+
+public sealed record LiveBindingItem(string Name)
+{
+	public string Shout(string value) => value.ToUpperInvariant() + "!";
+	public string? Nothing() => null;
+}
+
+public sealed class AlternateLiveBindingPage
+{
+	public IReadOnlyList<LiveBindingItem> Items { get; } = [new("Other row alpha"), new("Other row beta")];
+}
+
+public static class LiveBindingHelpers
+{
+	public static string Wrap(string value) => "[" + value + "]";
+}
+
+public sealed class MutableBindingPage
+{
+	public IReadOnlyList<MutableBindingItem> Items { get; } = [new MutableBindingItem("before")];
+}
+
+public sealed class MutableBindingPageAfter
+{
+	public IReadOnlyList<MutableBindingItem> Items { get; } = [new MutableBindingItem("after")];
+}
+
+public sealed class MutableBindingItem : System.ComponentModel.INotifyPropertyChanged
+{
+	string name;
+	public MutableBindingItem(string value) => name = value;
+	public string Name { get => name; set { name = value; PropertyChanged?.Invoke(this, new(nameof(Name))); } }
+	public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+	public void SetName(string value) => Name = value;
+}
+
+public sealed class TemplatePrefixConverter : Microsoft.UI.Xaml.Data.IValueConverter
+{
+	public object Convert(object value, Type targetType, object parameter, string language) => "converter:" + value;
+	public object ConvertBack(object value, Type targetType, object parameter, string language) => value;
 }

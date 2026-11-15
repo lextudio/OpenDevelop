@@ -169,6 +169,88 @@ Three findings worth recording:
 The published-package check (payload rebuilt from `LeXtudio.WinUISurface` 0.5.0, provisioner cache cleared, no
 environment variable set) reports the same four values, which is what "default" means here.
 
+## Uno convergence plan (2026-11-15)
+
+The Surface evaluator cannot be copied into the Uno renderer: it depends on the Surface host's
+WinUI payload and its `XamlCleaner` rewrite point. The reusable boundary is instead the binding
+plan: classify a binding as a page-root member path, a template-item member path, a function/static
+expression, or a two-way/`BindBack` expression, then let each host render that plan in its own
+runtime.
+
+The first Uno implementation is deliberately narrow and is shared by the Uno and Microsoft
+`DesignHost` source:
+
+- the existing `CompileTimeBindingStripper` now turns safe member-path `{x:Bind}` expressions into
+  runtime `{Binding}` expressions instead of deleting them;
+- the host creates and caches the last-built `x:Class` page instance and assigns it only to the
+  parsed preview root's `DataContext`; it never displays that compiled page;
+- `x:DataType` is consumed before runtime parsing and typed-template member paths are preserved as
+  runtime bindings. The Uno 7 desktop host now keeps the parsed root in a live Skia window/stage,
+  so its real `ListView` materialises rows from the page instance's rewritten `ItemsSource`; the
+  macOS child-host raster test proves those rows differ from the no-`x:Class` preview.
+
+Thus basic roots and typed template rows become live between builds on Uno without coupling the
+Uno host to Surface. A root `x:DataType="local:ViewModel"` without `x:Class` is also resolved from
+its `using:` namespace and instantiated as the preview DataContext, before the directive is consumed
+for runtime parsing. Constructors are app code, so the existing design-time safety contract still
+applies; if construction/type lookup fails, the preview remains renderable and runtime bindings show
+their normal empty/default state. Setting `OD_WINUI_LIVE_BINDINGS=0` preserves the former stripping
+behaviour for the design instance (the XAML rewrite still keeps the parser safe).
+
+The first evaluator extension is now present too: a root-level, public instance method with simple
+public field/property arguments (for example `{x:Bind Shout(Title)}`), and a public static method
+whose class comes from a document `using:` prefix (for example `{x:Bind local:Helpers.Wrap(Title)}`),
+are invoked before the runtime XAML reader sees the document. Their returned invariant values are
+written into preview-only markup. This is intentionally narrower than Surface's Roslyn path: it
+excludes templates, nested receivers, converters/fallbacks and `BindBack`, where substituting a value
+would otherwise silently change binding scope or semantics. The macOS arm64 Uno 7 child-host tests
+compare resulting rasters against `LIVE BINDING FROM PAGE!` and `[Live binding from page]`, so the
+evidence is a rendered value rather than only an XML rewrite.
+
+The Uno implementation now also covers the template cases that cannot be lowered to a normal runtime
+`Binding`. During repair it records a preview-only plan and adds a host-only attached-property marker to the
+target. That marker never replaces an author-owned `AutomationProperties.AutomationId`. After the real Uno `DataTemplate` instances materialise, the host finds each item, evaluates
+the expression against that item's `DataContext`, and writes the target property through its public
+WinUI property. The marker is also an address for the designer's existing `session/setProperty` RPC:
+for `Mode=TwoWay` or explicit `BindBack`, that RPC invokes the item setter/method, after which normal
+`INotifyPropertyChanged` runtime bindings redraw the other template fields. It is deliberately
+one-shot per materialised item; layout's stable-frame loop must not attach duplicate callbacks or
+overwrite a property the designer has edited.
+
+The macOS arm64 Uno 7 child-host tests now compare rasters for an item instance function
+`Shout(Name)`, Uno's own member-receiver form `Name.ToUpper()`, a static
+`local:LiveBindingHelpers.Wrap(Name)`, Uno's `sys:String.Format('Formatted {0}', Name)` form,
+and a nested argument `Shout(Shout(Name))`. A `Converter={StaticResource ...}` is resolved from
+the materialised target's real Uno resource scope and applied to the evaluated item value; the test
+loads an `IValueConverter` from the simulated user assembly rather than faking its result. A separate interaction test performs the full
+`session/setProperty → BindBack=SetName → INotifyPropertyChanged → sibling template Binding`
+chain, and compares its raster with an otherwise identical page initially populated with the new
+value. This is real Uno 7 rendering, not an XML-only rewrite.
+
+The remaining phases stay explicit: share Surface's framework-neutral lexical-scope planner;
+support template expressions that refer back to the page root, richer converter parameters/resource
+references, fallback/type conversion semantics, and overload/type conversion; and add a native Uno binding-expression seam for automatic recompute
+when arbitrary item state changes outside a designer edit. The public `BindingHelper` provider API
+exists in Uno 7, but a provider installed after loose-XAML template materialisation did not receive
+the item selector in the macOS experiment, so it is not claimed as the live-update mechanism here.
+
+### Uno 7 runtime path (source-verified)
+
+Uno 7.0.65's generator does not lower a template `{x:Bind}` to a normal `Binding`: in
+`XamlFileGenerator.BuildXBindEvalFunction` it identifies a `DataTemplate`, uses its
+`x:DataType` item as the binding root, and emits `Uno.UI.Xaml.BindingHelper.SetBindingXBindProvider`.
+Its selector receives the item context; for `Mode=TwoWay`, `BindingExpression` calls the supplied
+`XBindBack` delegate (including a template item's explicit `BindBack` method). This establishes the
+correct target for the designer: template functions and `BindBack` must run against the item, not
+the page instance.
+
+The public provider API remains useful for a future design proxy, but it cannot be installed through
+an ordinary custom `MarkupExtension`: Uno 7's loose `XamlObjectBuilder` parses the extension but
+assigns its returned `Binding` as an ordinary property value, rather than routing it through the
+built-in Binding markup path that creates a `BindingExpression`. This is why the current renderer
+uses its explicit materialisation plan and the existing property-edit RPC instead of pretending that
+late provider installation offers generated-`x:Bind` change tracking.
+
 ## Done when
 
 1. `BoundPage.xaml` shows `Text = "Bound from code-behind"` from markup mode, with no
