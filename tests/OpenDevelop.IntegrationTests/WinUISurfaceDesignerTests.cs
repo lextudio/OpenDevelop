@@ -101,6 +101,13 @@ public sealed class WinUISurfaceDesignerTests : IDisposable
         var status = await OpenSurfaceDesignerAsync();
         Assert.Null(status.GetProperty("documentError").GetString());
 
+        // A document that renders must not leave runtime-graph complaints that do not apply to the Surface child in the designer's
+        // output pad: the Uno 7 requirement belongs to Uno projects, and the Surface child never adopts the app's runtime graph.
+        var pad = await _app.InvokeAsync("od.output-text", "WinUI Designer");
+        var padText = pad.TryGetProperty("text", out var padValue) ? padValue.GetString() ?? "" : "";
+        foreach (var misleading in new[] { "Uno designer requires", "cannot run this configuration's runtime graph", "pins .NET" })
+            Assert.DoesNotContain(misleading, padText, StringComparison.Ordinal);
+
         Assert.True((await _app.InvokeAsync("od.show-pad", "ICSharpCode.SharpDevelop.Gui.OutlinePad")).GetProperty("found").GetBoolean());
         var outline = await _app.InvokeAsync("od.outline-pad.content");
         Assert.True(outline.GetProperty("available").GetBoolean(), outline.ToString());

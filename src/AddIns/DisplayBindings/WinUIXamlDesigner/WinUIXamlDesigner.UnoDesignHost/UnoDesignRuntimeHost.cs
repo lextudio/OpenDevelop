@@ -52,6 +52,9 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 	readonly Func<Architecture?, string?>? hostDllPathLocator;
 	readonly Func<string, Action<string>, CancellationToken, Task<DesignHostChildLaunch>>? childLaunchProvider;
 	readonly string hostDisplayName;
+	/// <summary>The document's project is an Uno project. The Uno 7 requirement applies to those only: a Microsoft WinUI project
+	/// (the Microsoft and Surface hosts) never resolves Uno.WinUI and must not be rejected for it.</summary>
+	readonly bool isUnoProject;
 	UnoDesignClient client;
 	Task connectTask;
 	DesignSnapshot lastSnapshot => canvas.LastSnapshot;
@@ -117,6 +120,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 			SetDesignSize(size.Width, size.Height);
 		else if (settingsSizePreset is not null)
 			ResetDesignSize();
+		isUnoProject = framework?.Kind == XamlFrameworkKind.Uno;
 		connectKind = framework?.Kind.ToString() ?? "unknown";
 		connectTask = ConnectAsync(connectKind);
 
@@ -726,7 +730,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 	///
 	/// The runtime graph is adopted only when the app's framework is one this host can actually
 	/// run on: <c>dotnet exec --runtimeconfig</c> pins the child to the version that file names, so
-	/// an app on an OLDER major (a net9.0 app, a net10.0 host) kills the child before Main with
+	/// an app on an OLDER major than the selected child (a net9.0 app, a net10.0 child) kills the child before Main with
 	/// "Could not load file or assembly 'System.Runtime, Version=10.0.0.0'". The app directory is
 	/// still handed over on its own in that case - preloading the app's assemblies is what makes
 	/// its <c>local:</c> types resolve, and a newer runtime loads assemblies built against an older
@@ -765,7 +769,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 				ReportDesigner(error);
 				return (null, null, Directory.Exists(appBin) ? appBin : null, error, null, null);
 			}
-			if (!UsesUno7(depsFile, out var unoVersion))
+			if (isUnoProject && !UsesUno7(depsFile, out var unoVersion))
 			{
 				var error = "Uno designer requires Uno Platform 7.x, but the active build resolves "
 					+ (string.IsNullOrEmpty(unoVersion) ? "no Uno.WinUI package" : "Uno.WinUI " + unoVersion)
@@ -773,6 +777,11 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 				ReportDesigner(error);
 				return (null, null, Directory.Exists(appBin) ? appBin : null, error, null, null);
 			}
+			// The Surface child runs on its own runtime and never adopts the app's runtime graph (ConnectAsync clears both files and passes
+			// only the app directory), so the packaged, architecture and framework checks below do not apply to it; run for it they would
+			// only write misleading "cannot run" lines to the output pad of a document that renders fine.
+			if (childLaunchProvider != null)
+				return (runtimeConfig, depsFile, appBin, null, null, null);
 			// A packaged (MSIX) output only works with package identity: its merged resources.pri
 			// hangs the unpackaged child before the handshake ("A task was canceled"), and its
 			// generated XAML metadata provider cannot be created there, so framework markup such as
@@ -799,10 +808,13 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 				ReportDesigner(error);
 				return (null, null, null, error, null, null);
 			}
-			if (!CanHostRunOnAppFramework(runtimeConfig, out var appVersion))
+			// The child that will run the app is chosen per app CLR major (MicrosoftHost\net9.0, net10.0, net11.0), so the app's
+			// framework is compared with that child's runtime, not with the IDE process's (net11 since the IDE moved to it).
+			var hostMajor = ChildRuntimeMajor(hostDllPath ?? hostDllPathLocator?.Invoke(dotnetHostArchitecture)) ?? Environment.Version.Major;
+			if (!CanHostRunOnAppFramework(runtimeConfig, hostMajor, out var appVersion))
 			{
 				ReportDesigner("WinUI designer: '" + project.Name + "' pins .NET " + appVersion
-					+ " which this design host (.NET " + Environment.Version.Major + ") cannot run on;"
+					+ " which this design host (.NET " + hostMajor + ") cannot run on;"
 					+ " preloading the app's assemblies from " + appBin + " without adopting its runtime graph.");
 				return (null, null, appBin, "WinUI designer cannot run this configuration's runtime graph; select a compatible built configuration, then close and reopen this document.", null, null);
 			}
@@ -1047,7 +1059,26 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 	}
 
 	/// <summary>
-	/// Whether this host can actually run on the framework the app's runtimeconfig pins.
+	/// The CLR major a per-runtime Microsoft child runs on, read from its folder
+	/// (<c>...\MicrosoftHost\net10.0\...</c>, also the <c>net10.0-windowsappsdk2.4</c> form). The legacy flat child directly under
+	/// <c>MicrosoftHost</c> is the net10 one (<c>UnoDesignRuntimeHostBootstrap.LocateChildDll</c> keeps it for incremental add-in updates).
+	/// Null when the path is none of those (the Uno child, the Surface child, no child): the caller then uses the IDE's own runtime.
+	/// </summary>
+	static int? ChildRuntimeMajor(string childDllPath)
+	{
+		if (string.IsNullOrEmpty(childDllPath))
+			return null;
+		// Separator-agnostic on purpose: compare on forward slashes only.
+		var path = childDllPath.Replace(Path.DirectorySeparatorChar, '/').Replace(Path.AltDirectorySeparatorChar, '/');
+		var match = System.Text.RegularExpressions.Regex.Match(path, "/MicrosoftHost/net(\\d+)\\.\\d+(?:-windowsappsdk[^/]*)?/");
+		if (match.Success)
+			return int.Parse(match.Groups[1].Value);
+		return path.EndsWith("/MicrosoftHost/WinUIXamlDesigner.MicrosoftHost.dll", StringComparison.OrdinalIgnoreCase) ? 10 : null;
+	}
+
+	/// <summary>
+	/// Whether the child that will run the app (CLR major <paramref name="hostMajor"/>) can actually run on the framework the app's
+	/// runtimeconfig pins.
 	///
 	/// A host built for a different CLR major cannot run on an app's graph: a self-contained app
 	/// (<c>includedFrameworks</c>) carries that CLR beside its executable, while a
@@ -1059,7 +1090,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 	/// An unreadable or framework-less runtimeconfig is treated as usable, preserving the
 	/// previous behaviour.
 	/// </summary>
-	static bool CanHostRunOnAppFramework(string runtimeConfigPath, out string appVersion)
+	static bool CanHostRunOnAppFramework(string runtimeConfigPath, int hostMajor, out string appVersion)
 	{
 		appVersion = "unknown";
 		try
@@ -1090,7 +1121,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 			else if (options.TryGetProperty("tfm", out var tfm))
 				appVersion = tfm.GetString() ?? appVersion;
 			// The Microsoft WinUI factory selected a child from this same runtimeconfig before this
-			// method runs.  Do not compare a self-contained app to the IDE process (which is net10):
+			// method runs.  Do not compare a self-contained app to the IDE process (which is net11):
 			// it is the selected child, not this WPF parent, that dotnet exec will load.  Its app-local
 			// Windows App SDK graph is mandatory for compiled XAML resources.
 			if (selfContained)
@@ -1099,7 +1130,7 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 				.Select(v => Version.TryParse(v, out var parsed) ? parsed.Major : -1)
 				.Where(major => major > 0)
 				.ToList();
-			return majors.Count == 0 || majors.Min() >= Environment.Version.Major;
+			return majors.Count == 0 || majors.Min() >= hostMajor;
 		}
 		catch (Exception)
 		{
