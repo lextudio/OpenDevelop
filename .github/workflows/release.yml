@@ -119,13 +119,11 @@ jobs:
         run: ./build/windows/test-share-managed-payload.ps1
       # One payload serves x64 and ARM64 (dist.ps1 builds both launchers and runs its own smoke phase). GitVersion's GitHub
       # Actions integration races on the runner's env file when projects build in parallel (see build-binaries.ps1), so the
-      # variable that enables it is removed for the packaging.
+      # variable that enables it is removed for the packaging. Keep the designer hosts' private managed closures: their
+      # shared-store optimization is explicitly experimental in dist.ps1 and the packaged WPF host cannot yet resolve
+      # ICSharpCode.Designer.Remote from that store.
       - name: Build the unified Windows distribution
         shell: cmd
-        env:
-          # Collapses the designer hosts' duplicated managed closure into shared/managed; the
-          # bitness step below starts a real designer host and would fail if it were incomplete.
-          OD_SHARE_MANAGED_CLOSURE: '1'
         run: |
           set "GITHUB_ACTIONS="
           rem No gh credential can read the lextudio feed with this ephemeral token; NuGet restores
