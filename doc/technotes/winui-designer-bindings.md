@@ -67,7 +67,9 @@ The evaluator must run where WinUI and the user assembly are loaded - the **Surf
   `surface/Surface.Tests` and the fork's release workflow builds, smoke-tests (x64 and ARM64) and publishes it;
 - this repo: sends the fields, derives `designType` from `x:Class`, defaults the mode on
   (`OD_WINUI_LIVE_BINDINGS=0` opts out), and offers it as the shared canvas toolbar's **Live Bindings** toggle
-  (`od.winui-designer.live-bindings on|off|query` drives the same path);
+  (`od.winui-designer.live-bindings on|off|query` drives the same path). The toggle's choice is stored in
+  `%LOCALAPPDATA%\OpenDevelop\winui-live-bindings`, which the out-of-process child reads, so a new document, a restarted
+  host and a new IDE session all start in the mode the user chose;
 - no renderer change for the markup path itself: it is the same `XamlCleaner` substitution point
   the sample-data mode uses today.
 
@@ -168,7 +170,8 @@ environment variable set) reports the same four values, which is what "default" 
 ## Done when
 
 1. `BoundPage.xaml` shows `Text = "Bound from code-behind"` from markup mode, with no
-   `OD_WINUI_COMPILED`. **Met and shipped** in surface 0.5.0, on by default (`OD_WINUI_LIVE_BINDINGS=0` opts out).
+   `OD_WINUI_COMPILED`. **Met and shipped** in surface 0.5.0, on by default (`OD_WINUI_LIVE_BINDINGS=0` opts out, and the
+   toolbar toggle's choice is remembered across documents and sessions).
 2. Changing the binding in the source (`{x:Bind Title}` to `{x:Bind Subtitle}`, or adding a
    converter) updates the preview on save, without a project build or renderer restart. **Met**: member paths,
    a converter declared in the document, and function bindings all re-render live; the values match the compiled

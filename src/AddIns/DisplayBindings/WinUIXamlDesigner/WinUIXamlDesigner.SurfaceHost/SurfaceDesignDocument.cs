@@ -46,10 +46,37 @@ public sealed class SurfaceDesignDocument : IAsyncDisposable
 	/// <summary>
 	/// Design-time binding evaluation is on by default: the markup preview evaluates each <c>{x:Bind}</c> against the
 	/// page instance named by the document's <c>x:Class</c> and substitutes the value, so a XAML-side binding edit
-	/// renders without a project build. <c>OD_WINUI_LIVE_BINDINGS=0</c> turns it off; a surface that does not know the
-	/// option ignores it, so the flag degrades to the previous placeholder behaviour.
+	/// renders without a project build. The designer's toolbar toggle stores the last choice (see
+	/// <see cref="LiveBindingsPreferenceFile"/>) so a new document's child starts in the same mode;
+	/// <c>OD_WINUI_LIVE_BINDINGS</c> overrides both, and a surface that does not know the option ignores it, so the flag
+	/// degrades to the previous placeholder behaviour.
 	/// </summary>
-	static readonly bool LiveBindingsEnabled = Environment.GetEnvironmentVariable("OD_WINUI_LIVE_BINDINGS") != "0";
+	static bool LiveBindingsEnabled => ResolveLiveBindings();
+
+	/// <summary>
+	/// Where the designer's toolbar toggle records its last choice, shared by the IDE and the out-of-process child (both
+	/// run as the same user). <c>OD_WINUI_LIVE_BINDINGS_FILE</c> points it elsewhere, which the tests use.
+	/// </summary>
+	public static string LiveBindingsPreferenceFile => Environment.GetEnvironmentVariable("OD_WINUI_LIVE_BINDINGS_FILE")
+		?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenDevelop", "winui-live-bindings");
+
+	/// <summary>The mode a new document starts in: the environment variable wins, then the toolbar toggle's file.</summary>
+	public static bool ResolveLiveBindings()
+		=> ResolveLiveBindings(Environment.GetEnvironmentVariable("OD_WINUI_LIVE_BINDINGS"), LiveBindingsPreferenceFile);
+
+	/// <summary>The same rule with explicit inputs, so it can be tested without touching the process environment.</summary>
+	public static bool ResolveLiveBindings(string? environment, string file)
+	{
+		if (!string.IsNullOrEmpty(environment))
+			return environment != "0";
+		try {
+			if (File.Exists(file))
+				return File.ReadAllText(file).Trim() is not ("off" or "0");
+		} catch {
+			// A missing or unreadable preference is not a reason to fail a render.
+		}
+		return true;
+	}
 
 	/// <summary>
 	/// Whether this document evaluates design-time binding values. It starts from <see cref="LiveBindingsEnabled"/>

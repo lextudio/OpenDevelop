@@ -66,6 +66,53 @@ public class SurfaceDesignDocumentTests
 	}
 
 	[Fact]
+	public void Live_bindings_start_from_the_toolbar_preference_unless_the_environment_overrides_it()
+	{
+		var file = Path.Combine(Path.GetTempPath(), "opendevelop-live-bindings-" + Guid.NewGuid().ToString("n"));
+		try {
+			// No file, no variable: on.
+			Assert.True(SurfaceDesignDocument.ResolveLiveBindings(null, file));
+
+			File.WriteAllText(file, "off");
+			Assert.False(SurfaceDesignDocument.ResolveLiveBindings(null, file));
+
+			File.WriteAllText(file, "on");
+			Assert.True(SurfaceDesignDocument.ResolveLiveBindings(null, file));
+
+			// The environment variable wins over the stored choice.
+			Assert.False(SurfaceDesignDocument.ResolveLiveBindings("0", file));
+			File.WriteAllText(file, "off");
+			Assert.True(SurfaceDesignDocument.ResolveLiveBindings("1", file));
+		} finally {
+			try { File.Delete(file); } catch { }
+		}
+	}
+
+	[Fact]
+	public async Task Live_bindings_mode_and_design_type_reach_the_render_request()
+	{
+		await using var surface = RenderingSurface();
+		await using var doc = await Open(surface);
+		const string xaml = "<Page xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\""
+			+ " xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" x:Class=\"App.MainPage\"/>";
+
+		await doc.OpenAsync(Request(xaml), Ct);
+
+		// The default is on, and the page type the evaluator should instantiate travels with the request.
+		var load = surface.Received.Last().RootElement;
+		Assert.True(load.GetProperty("evaluateBindings").GetBoolean());
+		Assert.Equal("App.MainPage", load.GetProperty("designType").GetString());
+
+		// Turning it off (the toolbar toggle) clears both on the next render.
+		doc.SetLiveBindings(false);
+		Assert.False(doc.LiveBindings);
+		await doc.UpdateAsync(Request(xaml, version: 2), Ct);
+		var update = surface.Received.Last().RootElement;
+		Assert.False(update.GetProperty("evaluateBindings").GetBoolean());
+		Assert.Equal("", update.GetProperty("designType").GetString());
+	}
+
+	[Fact]
 	public async Task Stale_update_is_refused_without_touching_the_surface()
 	{
 		await using var surface = RenderingSurface();
