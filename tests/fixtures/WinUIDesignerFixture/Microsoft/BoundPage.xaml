@@ -9,7 +9,7 @@
          design-time evaluator's tiers: a converter declared in this document, a function binding, and
          non-text targets (bool, number, enum) whose text the XAML parser converts. -->
     <Page.Resources>
-        <local:SuffixConverter x:Key="Suffix" />
+        <local:SuffixConverter x:Key="Suffix" Kind="markup" />
     </Page.Resources>
     <StackPanel x:Name="BoundRoot">
         <TextBlock x:Name="BoundText" Text="{x:Bind Title}" />

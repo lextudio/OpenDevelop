@@ -29,8 +29,11 @@ public sealed partial class BoundPage : Page
 /// <summary>Declared in BoundPage.xaml's resources; proves a converter the document declares is used.</summary>
 public sealed class SuffixConverter : IValueConverter
 {
+	/// <summary>Set by the document itself (<c>Kind="markup"</c>), which the design-time evaluator applies too.</summary>
+	public string Kind { get; set; } = "design";
+
 	public object Convert(object value, Type targetType, object parameter, string language)
-		=> $"{value} ({parameter})";
+		=> $"{value} ({Kind}/{parameter})";
 
 	public object ConvertBack(object value, Type targetType, object parameter, string language)
 		=> throw new NotSupportedException();

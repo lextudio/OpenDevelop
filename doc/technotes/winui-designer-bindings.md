@@ -123,7 +123,8 @@ What the evaluator does:
   assembly (`Shout(Title)` becomes `__page.Shout(__page.Title)`; `local:Helper.Fmt(Title)` maps the XAML prefix to
   the CLR namespace the document declares), with the compiled invoker cached per rewritten expression;
 - resolves a **converter** from the document's own resource declaration (`<local:SuffixConverter x:Key="Suffix"/>`),
-  so a XAML-only converter edit is live too; falls back to the design instance's resources, then skips;
+  applies the declaration's own settings to it (`Kind="markup"`, numbers through the invariant culture), so a
+  XAML-only converter edit is live too; falls back to the design instance's resources, then skips;
 - applies `ConverterParameter`/`ConverterLanguage` and `FallbackValue`/`TargetNullValue`, and writes the value into both
   text targets and simple non-text ones (`Visibility`, `IsEnabled`, `Width`, `Grid.Row`, ...): bools become
   `True`/`False`, numbers and enums are formatted with the invariant culture because the XAML parser is invariant, and
@@ -139,6 +140,7 @@ Measured (WinUISample fixture, warm provisioner cache, x64):
 | markup mode, no flag (baseline before the evaluator) | `BoundText.Text` empty, and the non-text rows fall back to their defaults |
 | markup mode + evaluator | `Text = "Bound from code-behind"`; `LiteralText` still `"literal from the last build"` |
 | converter declared in the document | `ConvertedText` = `"Bound from code-behind (design)"` (the converter instance is created from the markup) |
+| converter settings declared in the document | `Kind="markup"` on the declaration gives `"Bound from code-behind (markup/design)"`, identical in the compiled page |
 | function binding | `FunctionText` = `"BOUND FROM CODE-BEHIND!"`; the first compile takes about 3 s, the cached invoker about 0.2 s |
 | non-text targets | `Visibility="{x:Bind State}"` = `Collapsed`, `Width="{x:Bind BoxWidth}"` = `120.5`, `IsEnabled="{x:Bind IsBusy}"` = `False` |
 | **cross-check, compiled reference** | the same document rendered with `OD_WINUI_COMPILED=1` reports every value identically |
