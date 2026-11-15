@@ -16,8 +16,9 @@ sealed record DesignHostChildLaunch(string? Arguments, string? Error);
 
 /// <summary>
 /// Registers the Surface backend: the upstream WinUI Surface renderer (microsoft/WinAppVSCE previewer, packaged as
-/// LeXtudio.WinUISurface) behind the same designer protocol as the other WinUI children. It is OPT-IN: the
-/// registration command only registers it when <c>OD_WINUI_RUNTIME=surface</c>, and it declines (so the registry falls
+/// LeXtudio.WinUISurface) behind the same designer protocol as the other WinUI children. It is the DEFAULT for
+/// Microsoft WinUI projects: the registration command registers it unless <c>OD_WINUI_RUNTIME</c> or the stored
+/// <c>WinUIXamlDesigner.Runtime</c> preference selects another runtime, and it declines (so the registry falls
 /// through to the Microsoft child) for any project that is not a Windows App SDK one or when its payload is not deployed.
 ///
 /// Per project it runs the provisioner, which builds (or reuses, from a cache) a host matched to the project's Windows

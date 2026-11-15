@@ -1243,11 +1243,16 @@ OpenDevelop pins `LeXtudio.WinUISurface` in `Directory.Packages.props`, maps it 
 (`ExcludeAssets=all`, `GeneratePathProperty`) and copies it into `SurfacePayload/` beside the child, which `DeployToAddIns`
 puts in the add-in's `SurfaceHost/` folder; the add-in project references the child so it builds with the add-in.
 
-**`OD_WINUI_RUNTIME=surface`** is wired and opt-in (nothing changes for the other values or when unset):
+**The Surface host is the default for Microsoft WinUI projects.** Tools &gt; Options &gt; UI options &gt;
+Experimental Features can select the compatibility Microsoft host instead; `OD_WINUI_RUNTIME=surface`
+remains the higher-priority diagnostic override. The other explicit values retain their existing behavior:
 
-- `RegisterDevFlowActionsCommand` registers `SurfaceDesignRuntimeHostBootstrap` last when the variable is `surface`; the
-  Microsoft and Uno factories stay registered behind it. The bootstrap declines non-Windows-App-SDK projects and any machine
-  where `SurfaceHost/` is not deployed.
+- `RegisterDevFlowActionsCommand` registers `SurfaceDesignRuntimeHostBootstrap` last when the stored
+  `WinUIXamlDesigner.Runtime` preference is unset or `surface`; the Microsoft and Uno factories stay registered behind it.
+  The bootstrap declines non-Windows-App-SDK projects and any machine where `SurfaceHost/` is not deployed, and then the
+  Microsoft child serves the project. That fallback does **not** apply once the Surface accepts a project: a failed
+  provisioning is reported and no surface starts (see the provisioner bullet below, and the open decision in
+  `winui-designer-plan.md` section 7).
 - `UnoDesignClient.AcquireSharedAsync` gained an optional `extraArguments` (appended to the child command line and part of
   `CompatibilityKey`, so documents needing different arguments never share a child); `UnoDesignRuntimeHost` gained an optional
   `childLaunchProvider`. When it is set the child is launched on its own runtime (never inside the designed app's runtimeconfig

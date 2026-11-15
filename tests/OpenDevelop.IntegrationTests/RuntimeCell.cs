@@ -22,6 +22,8 @@ public static class RuntimeCell
     public const string MicrosoftWinForms = "MicrosoftWinForms";
     public const string MicrosoftWinUI = "MicrosoftWinUI";
     public const string Uno = "Uno";
+    /// <summary>Windows App SDK projects rendered by the WinUI Surface host (<c>OD_WINUI_RUNTIME=surface</c>); it reports backend "WinUI" like the Microsoft host, so its tests also check the status text.</summary>
+    public const string SurfaceWinUI = "SurfaceWinUI";
 
     /// <summary>The <c>backend</c> field <c>od.wpf-designer.status</c> reports for a WPF cell.</summary>
     public static string WpfBackendName(string cell) => cell switch {
@@ -49,6 +51,7 @@ public static class RuntimeCell
     /// <summary>The <c>backend</c> field <c>od.winui-designer.status</c> reports for a WinUI-family cell.</summary>
     public static string WinUIBackendName(string cell) => cell switch {
         MicrosoftWinUI => "WinUI",
+        SurfaceWinUI => "WinUI",
         Uno => "Uno",
         _ => throw new ArgumentException("Not a WinUI-family cell: " + cell, nameof(cell)),
     };

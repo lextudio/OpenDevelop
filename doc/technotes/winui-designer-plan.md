@@ -21,7 +21,7 @@ Dates are 2026-11.
 
 | Capability | Where | Evidence |
 |---|---|---|
-| Surface renderer as a runtime (`OD_WINUI_RUNTIME=surface`), matched host per project, private run copies | `WinUIXamlDesigner.SurfaceHost`, `.Child`, fork provisioner | live in the IDE |
+| Surface renderer as the default Microsoft WinUI runtime (Options can choose Microsoft host), matched host per project, private run copies | `WinUIXamlDesigner.SurfaceHost`, `.Child`, fork provisioner | live in the IDE; unavailable payload falls back to Microsoft host |
 | Described frames: authored element tree with bounds (package 0.3.0) | `describe: true`, `FrameTree.cs`; `SurfaceDesignDocument` | 313 ms update with the tree; IDE outline resolves names |
 | Hit-test and selection from the frame (no native mode) | `SurfaceDesignDocument.HitTestAsync` | fake-surface and real-surface DDP tests |
 | Layout metadata (package 0.4.0): margin, parent kind, Grid row/col/span and tracks, Canvas position, z-index, orientation | `FrameLayout` -> `GridTracks`, `LayoutInsets`, `ZIndex` | real-surface probe of Grid, Canvas, StackPanel |
@@ -224,3 +224,53 @@ drive and inspect them. `runtime-properties <name>` reports the renderer's own v
 markup preview itself now evaluates `{x:Bind}` (`doc/technotes/winui-designer-bindings.md`, surface 0.5.0 and on by
 default), so it reports `Text = "Bound from code-behind"` with no variable set, and a binding edit made through the
 Properties pad re-renders without a build; `OD_WINUI_LIVE_BINDINGS=0` turns the evaluation off.
+
+## 7. Surface host: what is left to verify (handoff to a Windows machine)
+
+State on 2026-11-15, written on macOS where the Surface cannot run (it is Windows-only and needs the Windows App Runtime).
+The default switch (`RegisterDevFlowActionsCommand.DefaultRuntimePreference = "surface"`, plus the Tools > Options page) is in
+the tree but **never run in an IDE**: before it, every verification of the Surface in the IDE was manual
+(2026-11-12) and every automated one was the `WinUIXamlDesigner.SurfaceHost.Tests` suite (fake surface, child process,
+provisioner, the standalone `UnoDesignClient`).
+
+**Written on macOS, not run anywhere:** the `SurfaceWinUI` runtime cell.
+
+- `tests/OpenDevelop.IntegrationTests/WinUISurfaceDesignerTests.cs`, trait `Runtime=SurfaceWinUI`, four journeys on the
+  `WinUIDesignerFixture/Microsoft` page: render with Document Outline; source edit outside the designer refreshes; Properties pad
+  edit then undo and redo (`canUndo`/`canRedo`, dirty, saved text); select with `surface-geometry` and `describe-element`.
+  Surface reports backend `WinUI` like the Microsoft host, so every test also requires the status text to contain
+  `WinUI Surface host`; a silent fallback to the Microsoft host fails instead of passing. It copies the sample source without
+  `bin`/`obj` (the provisioner builds it) and waits up to 4 minutes for the first render.
+- `RuntimeCell.SurfaceWinUI`, and the runner: `dotnet msbuild tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj
+  -t:RunRuntimeCell -p:RuntimeCell=SurfaceWinUI` sets `OD_WINUI_RUNTIME=surface`; the cell is in the Windows list of
+  `RuntimeCellsOnThisOS` (so `RunRuntimeMatrix` includes it) and not in macOS's.
+- Verified on macOS only: the test project compiles (`-p:BuildProjectReferences=false`), and `-list tests -trait Runtime=SurfaceWinUI`
+  selects the four tests. They skip off Windows (`SkipUnless`). No test body has executed, so selectors, field names
+  (`canUndo`, `canRedo`, `framework`, `status`) and timings are copied from the Microsoft/Uno tests and unconfirmed for Surface.
+  Expect to fix the first run.
+
+**To do on Windows, in this order:**
+
+1. Run the four tests one at a time (`-p:RuntimeCell=SurfaceWinUI`, or `dotnet run` with `-method`), fix what the first run
+   exposes, then run the cell. Prerequisites: the add-in built with `-p:SkipWinUIHotReloadTap=true` (stop the IDE first), the
+   Windows App Runtime installed, a short `OD_SURFACE_ROOT`.
+2. **Fallback test (missing).** Prove that with `OD_WINUI_RUNTIME=surface` and no `SurfaceHost/` payload (or a project the
+   bootstrap declines) the designer reports the bootstrap's reason and renders nothing, and that `OD_WINUI_RUNTIME=microsoft`
+   and an Options value of `microsoft` still select the Microsoft host. Note the code today does **not** silently fall back
+   to the Microsoft host when the Surface payload is present but provisioning fails (section 2: "no surface is started");
+   the Options text ("falls back automatically") only holds for an undeployed payload or a declined project. Decide which
+   behaviour is intended, then fix the text or the code.
+3. **Default-selection unit test: done on macOS.** The resolution is now the pure `WinUIRuntimeSelection.Resolve` (environment, then stored `WinUIXamlDesigner.Runtime`, then `surface`; blank ignored; unrecognised reported and replaced by the default), source-linked into `OpenDevelop.Base.Tests` and covered by `WinUIRuntimeSelectionTests` (13 cases, passing). The add-in project itself builds (`-p:SkipWinUIHotReloadTap=true`), so `RegisterDevFlowActionsCommand` and the Options page compile; neither has run.
+4. **Default-on regressions.** With the default now `surface`, run the existing `Runtime=MicrosoftWinUI` and `Runtime=Uno`
+   cells once each. The Microsoft cell pins `microsoft` through the environment so it is unaffected, but `Uno` and every
+   test that opens the WinUI sample without a pin (`AddInTests` methods that call `OpenWinUIDesignerAsync`) now route
+   through whatever is the default. Also run the Options page by hand (selected value shows, persists, restart applies).
+5. **CI.** Promote `surfacehost-tests` from `observe` after two green runner runs (it has never run on one); add the
+   `SurfaceWinUI` cell as a lane entry once the Windows App Runtime install step (`windowsappruntimeinstall-x64.exe --quiet
+   --force`) is in the runner setup, with `observe` first.
+6. **Known functional gaps to cover or document:** `PickAt` finds nothing in frame mode (only native mode); native mode
+   answers `UpdateXaml` with `Hwnd`, not a frame; a machine without the Windows App Runtime (the `0x80670016` message is tested
+   with a fake surface only); the missing-Uno-style gesture journeys (drag toolbox item, resize handle) that the Microsoft and Uno
+   cells have and Surface has only manually (section 6).
+7. **Do not call the Surface "the default" in user-facing text** until 1, 2 and 4 pass: the Options label says "Experimental
+   Surface host (recommended)".

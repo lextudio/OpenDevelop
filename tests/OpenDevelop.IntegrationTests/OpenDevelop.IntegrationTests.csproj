@@ -372,7 +372,7 @@
        [Trait("OptIn", "true")] skip by design unless an environment variable asks for them (for example the full
        WPF Gallery sweep) and are left out of a cell's run, so they neither count nor fail it. -->
   <PropertyGroup>
-    <RuntimeCellsOnThisOS Condition="$([MSBuild]::IsOSPlatform('Windows'))">LibreWpf;MicrosoftWpf;LibreWinForms;MicrosoftWinForms;MicrosoftWinUI;Uno</RuntimeCellsOnThisOS>
+    <RuntimeCellsOnThisOS Condition="$([MSBuild]::IsOSPlatform('Windows'))">LibreWpf;MicrosoftWpf;LibreWinForms;MicrosoftWinForms;MicrosoftWinUI;SurfaceWinUI;Uno</RuntimeCellsOnThisOS>
     <RuntimeCellsOnThisOS Condition="$([MSBuild]::IsOSPlatform('OSX'))">LibreWpf;LibreWinForms;Uno</RuntimeCellsOnThisOS>
     <_RuntimeCellBuild Condition="'$(NoBuild)' != 'true'">Build</_RuntimeCellBuild>
   </PropertyGroup>
@@ -387,6 +387,7 @@
       <_CellEnv Condition="'$(RuntimeCell)' == 'MicrosoftWpf'">OD_WPF_RUNTIME=microsoft</_CellEnv>
       <_CellEnv Condition="'$(RuntimeCell)' == 'MicrosoftWinForms'">OD_FORMS_RUNTIME=microsoft</_CellEnv>
       <_CellEnv Condition="'$(RuntimeCell)' == 'MicrosoftWinUI'">OD_WINUI_RUNTIME=microsoft</_CellEnv>
+      <_CellEnv Condition="'$(RuntimeCell)' == 'SurfaceWinUI'">OD_WINUI_RUNTIME=surface</_CellEnv>
       <_CellEnv Condition="'$(RuntimeCell)' == 'Uno'">OD_WINUI_RUNTIME=uno</_CellEnv>
       <_CellFailSkips Condition="'$(RuntimeCellAllowSkips)' != 'true'">-failSkips</_CellFailSkips>
     </PropertyGroup>

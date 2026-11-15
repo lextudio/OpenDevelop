@@ -79,6 +79,7 @@ cover is:
 | LibreWinForms | yes | yes | `UseMicrosoftDesktopRuntime=false`, or `LibreWPF.Sdk`/`LibreWinForms.Sdk` |
 | Microsoft WinForms | yes | no | `UseMicrosoftDesktopRuntime=true`, or a `-windows` TFM |
 | Microsoft WinUI | yes | no | `UseWinUI` (Windows App SDK) project, and `OD_WINUI_RUNTIME=microsoft` |
+| WinUI Surface host | yes (not run yet) | no | `UseWinUI` project, and `OD_WINUI_RUNTIME=surface`; cell `SurfaceWinUI` (see [winui-designer-plan.md](winui-designer-plan.md) section 7) |
 | Uno Platform | yes | yes | `Uno.Sdk` / `Uno.WinUI` project |
 
 A cell is a runtime, not an OS. An OS is a column: a test that runs on Windows has not thereby run against Microsoft

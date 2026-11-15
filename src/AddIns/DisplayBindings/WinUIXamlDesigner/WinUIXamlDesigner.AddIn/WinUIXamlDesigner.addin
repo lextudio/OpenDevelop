@@ -23,4 +23,9 @@
     <Class id="ICSharpCode.WinUIXamlDesigner.RegisterDevFlowActionsCommand" class="ICSharpCode.WinUIXamlDesigner.RegisterDevFlowActionsCommand" />
     <Class id="ICSharpCode.WinUIXamlDesigner.RegisterXamlLanguageServersCommand" class="ICSharpCode.WinUIXamlDesigner.RegisterXamlLanguageServersCommand" />
   </Path>
+  <Path name="/SharpDevelop/Dialogs/OptionsDialog/UIOptions">
+    <OptionPanel id="WinUIXamlDesignerOptions"
+                 label="Experimental Features"
+                 class="ICSharpCode.WinUIXamlDesigner.WinUIXamlDesignerOptions" />
+  </Path>
 </AddIn>
