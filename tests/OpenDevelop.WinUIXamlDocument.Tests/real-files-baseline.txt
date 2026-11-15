@@ -4,6 +4,7 @@ tests/fixtures/WinUIDesignerFixture/MicrosoftHost/AttachedPropertyPage.xaml	Attr
 tests/fixtures/WinUIDesignerFixture/MicrosoftHost/CrashProbePage.xaml	AttributeWhitespace
 tests/fixtures/WinUIDesignerFixture/MicrosoftHost/MainPage.xaml	AttributeWhitespace
 tests/fixtures/WinUIDesignerFixture/Microsoft/App.xaml	AttributeWhitespace
+tests/fixtures/WinUIDesignerFixture/Microsoft/BoundPage.xaml	AttributeWhitespace
 tests/fixtures/WinUIDesignerFixture/Microsoft/DropPage.xaml	AttributeWhitespace
 tests/fixtures/WinUIDesignerFixture/Microsoft/MainPage.xaml	AttributeWhitespace
 tests/fixtures/WinUIDesignerFixture/Uno/App.xaml	AttributeWhitespace

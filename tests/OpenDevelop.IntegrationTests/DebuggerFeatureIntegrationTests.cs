@@ -278,7 +278,10 @@ public sealed class DebuggerFeatureIntegrationTests
             // An adapter that decompiles by itself would have returned its virtual decompiled/... path here
             Assert.True(resolvedFile.ValueKind == JsonValueKind.Null || string.IsNullOrEmpty(resolvedFile.GetString()), opened.ToString());
             var document = opened.GetProperty("activeDocument").GetString()!;
-            Assert.Equal(program, document);
+			// The test runner and the unpacked IDE workspace may live on different Windows drives.
+			// The active source must still be the ordinary DebugTestApp Program.cs, not a virtual
+			// decompiled document; its absolute checkout prefix is intentionally not an invariant.
+			Assert.EndsWith("/tests/fixtures/DebugTestApp/Program.cs", Normalize(document), StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("ilspy:", document, StringComparison.OrdinalIgnoreCase);
         }
         finally
@@ -588,8 +591,15 @@ public sealed class DebuggerFeatureIntegrationTests
             Assert.False(await HasBreakpointAsync());
 
             var (x, y) = await GutterPointAsync();
-            var clicked = await _app.ClickPointerAsync(x, y);
-            Assert.True(clicked.GetProperty("ok").GetBoolean(), clicked.ToString());
+			var reset = await _app.InvokeAsync("od.pointer-events", true);
+			Assert.True(reset.GetProperty("success").GetBoolean(), reset.ToString());
+			var pressed = await _app.PressPointerAsync(x, y);
+			Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+			var delivery = await _app.InvokeAsync("od.pointer-events", false);
+			Assert.True(delivery.GetProperty("count").GetInt32() > 0,
+				$"The Icon Bar press at ({x},{y}) never reached the main window: {delivery}");
+			var released = await _app.ReleasePointerAsync(x, y);
+			Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(HasBreakpointAsync, TimeSpan.FromSeconds(10)),
                 $"A click on the empty Icon Bar at line {line} ({x},{y}) did not add a breakpoint.");
 
@@ -599,8 +609,10 @@ public sealed class DebuggerFeatureIntegrationTests
             await Task.Delay(TimeSpan.FromSeconds(1));
 
             (x, y) = await GutterPointAsync();
-            clicked = await _app.ClickPointerAsync(x, y);
-            Assert.True(clicked.GetProperty("ok").GetBoolean(), clicked.ToString());
+			pressed = await _app.PressPointerAsync(x, y);
+			Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+			released = await _app.ReleasePointerAsync(x, y);
+			Assert.True(released.GetProperty("ok").GetBoolean(), released.ToString());
             Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => !await HasBreakpointAsync(), TimeSpan.FromSeconds(10)),
                 $"A second click on the Icon Bar at line {line} did not remove the breakpoint.");
         }

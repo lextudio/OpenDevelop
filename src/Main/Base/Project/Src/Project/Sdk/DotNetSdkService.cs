@@ -59,13 +59,13 @@ namespace ICSharpCode.SharpDevelop.Project.Sdk
 
 		/// <summary>
 		/// The highest SDK major automatic discovery accepts from the bundled, PATH-default and
-		/// well-known system roots. This IDE and the projects it opens target .NET 10, so a newer
-		/// major (currently .NET 11) is an explicit choice: the user adds its root under
+		/// well-known system roots. This IDE and the projects it opens target .NET 11, so a newer
+		/// major is an explicit choice: the user adds its root under
 		/// Tools &gt; Options &gt; .NET SDK with Add Custom Path, and only a Custom root is
 		/// described with every version it holds. Bump this when the IDE itself moves to a newer
 		/// target framework (and update the DotNetSdk.Description resource, which names the cut-off).
 		/// </summary>
-		public const int HighestAutomaticallyDiscoveredSdkMajor = 10;
+		public const int HighestAutomaticallyDiscoveredSdkMajor = 11;
 
 		public static string SelectedSdkRootPath {
 			get { return PropertyService.Get(SelectedSdkRootPathKey, string.Empty); }

@@ -48,7 +48,7 @@ static class GtkCustomWidgetLoader
 	static Loaded Load(string path, DateTime written)
 	{
 		try {
-			var assembly = new Context(path).LoadFromAssemblyPath(path);
+			var assembly = new Context(path).LoadProjectAssembly(path);
 			Type[] types;
 			try { types = assembly.GetTypes(); }
 			catch (ReflectionTypeLoadException ex) { types = ex.Types.Where(t => t != null).ToArray()!; }
@@ -81,7 +81,18 @@ static class GtkCustomWidgetLoader
 		{
 			try { Default.LoadFromAssemblyName(name); return null; } catch (FileNotFoundException) { }
 			var resolved = resolver.ResolveAssemblyToPath(name);
-			return resolved == null ? null : LoadFromAssemblyPath(resolved);
+			return resolved == null ? null : LoadProjectAssembly(resolved);
+		}
+
+		// Loading from a path leaves the DLL mapped on Windows for the life of this disposable
+		// process.  The IDE watches a declared project assembly specifically so a save/build can
+		// replace that process and preview the new widget; holding the old output open makes the
+		// build fail before that watcher can act.  A stream load keeps the assembly independent of
+		// the project's output file while retaining AssemblyDependencyResolver for its closure.
+		public Assembly LoadProjectAssembly(string path)
+		{
+			using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+			return LoadFromStream(stream);
 		}
 
 		/// <summary>Project widgets commonly P/Invoke their own native helper. AssemblyDependencyResolver

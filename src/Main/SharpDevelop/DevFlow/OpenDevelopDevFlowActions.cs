@@ -102,8 +102,8 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return "{\"closed\":true}";
 		}
 
-		[DevFlowAction("od.new-solution-dialog.create", Description = "Fill and submit the WPF New Solution dialog for end-to-end integration testing")]
-		public static string CreateNewSolutionFromDialog(string templateSearch, string projectName, string location, string solutionName)
+		[DevFlowAction("od.new-solution-dialog.create", Description = "Fill and submit the WPF New Solution dialog, optionally choosing its Framework template option, for end-to-end integration testing")]
+		public static string CreateNewSolutionFromDialog(string templateSearch, string projectName, string location, string solutionName, string? framework = null)
 		{
 			var dialog = System.Windows.Application.Current.Windows.OfType<Templates.NewProjectWindow>().FirstOrDefault();
 			if (dialog is null)
@@ -114,6 +114,8 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			RequireDialogControl<TextBox>(dialog, "SolutionNameBox").Text = solutionName;
 			RequireDialogControl<CheckBox>(dialog, "CreateSolutionDirectoryBox").IsChecked = true;
 			SelectFirstMatchingTemplate(dialog, templateSearch);
+			if (!string.IsNullOrWhiteSpace(framework))
+				SelectTemplateChoice(dialog, "Framework", framework);
 			var create = RequireDialogControl<Button>(dialog, "CreateButton");
 			if (!create.IsEnabled)
 				return "{\"submitted\":false,\"error\":\"Create button is disabled\"}";
@@ -147,6 +149,18 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			if (templates.Items.Count == 0)
 				throw new InvalidOperationException($"No template matched '{templateSearch}'.");
 			templates.SelectedItem = templates.Items[0];
+		}
+
+		static void SelectTemplateChoice(Window dialog, string optionName, string value)
+		{
+			var options = RequireDialogControl<StackPanel>(dialog, "TemplateOptionsPanel");
+			var choice = FindLogicalDescendants<ComboBox>(options).FirstOrDefault(combo =>
+				string.Equals(combo.Tag as string, optionName, StringComparison.OrdinalIgnoreCase));
+			if (choice is null)
+				throw new InvalidOperationException($"The selected template does not expose a '{optionName}' choice.");
+			choice.SelectedValue = value;
+			if (!string.Equals(choice.SelectedValue as string, value, StringComparison.OrdinalIgnoreCase))
+				throw new InvalidOperationException($"The selected template does not offer '{value}' for '{optionName}'.");
 		}
 
 		[DevFlowAction("od.new-template-dialog.status", Description = "Report template loading state for New Project/New File dialog integration tests")]

@@ -127,6 +127,20 @@ jobs:
         run: bash .github/ci/install-linux-prerequisites.sh --reclaim-disk
       - uses: actions/setup-dotnet@v6
         with:
+          # Product hosts and new templates use the pinned net11 SDK, but the integration
+          # fixtures deliberately retain net10 to prove existing customer projects still work.
+          # Keep its targeting packs and runtime available on every build/test architecture.
+          dotnet-version: 10.0.x
+          architecture: ${{ matrix.dotnet_architecture }}
+      - name: Install .NET 10 x86 compatibility runtime
+        if: startsWith(matrix.name, 'windows-')
+        uses: actions/setup-dotnet@v6
+        with:
+          # The debugger suite launches an x86 net10 fixture on both Windows architectures.
+          dotnet-version: 10.0.x
+          architecture: x86
+      - uses: actions/setup-dotnet@v6
+        with:
           global-json-file: global.json
           architecture: ${{ matrix.dotnet_architecture }}
       - name: Compile everything the enabled entries need, once
@@ -207,6 +221,18 @@ jobs:
       - name: Unpack the workspace built by the build job
         shell: pwsh
         run: ./.github/ci/package-workspace.ps1 -Extract -Directory '${{ runner.temp }}/archive'
+      - uses: actions/setup-dotnet@v6
+        with:
+          # Match the build job: net10 is a fixture compatibility contract, not the SDK
+          # hosting OpenDevelop itself (which remains pinned by global.json below).
+          dotnet-version: 10.0.x
+          architecture: ${{ matrix.dotnet_architecture }}
+      - name: Install .NET 10 x86 compatibility runtime
+        if: startsWith(matrix.platform, 'windows-')
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+          architecture: x86
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json

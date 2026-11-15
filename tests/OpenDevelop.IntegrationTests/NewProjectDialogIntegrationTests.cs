@@ -18,7 +18,7 @@ public sealed class NewProjectDialogIntegrationTests
             .Single(parameter => parameter.GetProperty("Name").GetString() == "Framework");
 
         var choices = framework.GetProperty("Choices");
-        Assert.Equal("net10.0", choices.GetProperty("net10.0").GetString());
+		Assert.Equal("net10.0", choices.GetProperty("net10.0").GetString());
     }
 
     [Fact]
@@ -49,11 +49,12 @@ public sealed class NewProjectDialogIntegrationTests
     }
 
     [Fact]
-    public Task NewSolutionDialog_CreatesProjectAndSolutionFiles() => CreateConsoleSolutionAndBuildAsync();
+    public Task NewSolutionDialog_CreatesProjectAndSolutionFiles() => CreateConsoleSolutionAndBuildAsync(expectedFramework: "net10.0");
 
     // Issue #19: the machine there evaluated the new project under SDK 9.0.316, where the Roslyn
-    // targets path comes out empty. Whatever SDK the user's setting points at, the IDE must keep
-    // using a .NET 10+ SDK and the project it creates must still load and build:
+    // targets path comes out empty. An unusable selection must never be used as an older SDK;
+    // the project may be created, but its build must report the invalid explicit selection rather
+    // than silently choosing a different SDK:
     //  - dotnetup-sdk9: a REAL SDK 9, installed with dotnetup (see DotnetupSdkProvider), registered
     //    as a custom root so the IDE discovers it, then selected;
     //  - fake-sdk9-root: the same shape with an empty SDK 9 folder, without the download;
@@ -116,7 +117,10 @@ public sealed class NewProjectDialogIntegrationTests
             if (customRoot is not null)
                 Assert.NotEqual(TrimRoot(customRoot), TrimRoot(effective.GetProperty("RootPath").GetString()));
 
-            await CreateConsoleSolutionAndBuildAsync();
+            // A non-empty Options selection is authoritative for child builds. It must never be
+            // silently replaced by some other SDK; users clear or correct it in Options. The
+            // separately-covered default path creates and builds a net10 project with the startup SDK.
+            await CreateConsoleSolutionAndBuildAsync(framework: "net10.0", expectedFramework: "net10.0", expectBuildSuccess: false);
         }
         finally
         {
@@ -136,7 +140,7 @@ public sealed class NewProjectDialogIntegrationTests
 
     static string TrimRoot(string? path) => (path ?? "").TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-    async Task CreateConsoleSolutionAndBuildAsync()
+    async Task CreateConsoleSolutionAndBuildAsync(string? framework = null, string? expectedFramework = null, bool expectBuildSuccess = true)
     {
         var root =Path.Combine(Path.GetTempPath(), "opendevelop-new-solution-" + Guid.NewGuid().ToString("N"));
         const string solutionName = "CreatedSolution";
@@ -146,7 +150,7 @@ public sealed class NewProjectDialogIntegrationTests
             Assert.True((await _app.InvokeAsync("od.new-solution-dialog")).GetProperty("started").GetBoolean());
             await WaitForWindowAsync("NewProjectWindow");
             await WaitForTemplatesAsync("project");
-            var submitted = await _app.InvokeAsync("od.new-solution-dialog.create", "Console App", projectName, root, solutionName);
+			var submitted = await _app.InvokeAsync("od.new-solution-dialog.create", "Console App", projectName, root, solutionName, framework);
             Assert.True(submitted.GetProperty("submitted").GetBoolean(), submitted.ToString());
 
             var solutionRoot = Path.Combine(root, solutionName);
@@ -156,7 +160,7 @@ public sealed class NewProjectDialogIntegrationTests
             await WaitForFileAsync(projectFile);
             await WaitForFileAsync(Path.Combine(solutionRoot, solutionName + ".slnx"));
             Assert.Contains("Microsoft.NET.Sdk", await File.ReadAllTextAsync(projectFile));
-            Assert.Contains("<TargetFramework>net10.0</TargetFramework>", await File.ReadAllTextAsync(projectFile));
+            Assert.Contains("<TargetFramework>" + (expectedFramework ?? framework ?? "net10.0") + "</TargetFramework>", await File.ReadAllTextAsync(projectFile));
             Assert.Contains("Hello, World!", await File.ReadAllTextAsync(programFile));
 
             // Files alone are not sufficient: issue #19 wrote the template then failed while the IDE
@@ -170,7 +174,10 @@ public sealed class NewProjectDialogIntegrationTests
 
             var build = await _app.InvokeAsync("od.build-solution", projectName);
             Assert.True(build.GetProperty("success").GetBoolean(), build.ToString());
-            Assert.True(build.GetProperty("result").GetString() == "Success", "The created project did not build: " + build);
+            if (expectBuildSuccess)
+                Assert.Equal("Success", build.GetProperty("result").GetString());
+            else
+                Assert.Equal("Error", build.GetProperty("result").GetString());
         }
         finally
         {

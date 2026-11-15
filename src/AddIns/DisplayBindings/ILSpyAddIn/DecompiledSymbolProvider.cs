@@ -73,7 +73,11 @@ namespace ICSharpCode.ILSpyAddIn
 					string root = CacheRoot;
 					task = Task.Run(() => Generate(root, assemblyPath, mvid, progress));
 					inFlight[moduleDirectory] = task;
-					task.ContinueWith(t => { lock (inFlightLock) inFlight.Remove(moduleDirectory); }, TaskScheduler.Default);
+				// A caller can await the completed generation before a queued continuation removes it.
+				// In that tiny window the next debugger stop reuses the completed task and loses one
+				// retry.  Run the bookkeeping as part of completion so each failed request consumes one
+				// of the documented bounded attempts.
+				task.ContinueWith(t => { lock (inFlightLock) inFlight.Remove(moduleDirectory); }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 				}
 			}
 			return task.WaitAsync(cancellationToken);
