@@ -2100,7 +2100,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 				var expression = plan.Expression;
 				var open = expression.IndexOf('(');
 				if (open < 0) return TemplateMember(context, expression);
-				if (!expression.EndsWith(')', StringComparison.Ordinal)) return null;
+				// string.EndsWith(char, StringComparison) exists only on net11; this file is also compiled for net9 and net10 by the Microsoft host.
+				if (!expression.EndsWith(")", StringComparison.Ordinal)) return null;
 				var args = SplitTemplateArguments(expression[(open + 1)..^1]).Select(a => TemplateArgument(context, a)).ToArray();
 				var (receiver, methodName, flags) = ResolveTemplateFunctionTarget(context, plan.StaticType, expression[..open]);
 				if (receiver == null || methodName == null) return null;
