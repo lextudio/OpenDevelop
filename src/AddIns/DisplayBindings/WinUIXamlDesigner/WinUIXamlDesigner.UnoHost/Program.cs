@@ -29,10 +29,17 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			var appBin = HostBootstrap.ParseArgument(args, "--appbin");
 			HostBootstrap.PreloadProjectAssemblies(appBin);
 			HostApp.LaunchArgs = args;
-			var host = UnoPlatformHostBuilder.Create()
-				.App(() => new HostApp())
-				.UseMacOS()
-				.Build();
+			// Uno 7 needs an explicit platform host. The desktop head ships the Skia hosts for all three desktop OSes, so pick the one for
+			// the OS this child runs on; naming only macOS made the child exit at start-up everywhere else ("No platform host could be
+			// selected") and the Uno designer never rendered on Windows or Linux.
+			var builder = UnoPlatformHostBuilder.Create().App(() => new HostApp());
+			if (OperatingSystem.IsWindows())
+				builder = builder.UseWin32();
+			else if (OperatingSystem.IsMacOS())
+				builder = builder.UseMacOS();
+			else
+				builder = builder.UseX11();
+			var host = builder.Build();
 			host.Run();
 			return 0;
 		}
