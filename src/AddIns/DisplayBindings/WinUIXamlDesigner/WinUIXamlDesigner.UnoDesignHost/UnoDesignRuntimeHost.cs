@@ -594,7 +594,9 @@ sealed partial class UnoDesignRuntimeHost : IWinUIXamlRuntimeHost, IWinUIXamlSel
 				var launch = await childLaunchProvider(documentFileName, SetStatus, CancellationToken.None);
 				if (launch.Arguments == null)
 				{
-					SetStatus(launch.Error ?? (hostDisplayName + " cannot start."));
+					// A host that is deployed but cannot start is reported, not silently replaced: say so, and how to choose the other one.
+					SetStatus((launch.Error ?? (hostDisplayName + " cannot start."))
+						+ " The Microsoft WinUI host is not used instead automatically; choose it in Tools > Options > Experimental Features.");
 					return;
 				}
 				extraArguments = launch.Arguments;

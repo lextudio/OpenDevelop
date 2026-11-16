@@ -32,6 +32,38 @@ public sealed class WinUIRuntimeSelectionTests
         Assert.Equal(reported, unrecognized);
     }
 
+    [Fact]
+    public void Surface_RegistersNoMicrosoftHost_SoThereIsNoFallbackFromSurfaceToMicrosoft()
+    {
+        var hosts = WinUIRuntimeSelection.HostsToRegister("surface");
+
+        Assert.DoesNotContain("microsoft", hosts);
+        Assert.Equal("surface", hosts[^1]);   // the last registered is tried first
+        Assert.Contains("uno", hosts);        // Uno projects keep their own host: it only accepts Uno documents
+    }
+
+    [Theory]
+    [InlineData("microsoft", "microsoft")]
+    [InlineData("uno", "uno")]
+    public void NonSurfaceSelections_NeverRegisterTheSurfaceHost(string selection, string expectedLast)
+    {
+        var hosts = WinUIRuntimeSelection.HostsToRegister(selection);
+
+        Assert.DoesNotContain("surface", hosts);
+        Assert.Equal(expectedLast, hosts[^1]);
+    }
+
+    [Theory]
+    [InlineData("surface")]
+    [InlineData("microsoft")]
+    [InlineData("uno")]
+    public void EverySelection_RegistersEachHostAtMostOnce_AndOnlyKnownOnes(string selection)
+    {
+        var hosts = WinUIRuntimeSelection.HostsToRegister(selection);
+
+        Assert.Equal(hosts.Length, hosts.Distinct().Count());
+        Assert.All(hosts, host => Assert.Contains(host, new[] { "uno", "microsoft", "surface" }));
+    }
     [Theory]
     [InlineData(null, "surface")]
     [InlineData("surface", "surface")]

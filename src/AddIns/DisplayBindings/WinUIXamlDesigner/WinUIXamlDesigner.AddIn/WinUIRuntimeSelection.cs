@@ -28,6 +28,19 @@ public static class WinUIRuntimeSelection
 		return DefaultRuntime;
 	}
 
+	/// <summary>
+	/// The host families to register for a selection, in registration order (the registry tries the last one first and a family only accepts
+	/// documents of its own runtime kind, so <c>uno</c> never takes a Microsoft WinUI project and the other two never take an Uno one).
+	/// <c>surface</c> deliberately does not include <c>microsoft</c>: there is no fallback from the Surface host to another host. When the
+	/// Surface host cannot be used (files not deployed, provisioning failed) the designer reports why and renders nothing; the Microsoft
+	/// host is used only when it is selected.
+	/// </summary>
+	public static string[] HostsToRegister(string selection) => selection switch {
+		"surface" => new[] { "uno", "surface" },
+		"uno" => new[] { "microsoft", "uno" },
+		_ => new[] { "uno", "microsoft" },
+	};
+
 	/// <summary>The Options page offers only <c>surface</c> and <c>microsoft</c>; a stored value it cannot show (<c>uno</c>,
 	/// or anything unrecognised) is displayed as the default.</summary>
 	public static string ToOptionsChoice(string? stored)

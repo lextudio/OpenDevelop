@@ -30,11 +30,24 @@ internal sealed class IsolatedIde : IDisposable
         get { lock (_output) return _output.ToString(); }
     }
 
-    public static async Task<IsolatedIde> StartAsync(string configDir)
+    public static Task<IsolatedIde> StartAsync(string configDir) => StartAsync(configDir, new Dictionary<string, string?>());
+
+    /// <summary>
+    /// Starts an IDE with the given environment on top of this process's: a value sets the variable, null removes it (so a test is not
+    /// steered by an <c>OD_WINUI_RUNTIME</c> the outer runner happens to carry).
+    /// </summary>
+    public static async Task<IsolatedIde> StartAsync(string configDir, IReadOnlyDictionary<string, string?> environment)
     {
         string dll = ResolveIdeDll();
         int port = FreePort();
         var psi = CreateStartInfo(dll, configDir, port);
+        foreach (var pair in environment)
+        {
+            if (pair.Value is null)
+                psi.Environment.Remove(pair.Key);
+            else
+                psi.Environment[pair.Key] = pair.Value;
+        }
 
         var process = Process.Start(psi) ?? throw new InvalidOperationException("Could not start " + dll);
         var ide = new IsolatedIde(process, port);

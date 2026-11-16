@@ -25,8 +25,8 @@ public sealed class RegisterDevFlowActionsCommand : AbstractCommand
 	/// <summary>The persisted counterpart of <see cref="RuntimeSelectionVariable"/> (a string property: <c>uno</c>, <c>microsoft</c> or
 	/// <c>surface</c>), used when the variable is not set.</summary>
 	public const string RuntimePreferenceProperty = "WinUIXamlDesigner.Runtime";
-	/// <summary>The Microsoft WinUI default. Surface declines unavailable payloads and non-Microsoft
-	/// projects, so the legacy Microsoft child remains the automatic compatibility fallback.</summary>
+	/// <summary>The Microsoft WinUI default. There is no fallback from the Surface host to another host: when it cannot be used the designer
+	/// reports why (see <see cref="WinUIRuntimeSelection.HostsToRegister"/>).</summary>
 	public const string DefaultRuntimePreference = WinUIRuntimeSelection.DefaultRuntime;
 
 	const string UnoBootstrap =
@@ -49,29 +49,17 @@ public sealed class RegisterDevFlowActionsCommand : AbstractCommand
 				$"Ignoring unrecognized {RuntimeSelectionVariable}='{unrecognized}' (expected 'microsoft', 'surface' or 'uno'); using '{selection}'.");
 		}
 
-		// The upstream WinUI Surface is the default renderer for Windows App SDK projects. Registered last so it is
-		// tried first; it declines other runtime families and any machine where its payload is not deployed, and the
-		// Microsoft child stays registered behind it.
-		if (string.Equals(selection, "surface", StringComparison.OrdinalIgnoreCase)) {
-			Register(UnoBootstrap);
-			Register(MicrosoftWinUIBootstrap);
-			Register(SurfaceBootstrap);
-			return;
+		// Each factory accepts only documents of its own runtime family (Uno projects the Uno host, Microsoft WinUI projects the Surface or the
+		// Microsoft host), so a process-wide preference can never route an Uno project to a Microsoft host. Which hosts are registered, and in
+		// what order, is WinUIRuntimeSelection.HostsToRegister: the default (surface) registers no Microsoft host, so a Surface host that
+		// cannot be used is reported, never silently replaced.
+		foreach (var host in WinUIRuntimeSelection.HostsToRegister(selection.ToLowerInvariant())) {
+			Register(host switch {
+				"surface" => SurfaceBootstrap,
+				"microsoft" => MicrosoftWinUIBootstrap,
+				_ => UnoBootstrap
+			});
 		}
-
-		// The preference only orders compatible implementations. Both factories remain
-		// registered so documents from another runtime family retain their correct host.
-		if (string.Equals(selection, "uno", StringComparison.OrdinalIgnoreCase)) {
-			Register(MicrosoftWinUIBootstrap);
-			Register(UnoBootstrap);
-			return;
-		}
-
-		// Always register every runtime family. Each factory declines projects outside its
-		// evaluated runtime family, so a process-wide test/debug preference can never route an
-		// Uno project to the Microsoft child (or a Microsoft WinUI project to Uno).
-		Register(UnoBootstrap);
-		Register(MicrosoftWinUIBootstrap);
 	}
 
 	static void Register(string bootstrapTypeName)
@@ -102,7 +90,7 @@ public sealed class WinUIXamlDesignerOptions : OptionPanel
 	{
 		runtime.ItemsSource = new[] {
 			new RuntimeOption(Surface, "Experimental Surface host (recommended)"),
-			new RuntimeOption(Microsoft, "Microsoft WinUI host (compatibility fallback)")
+			new RuntimeOption(Microsoft, "Microsoft WinUI host (legacy)")
 		};
 		var selected = PropertyService.Get(RegisterDevFlowActionsCommand.RuntimePreferenceProperty,
 			RegisterDevFlowActionsCommand.DefaultRuntimePreference)?.Trim();
@@ -116,7 +104,8 @@ public sealed class WinUIXamlDesignerOptions : OptionPanel
 		panel.Children.Add(runtime);
 		panel.Children.Add(new TextBlock {
 			Text = "The Surface host is experimental and uses a version-matched WinAppVSCE previewer. "
-				+ "If it is unavailable, OpenDevelop automatically falls back to the Microsoft host. "
+				+ "If the Surface host cannot be used (its files are not installed, or it fails to start), the designer reports the error; "
+				+ "OpenDevelop never switches to the Microsoft host by itself. Choose the Microsoft host here to use it. "
 				+ "Restart OpenDevelop after changing this setting. OD_WINUI_RUNTIME overrides it for tests and diagnostics.",
 			TextWrapping = TextWrapping.Wrap,
 			MaxWidth = 560,

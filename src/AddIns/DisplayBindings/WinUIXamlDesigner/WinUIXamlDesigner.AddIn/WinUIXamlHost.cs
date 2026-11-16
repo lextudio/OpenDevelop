@@ -525,7 +525,7 @@ public sealed class WinUIXamlHost : ContentControl, IDisposable
 	public bool IsUnavailable { get; }
 
 	public string StatusText => runtime?.StatusText ?? (!XamlFrameworkDetector.IsRuntimeSupportedOnThisOS(Framework.Runtime) ? UnsupportedOnThisOSText : null) ?? Framework.Runtime switch {
-		XamlRuntimeKind.MicrosoftWinUI => "WinUI 3 runtime host is not installed.",
+		XamlRuntimeKind.MicrosoftWinUI => "WinUI 3 runtime host is not installed." + WinUIXamlRuntimeHostRegistry.DescribeUnavailable(Framework),
 		XamlRuntimeKind.Uno => "Uno runtime host is not installed. The WPF XamlReader compatibility renderer is disabled.",
 		_ => "No WinUI/Uno runtime host is available for this document."
 	};
@@ -1042,9 +1042,32 @@ public static class WinUIXamlRuntimeHostRegistry
 	/// a factory that declines (returns null - e.g. the out-of-process Uno host when its child
 	/// binary is missing) falls through to the previous one; when none accepts, the document has no runtime host.
 	/// </summary>
-	public static void Register(Func<XamlFrameworkContext, string, IWinUIXamlRuntimeHost> runtimeFactory)
+	/// <param name="unavailableReason">Optional: why this factory declined a document (for example its files are not deployed),
+	/// or null when it did not decline for a reason worth showing. Used only to explain "no host" to the user.</param>
+	public static void Register(Func<XamlFrameworkContext, string, IWinUIXamlRuntimeHost> runtimeFactory,
+		Func<XamlFrameworkContext, string> unavailableReason = null)
 	{
 		factories.Add(runtimeFactory ?? throw new ArgumentNullException(nameof(runtimeFactory)));
+		if (unavailableReason != null)
+			unavailableReasons.Add(unavailableReason);
+	}
+
+	static readonly List<Func<XamlFrameworkContext, string>> unavailableReasons = new();
+
+	/// <summary>
+	/// The reasons the registered factories gave for declining <paramref name="framework"/>, each as a sentence led by a space, or ""
+	/// when none gave one. Only factories that were registered contribute, so a pinned runtime never blames a host it did not enable.
+	/// </summary>
+	internal static string DescribeUnavailable(XamlFrameworkContext framework)
+	{
+		var reasons = new System.Text.StringBuilder();
+		foreach (var reason in unavailableReasons) {
+			string text;
+			try { text = reason(framework); } catch (Exception) { text = null; }
+			if (!string.IsNullOrWhiteSpace(text))
+				reasons.Append(' ').Append(text.Trim());
+		}
+		return reasons.ToString();
 	}
 
 	internal static IWinUIXamlRuntimeHost Create(XamlFrameworkContext framework, string documentFileName)

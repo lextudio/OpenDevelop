@@ -33,14 +33,28 @@ public static class SurfaceDesignRuntimeHostBootstrap
 	const string DisplayName = "WinUI Surface host";
 	const string OutputChannel = "WinUI Designer";
 
-	public static void Register() => WinUIXamlRuntimeHostRegistry.Register(Create);
+	public static void Register() => WinUIXamlRuntimeHostRegistry.Register(Create, UnavailableReason);
+
+	/// <summary>Why <see cref="Create"/> declines a Microsoft WinUI document, for the designer's "no host" text; null otherwise.</summary>
+	static string? UnavailableReason(XamlFrameworkContext framework)
+	{
+		if (framework?.Runtime != XamlRuntimeKind.MicrosoftWinUI)
+			return null;
+		if (!OperatingSystem.IsWindows())
+			return "The Surface host runs on Windows only.";
+		return Locate() == null ? "The Surface host's files (the SurfaceHost folder beside the add-in) are not deployed with this installation." : null;
+	}
 
 	/// <summary>The deployed child and payload (<c>SurfaceHost\</c> next to this assembly), or null when not deployed.</summary>
 	static (string ChildDll, string HostSdk)? Locate()
 	{
 		var directory = Path.GetDirectoryName(typeof(SurfaceDesignRuntimeHostBootstrap).Assembly.Location);
 		if (string.IsNullOrEmpty(directory)) return null;
-		var root = Path.Combine(directory, "SurfaceHost");
+		// OD_SURFACE_HOST_ROOT names the SurfaceHost folder itself. It exists so a test can simulate an installation without the payload
+		// (point it at an empty folder); nothing else sets it.
+		var root = Environment.GetEnvironmentVariable("OD_SURFACE_HOST_ROOT") is { Length: > 0 } overridden
+			? overridden
+			: Path.Combine(directory, "SurfaceHost");
 		var child = Path.Combine(root, "WinUIXamlDesigner.SurfaceHost.Child.dll");
 		var hostSdk = Path.Combine(root, "SurfacePayload", "HostSDK");
 		return File.Exists(child) && File.Exists(Path.Combine(hostSdk, "engine.stamp")) ? (child, hostSdk) : null;

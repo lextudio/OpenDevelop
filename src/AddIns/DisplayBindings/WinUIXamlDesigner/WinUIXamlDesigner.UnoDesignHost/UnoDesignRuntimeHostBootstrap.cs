@@ -30,7 +30,13 @@ public static class UnoDesignRuntimeHostBootstrap
 /// </summary>
 public static class MicrosoftWinUIDesignRuntimeHostBootstrap
 {
-	public static void Register() => WinUIXamlRuntimeHostRegistry.Register(Create);
+	public static void Register() => WinUIXamlRuntimeHostRegistry.Register(Create, UnavailableReason);
+
+	/// <summary>Why <see cref="Create"/> declines a Microsoft WinUI document, for the designer's "no host" text; null otherwise.</summary>
+	static string? UnavailableReason(XamlFrameworkContext framework)
+		=> framework?.Runtime == XamlRuntimeKind.MicrosoftWinUI && LocateChildDll(null, null) == null
+			? "The Microsoft WinUI host (the MicrosoftHost folder beside the add-in) is not deployed; it is built with Visual Studio's MSBuild (build.ps1)."
+			: null;
 
 	/// <summary>Default (current-runtime) child path, retained for callers that do not have a
 	/// document yet. Actual designer creation uses <see cref="LocateChildDll"/> so it can match
