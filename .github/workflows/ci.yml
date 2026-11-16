@@ -336,6 +336,22 @@ jobs:
           if (-not (Test-Path (Join-Path $gallery 'WinUIGallery.slnx'))) { throw 'The clone has no WinUIGallery.slnx.' }
           "OD_WINUI_GALLERY_ROOT=$gallery" | Add-Content -Path $env:GITHUB_ENV
 
+      # The WPF Gallery corpus (entry wpf-gallery-corpus) opens the real WPFGallery of microsoft/WPF-Samples; the tests skip without
+      # one (and run-test-plan.ps1 then fails the entry, every test skipped). A sparse shallow clone of just that sample.
+      - name: Clone the WPF Gallery for the designer corpus
+        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
+        # Best effort: without the checkout the WPF Gallery tests skip.
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $samples = Join-Path $env:RUNNER_TEMP 'WPF-Samples'
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/microsoft/WPF-Samples.git $samples
+          if ($LASTEXITCODE -ne 0) { throw "git clone of WPF-Samples failed ($LASTEXITCODE)" }
+          git -C $samples sparse-checkout set 'Sample Applications/WPFGallery'
+          if ($LASTEXITCODE -ne 0) { throw "sparse-checkout of WPFGallery failed ($LASTEXITCODE)" }
+          $gallery = Join-Path $samples 'Sample Applications/WPFGallery'
+          foreach ($file in 'WPFGallery.csproj', 'WPFGallery.sln') { if (-not (Test-Path (Join-Path $gallery $file))) { throw "The clone has no $file (the corpus opens the solution)." } }
+          "OD_WPF_GALLERY_ROOT=$gallery" | Add-Content -Path $env:GITHUB_ENV
       - name: Install Linux display and native runtime prerequisites
         if: runner.os == 'Linux'
         shell: bash
@@ -379,6 +395,18 @@ jobs:
         if: matrix.needs_nuget_cache
         shell: pwsh
         run: ./.github/ci/package-workspace.ps1 -Extract -Kind NuGetCache -Directory '${{ runner.temp }}/nuget-archive'
+      # The Microsoft-backend designer entries of the winui job (Microsoft cell, host selection, both Gallery corpora) need the
+      # Microsoft WPF, WinUI and WinForms design hosts and the WinUI sample, which only Visual Studio MSBuild can build; the
+      # plan's build job does not produce them. The integration project's own target runs build.ps1 for each, with -SkipFeedSync
+      # (CI restores from GitHub Packages with its token). After the NuGet cache unpack so the restore is warm.
+      - name: Build the Microsoft designer hosts
+        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
+        # Best effort: without the hosts those entries fail at first render and the lane stays green (allowAllFailures).
+        continue-on-error: true
+        # Bounded so a slow VS MSBuild build cannot eat the job's timeout headroom (the lane budget starts after this step).
+        timeout-minutes: 25
+        shell: pwsh
+        run: dotnet msbuild tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj -t:BuildMicrosoftDesignerHostsForIntegrationTests -p:Configuration=Debug -p:SkipFeedSync=true
       - name: Verify native Terminal package assets
         if: matrix.needs_nuget_cache
         shell: pwsh

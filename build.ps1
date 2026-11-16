@@ -68,6 +68,10 @@ param(
     # Skip GitVersion pinning (see trap 1 above).
     [switch]$NoPinVersion,
 
+    # CI restores the same packages directly from GitHub Packages using its ephemeral token (as dist.ps1 -SkipFeedSync);
+    # the local-feed synchronizer uses an interactive gh credential and must not run there.
+    [switch]$SkipFeedSync,
+
     # Build with the SAME semantics dist.ps1's "addins" phase uses, so the output can be dropped
     # into a distribution payload via "./dist.ps1 -Phase payload".
     #
@@ -211,7 +215,7 @@ if ($Kill) {
 # cannot distinguish the fork from nuget.org's package. Keep this checkout's restores isolated,
 # then synchronize the authenticated GitHub Packages closure into its tokenless local feed.
 $env:NUGET_PACKAGES = Join-Path $repoRoot 'artifacts/nuget-packages'
-& (Join-Path $repoRoot 'sync-openavalon-feed.ps1')
+if (-not $SkipFeedSync) { & (Join-Path $repoRoot 'sync-openavalon-feed.ps1') }
 
 $dotnet = Find-DotNetHost
 

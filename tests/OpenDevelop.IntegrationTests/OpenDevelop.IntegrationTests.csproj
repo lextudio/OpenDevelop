@@ -172,7 +172,11 @@
     <_MicrosoftHostProject Include="tests/fixtures/WinUIDesignerFixture/Microsoft/WinUISample.csproj" />
   </ItemGroup>
   <Target Name="BuildMicrosoftDesignerHostsForIntegrationTests" Condition="'$(OS)' == 'Windows_NT'">
-    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)..\..\build.ps1&quot; &quot;%(_MicrosoftHostProject.Identity)&quot; -Configuration $(Configuration)"
+    <!-- -p:SkipFeedSync=true (CI): restore straight from GitHub Packages with the job token; the gh-backed local feed sync cannot run there. -->
+    <PropertyGroup>
+      <_BuildScriptFeedArg Condition="'$(SkipFeedSync)' == 'true'">-SkipFeedSync</_BuildScriptFeedArg>
+    </PropertyGroup>
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)..\..\build.ps1&quot; &quot;%(_MicrosoftHostProject.Identity)&quot; -Configuration $(Configuration) $(_BuildScriptFeedArg)"
           WorkingDirectory="$(MSBuildThisFileDirectory)..\.." />
   </Target>
 

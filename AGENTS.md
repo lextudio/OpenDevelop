@@ -297,7 +297,7 @@ verification targets. Run the full integration suite only when asked and do not 
 ## CI (GitHub Actions)
 
 One workflow, `.github/workflows/ci.yml`, driven by `.github/ci/test-plan.json`; the scripts that read it are in
-`.github/ci/`. `doc/technotes/ci-test-plan.md` explains the shape. Job names: `Plan`, `Build (<platform>)`, `winui (windows-x64)` (the observe-only WinUI cells and Gallery corpus),
+`.github/ci/`. `doc/technotes/ci-test-plan.md` explains the shape. Job names: `Plan`, `Build (<platform>)`, `winui (windows-x64)` (the observe-only WinUI cells and the WinUI and WPF Gallery corpora),
 `Release grade`, and per platform the test jobs its lanes are grouped into: `fast (<platform>)` and
 `designer (<platform>)` on Windows, Linux and macOS, `mobile-android (linux-x64)`, and `mobile-ios (macos-arm64)` on its
 own. macOS once ran every lane in one `singleJob` job, which timed out, so it is split like the others. The Simulator lane is
@@ -336,7 +336,7 @@ means filling its whole row or column, not one cell:
 - One entry per suite in `test-plan.json`, with a status for every platform. A new platform's entries start `observe` and
   are promoted after two green runs; an entry that cannot run on an OS says `"excluded"` with a `reason` (for example
   `xamldom-tests-microsoftwpf` needs Microsoft WPF). Never copy an entry per platform (the old `*-arm` entries were merged).
-- No lane compiles for itself: a second compile of the same tree is waste and lets the unit suites test a build no lane
+- No lane compiles for itself (the one exception is the `winui` job's best-effort Visual Studio MSBuild step that builds the Microsoft design hosts, which the build job cannot produce; do not move it there or duplicate it): a second compile of the same tree is waste and lets the unit suites test a build no lane
   ships. A `buildFrom` platform's lanes unpack the provider's archive, which is the build that platform ships.
 - Linux runner setup is `.github/ci/install-linux-prerequisites.sh` in both workflows; `run-test-plan.ps1` starts each
   entry under `xvfb-run` when there is no display.
