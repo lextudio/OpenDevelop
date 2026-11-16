@@ -78,11 +78,10 @@ Each step ends with a committed change, tests where the code has an executable s
      unchanged `Margin` (`SetAttribute` records history even for a no-op). The Margin math now lives in
      `WinUIXamlMarginEditor.TryDelta`, which asks for no edit when the position delta rounds to zero;
      `MarginEditorTests` pins that rule and the pointer journey confirms one entry per gesture.
-   The **drop** journey is not pointer-verifiable here: the Surface backend advertises no toolbox catalog, so the pad has
-   no rows (`toolboxItemCount = 0`) and `od.winui-designer.toolbox.query-item-bounds Button` fails, while the Uno and
-   Microsoft child hosts that would report one are not deployed on this machine. Its commit side (design point -> Grid
-   cell / Canvas position, one Undo) is unaffected and stays covered by the `drop` hook and the unit tests; a real
-   OLE drag needs one of those hosts.
+   The **drop** journey was not pointer-verifiable at first: the Surface child advertised no toolbox catalog, so the pad had
+   no rows (`toolboxItemCount = 0`) and `od.winui-designer.toolbox.query-item-bounds Button` failed. Since `89f1c17fa4` the
+   child advertises a static catalog (`WinUIControlCatalog.StaticCatalog()`, 51 items in 11 groups) and the real OS drag is an
+   automated journey (`WinUISurfaceDesignerTests.SurfaceHost_DragToolboxItemOntoDesignSurface_InsertsIntoDroppedContainer`, passing, section 7.2).
 4. **Selection chrome from frame bounds.** Done. The shared canvas already drew the eight resize handles, the selection
    outline, the alignment guides and the layout-inset labels from the bounds the designer hands it, so no renderer change
    was needed; what was missing was the *Grid* half of snapping. `GridTrackSnapLines` projects a Grid parent's outer
@@ -177,13 +176,13 @@ Out of scope for now: visual states and storyboards, template editing, a data-bi
   but no monitor at another scale was available to move the IDE to), OS-level keyboard focus for the live window (this
   desktop has no stable foreground window: `GetForegroundWindow` alternates between 0 and the IDE), whether the Surface
   accepts the incremental `design/set-bounds` edit or silently falls back to a full reload (the commit works either way
-  and reports no distinction), the pointer drag from the Toolbox (no deployed backend reports a catalog), and anything on
+  and reports no distinction), and anything on
   macOS/Linux (the Surface is Windows-only). Grid-track snapping uses the *measured* track offsets: a Grid with padding or
   a border offsets its tracks by more than its own bounds origin, and that difference has not been measured yet.
-- **The Surface host advertises no toolbox catalog**, so its Toolbox pad stays empty and a real drag cannot start there; the `drop`
-  hook therefore falls back to the control type name when the pad is empty, and still requires the pad to offer the control when it
-  has rows. A real drag journey needs a backend whose child reports a catalog; the pointer journey confirmed the pad has zero rows
-  and `toolbox.query-item-bounds` fails, so the drop is verified through its hook and unit tests only.
+- **The Surface host's toolbox is a static list.** Its child has no WinUI runtime to reflect a control list from, so it advertises
+  `WinUIControlCatalog.StaticCatalog()` (the common `Microsoft.UI.Xaml.Controls`, shared with the hosts that reflect theirs); controls
+  from the project's own assemblies are not listed there. (Earlier it advertised nothing and the pad stayed empty; the `drop` hook's
+  fallback to the control type name when the pad is empty remains for such backends.)
 - **`{x:Bind}` today vs the target.** The compiled preview shows real values but is last-build; the default markup preview
   now evaluates them (`winui-designer-bindings.md`, surface 0.5.0, on by default) so a binding edit is live, while the
   compiled page stays the opt-in fidelity reference. Unhandled forms - `x:DataType` roots, template content and
@@ -233,7 +232,8 @@ the tree but **never run in an IDE**: before it, every verification of the Surfa
 (2026-11-12) and every automated one was the `WinUIXamlDesigner.SurfaceHost.Tests` suite (fake surface, child process,
 provisioner, the standalone `UnoDesignClient`).
 
-**Written on macOS, not run anywhere:** the `SurfaceWinUI` runtime cell.
+**Written on macOS (as of that writing), since run on Windows (7.1, 7.2):** the `SurfaceWinUI` runtime cell. It now holds six journeys: the four
+described here plus the toolbox drag and the resize-handle drag (7.2). The text below is kept as the original handoff; "four" counts the original set.
 
 - `tests/OpenDevelop.IntegrationTests/WinUISurfaceDesignerTests.cs`, trait `Runtime=SurfaceWinUI`, four journeys on the
   `WinUIDesignerFixture/Microsoft` page: render with Document Outline; source edit outside the designer refreshes; Properties pad
@@ -261,7 +261,7 @@ provisioner, the standalone `UnoDesignClient`).
    the Options text ("falls back automatically") only holds for an undeployed payload or a declined project. Decide which
    behaviour is intended, then fix the text or the code.
 3. **Default-selection unit test: done on macOS.** The resolution is now the pure `WinUIRuntimeSelection.Resolve` (environment, then stored `WinUIXamlDesigner.Runtime`, then `surface`; blank ignored; unrecognised reported and replaced by the default), source-linked into `OpenDevelop.Base.Tests` and covered by `WinUIRuntimeSelectionTests` (13 cases, passing). The add-in project itself builds (`-p:SkipWinUIHotReloadTap=true`), so `RegisterDevFlowActionsCommand` and the Options page compile; neither has run.
-4. **Default-on regressions.** With the default now `surface`, run the existing `Runtime=MicrosoftWinUI` and `Runtime=Uno`
+4. **Default-on regressions: cells done (7.2); the Options page click-through is not.** With the default now `surface`, run the existing `Runtime=MicrosoftWinUI` and `Runtime=Uno`
    cells once each. The Microsoft cell pins `microsoft` through the environment so it is unaffected, but `Uno` and every
    test that opens the WinUI sample without a pin (`AddInTests` methods that call `OpenWinUIDesignerAsync`) now route
    through whatever is the default. Also run the Options page by hand (selected value shows, persists, restart applies).
@@ -270,8 +270,8 @@ provisioner, the standalone `UnoDesignClient`).
    --force`) is in the runner setup, with `observe` first.
 6. **Known functional gaps to cover or document:** `PickAt` finds nothing in frame mode (only native mode); native mode
    answers `UpdateXaml` with `Hwnd`, not a frame; a machine without the Windows App Runtime (the `0x80670016` message is tested
-   with a fake surface only); the missing-Uno-style gesture journeys (drag toolbox item, resize handle) that the Microsoft and Uno
-   cells have and Surface has only manually (section 6).
+   with a fake surface only). The gesture journeys (drag toolbox item, resize handle) that the Microsoft and Uno cells have are
+   done for Surface too (7.2; they were manual only, section 6).
 7. **Do not call the Surface "the default" in user-facing text** until 1, 2 and 4 pass: the Options label says "Experimental
    Surface host (recommended)".
 
@@ -316,7 +316,7 @@ With these, `AddInTests.WinUIOnly_DesignerOpensWinUIProject` (`Runtime=Microsoft
 
 **Uno cell: was broken on Windows by `1b19885d62`, fixed in `3bec47feea`.** `UnoHost/Program.cs` selected only `UseMacOS()`, so on Windows the child exited with
 `No platform host could be selected`. It now picks the host by OS (Win32, MacOS, else X11). After the fix `OpenUnoXamlFile_UsesWinUIXamlDesignerInsteadOfWpfDesigner`,
-`RendersButtonWithVisibleLightThemeColors` and the properties-pad edit test pass. The Uno fixtures (`UnoHotReloadFixture`) still do not compile here (`InitializeComponent` missing); not investigated.
+`RendersButtonWithVisibleLightThemeColors` and the properties-pad edit test pass. The Uno fixtures (`UnoHotReloadFixture`) did not compile when first tried (`InitializeComponent` missing); superseded, see 7.2.
 
 **No fallback (commit `8bf05d9824`, owner's decision).** The Surface host never falls back to the Microsoft or Uno host. `WinUIRuntimeSelection.HostsToRegister` is the rule
 (`surface` registers uno + surface, no Microsoft host; `uno` registers microsoft + uno; `microsoft` registers uno + microsoft). When no host takes a Microsoft WinUI document the
@@ -326,5 +326,23 @@ scenario table above, whose second row now reads: the designer names the missing
 `SurfaceHostFilesMissing_IsReported_AndNothingIsRenderedThroughAnotherHost` (`OD_SURFACE_HOST_ROOT` simulates a missing payload; fails against the old behaviour, which rendered
 through the Microsoft host) and `StoredMicrosoftChoice_SelectsTheMicrosoftHost_NotTheSurface`.
 
-**Not done:** CI (`surfacehost-tests` on a runner, the `SurfaceWinUI` cell as an `observe` entry), the Options page click-through, the toolbox-drag and resize-handle Surface
-journeys, and the remaining Microsoft-cell (14) and Uno-cell (22) tests.
+### 7.2 Follow-up run (same day): full cells, Surface journeys, Tools pad
+
+- **Full cells on the final commits:** Microsoft cell (`Runtime=MicrosoftWinUI`) 36 tests, 9 passed, 27 skipped (the WinUI Gallery tests need `OD_WINUI_GALLERY_ROOT`),
+  0 failed; Uno cell (`Runtime=Uno`) 25 tests, 23 passed, 2 skipped (Android and iOS devices), 0 failed. Surface cell: the original four plus the two new journeys pass.
+- **Two earlier failures were tests, not products.** The Microsoft designer-build wait (60 s) was too short for the IDE's own build of the sample (`8a4bb475ac`, now 180 s);
+  the Uno click test pressed the centre of a button whose centre lay 1.5 px below a small IDE window's design viewport (`b7f8eb4e3f`, it now clicks inside the viewport).
+- **A stray Uno window** appeared on Windows once the Win32 platform host started the child (`3bec47feea`); it is now moved to (-32000,-32000) after activation (`880f86f63c`), with a
+  brief flash at its creation position that is not eliminated.
+- **Surface toolbox and journeys:** `89f1c17fa4` (static catalog), `6479c6d455` (real-drag toolbox drop and resize-handle drag, both asserting the Surface host served them).
+- **Tools pad:** `493d0406d2` keeps the "No matching controls" text in sync with the list (it stayed on after a late catalog), `2e2889f482` fills the WinUI pad from the static
+  catalog as soon as the designer view exists, before the host starts (the host's own catalog adds to it later).
+- **Order dependence, not fixed:** `WinUIDesigner_DragToolboxItemOntoDesignSurface_InsertsIntoDroppedContainer` (Uno) fails when run alone (the IDE stops answering after the press,
+  three runs of four minutes each) but passes inside the full Uno cell; the cause was not found.
+- `UnoHotReloadFixture`: a plain `dotnet build` in `tests/fixtures/UnoHotReloadFixture` succeeded (0 warnings, 0 errors, 23 s) on this machine at the end of the day. The
+  earlier `InitializeComponent` failure (seen once, in 7.1) did not reproduce and its cause was not determined: no commit touched the fixture in between (its last change is
+  `1b19885d62`), so a stale `obj/` or a different build invocation is the likely explanation, not a code fix. Treat the fixture as unverified for hot reload.
+
+**Not done:** CI (the `SurfaceWinUI` cell and the other WinUI cells need a Windows App Runtime install step, a Visual Studio MSBuild build of the Microsoft host and a short
+`OD_SURFACE_ROOT` on the runner, none of which the plan or `ci.yml` has; `surfacehost-tests` is already an `observe` entry), the Options page click-through (no DevFlow hook), and the
+27 Gallery tests (no Gallery checkout).
