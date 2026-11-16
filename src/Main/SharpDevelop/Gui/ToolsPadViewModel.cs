@@ -149,8 +149,14 @@ internal sealed class ToolsPadViewModel : ToolPaneModel, IToolsPadHost
         var body = new Grid();
         var empty = new TextBlock { Text = ResourceService.GetString("ToolsPad.NoMatchingControls"), Margin = new Thickness(10), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         empty.SetResourceReference(TextBlock.ForegroundProperty, "MutedForeground");
-        void ApplyFilter() { filterable.Filter(searchBox.Text); empty.Visibility = filterable.VisibleItemCount == 0 ? Visibility.Visible : Visibility.Collapsed; }
+        void UpdateEmptyMessage() => empty.Visibility = filterable.VisibleItemCount == 0 ? Visibility.Visible : Visibility.Collapsed;
+        void ApplyFilter() { filterable.Filter(searchBox.Text); UpdateEmptyMessage(); }
         searchBox.TextChanged += (_, _) => ApplyFilter();
+        // A designer's catalog can arrive after the pad was first built (a WinUI host reports its controls once its child has connected):
+        // the toolbox is then empty here, the message is switched on, and nothing but a search edit or a rebuilt pad would switch it
+        // off again. Follow the list itself, so the message always reflects what the list shows.
+        if (toolbox is ItemsControl list && ((System.Collections.IEnumerable)list.Items) is System.Collections.Specialized.INotifyCollectionChanged changing)
+            changing.CollectionChanged += (_, _) => UpdateEmptyMessage();
         searchBox.KeyDown += (_, e) => {
             if (e.Key == System.Windows.Input.Key.Escape) { searchBox.Clear(); e.Handled = true; }
             else if (e.Key == System.Windows.Input.Key.Down && toolbox is Control control) { control.Focus(); e.Handled = true; }
