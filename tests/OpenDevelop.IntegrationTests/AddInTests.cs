@@ -2917,13 +2917,15 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
     {
         JsonElement status = default;
         // Every edit recompiles the document through Roslyn and reloads a collectible preview
-        // assembly before ProGPU presents a frame, so "rendered" is the only safe gate.
+        // assembly before ProGPU presents a frame, so "rendered" is the only safe gate. The first open of a project also waits for
+        // the IDE's own designer build (a Windows App SDK project: XAML compiler, fresh output folder, ~30 s on its own), which took
+        // most of a 60 s budget and made the Microsoft cell fail whenever the machine was a little slower; hence the longer budget.
         var ready = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
             status = await _app.InvokeAsync("od.winui-designer.status");
             return status.TryGetProperty("active", out var active) && active.GetBoolean()
                 && status.GetProperty("rendered").GetBoolean();
-        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
+        }, TimeSpan.FromSeconds(180), initialDelayMs: 100, maxDelayMs: 500);
         if (!ready)
         {
             // The status only carries the last message ("... failed to start: A task was canceled."); the
