@@ -103,11 +103,11 @@
     },
     "integration-unstable": {
       "job": "fast",
-      "timeoutMinutes": 45,
+      "timeoutMinutes": 60,
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "allowAllFailures": true,
-      "note": "Entries with known hosted failures or under investigation: macOS Terminal pointer input and debugger-journeys on Windows ARM64 (one flaky stop, fixed in c7497292df, awaiting a second green run). base-tests-arm, add-reference-journey and debugger-feature-journeys are required on every platform since 2026-10-28 but stay here for now: moving them into integration-stable would lengthen a lane with a 55-minute timeout that nobody has re-measured, and a full run is not due yet. Plan order runs Hot Reload last so a hang there does not hide the others. The lane is defined last so its pointer journeys run after the other lanes of a shared job: a leftover IDE window from an observe entry must not sit in front of a designer drag."
+      "note": "Entries with known hosted failures or under investigation: macOS Terminal pointer input and debugger-journeys on Windows ARM64 (one flaky stop, fixed in c7497292df, awaiting a second green run). base-tests-arm, add-reference-journey and debugger-feature-journeys are required on every platform since 2026-10-28 but stay here for now: moving them into integration-stable would lengthen a lane with a 55-minute timeout that nobody has re-measured, and a full run is not due yet. Plan order runs the required entries first, then Hot Reload, then the two WinUI observe entries (winui-surface-designer-journeys, winui-host-selection) last, so a hang or a long Surface run there can only cost the second observe entry and never a required one; keep any entry that can hang for tens of minutes after the required ones. The lane budget is 60 minutes: the measured required entries (about 10 minutes) plus the Surface entry's own 45-minute budget, with room left for the 15 of winui-host-selection to start after a normal Surface run. The lane is defined last so its pointer journeys run after the other lanes of a shared job: a leftover IDE window from an observe entry must not sit in front of a designer drag."
     }
   },
   "buildFirst": [
@@ -828,6 +828,34 @@
       ],
       "platforms": { "windows-x64": "required", "macos-arm64": "required" },
       "note": "Exercises real WPF application and class-library Hot Reload journeys; Microsoft WPF variants run only on Windows. macOS ARM64 locally passed four journeys with two Windows-only skips."
+    },
+    {
+      "id": "winui-surface-designer-journeys",
+      "batch": 4,
+      "lane": "integration-unstable",
+      "timeoutMinutes": 45,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.WinUISurfaceDesignerTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "platforms": { "windows-x64": "observe" },
+      "reason": "The WinUI Surface host and its provisioner are Windows-only; ARM64 has not been measured.",
+      "note": "The five journeys of WinUISurfaceDesignerTests (render with outline, source edit refresh, Properties pad edit with undo/redo, element selection geometry, real-drag toolbox drop) passed locally on Windows 11 x64, 100-300 s each (about 15 minutes on a developer machine, more with a cold provisioning cache), hence the 45-minute budget. The sixth Surface-cell journey, the resize-handle drag, is not selected: it lives in AddInTests, a class the Plan job's device-journey guard (tests/verify-no-device-journeys.ps1) refuses even by -method, and the guard also refuses -trait, so the cell cannot be selected by its Runtime=SurfaceWinUI trait. Selecting the whole cell needs a reviewed change to that guard or the test moved out of AddInTests. The Surface is the default WinUI selection, so no OD_WINUI_RUNTIME pin is needed. It sits in integration-unstable (allowAllFailures, the lane for entries with expected hosted failures) and not in integration-designer on purpose: run-test-plan.ps1 fails a lane in which every entry failed, observe or not, and in focus mode this entry and winui-host-selection would be the only windows-x64 designer entries, so a runner without the prerequisites below would turn the designer job red. Move both to integration-designer once the prerequisites exist. Prerequisites the runner may lack, which would make this entry fail while it is observe: the Windows App Runtime (windowsappruntimeinstall-x64.exe --quiet --force), a .NET SDK the provisioner can build the matched host with, and the toolbox-drop journey uses real OS pointer input, which needs the interactive desktop that prepare-windows-desktop.ps1 sets up. The first open provisions a matched host (about a minute cold). Starts as observe; promote after two green runner runs."
+    },
+    {
+      "id": "winui-host-selection",
+      "batch": 4,
+      "lane": "integration-unstable",
+      "timeoutMinutes": 15,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.WinUIHostSelectionTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "platforms": { "windows-x64": "observe" },
+      "reason": "Both WinUI hosts these tests select between are Windows-only.",
+      "note": "Two journeys, each in an IDE of its own (own config directory and environment): with the Surface payload missing the designer reports why and nothing renders through another host (no fallback), and a stored Tools > Options choice of microsoft selects the Microsoft host, not the Surface. Both passed locally on Windows 11 x64 (about 150 s each). The second needs the Microsoft host built with Visual Studio MSBuild (build.ps1 microsofthost), which the CI build may not have produced, so it can fail on a runner for that reason; the first does not need it. Starts as observe."
     },
     {
       "id": "wpf-designer-assembly-lock-integration",
