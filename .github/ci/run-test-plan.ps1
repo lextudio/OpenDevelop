@@ -7,12 +7,14 @@
 # annotation and a row in the job summary). Nothing is restored or built here: the build job compiled everything once and
 # the test job unpacked that workspace.
 #
-# Three rules keep a green lane meaningful:
+# Four rules keep a green lane meaningful:
 #   * an 'xunit-exe' entry that exits 0 but reports no test total, or a total of 0, is a failure - a filter that matches
 #     nothing, or a test assembly that never ran, is not a pass;
 #   * a lane in which every entry failed fails the lane even when every entry is only 'observe' - the job would otherwise
 #     be green while it exercised nothing;
-#   * an entry whose test assembly was never produced fails, so a missing build step shows up as itself.
+#   * an entry whose test assembly was never produced fails, so a missing build step shows up as itself;
+#   * an 'xunit-exe' entry that exits 0 with every test skipped is a failure - xUnit counts a skip in the total, so a missing
+#     checkout, host or payload would otherwise read as a pass (Get-TestSkipped; .github/ci/tests/verify-test-summary.ps1).
 # Every entry's duration and test count land in the job summary so the plan's measuredSeconds can be kept honest.
 param(
     [Parameter(Mandatory = $true)][string]$Platform,
@@ -45,13 +47,23 @@ function Get-Command-Arguments($entry) {
     }
 }
 
-# xUnit v3 prints one "Total: N, Errors: ..." line per assembly; take the last one so a per-class summary cannot win.
+# xUnit v3 prints one "Total: N; Errors: ...; Skipped: M; ..." line per assembly (semicolons; the regexes accept any separator); take the last one so a per-class summary cannot win.
 function Get-TestTotal($entry, [string[]]$output) {
     if ($entry.kind -ne 'xunit-exe') { return -1 }
     $text = (@($output) | Select-Object -Last 400) -join "`n"
     $matches = [regex]::Matches($text, 'Total:\s*(\d+)')
     if ($matches.Count -eq 0) { return -1 }
     return [int]$matches[$matches.Count - 1].Groups[1].Value
+}
+
+# The skipped count of the same last summary line, or -1. xUnit counts a skipped case in 'Total', so an entry whose every case
+# skipped (a missing checkout, host or payload) would otherwise read as a pass that exercised nothing.
+function Get-TestSkipped($entry, [string[]]$output) {
+    if ($entry.kind -ne 'xunit-exe') { return -1 }
+    $text = (@($output) | Select-Object -Last 400) -join "`n"
+    $found = [regex]::Matches($text, 'Total:\s*\d+[^\r\n]*?Skipped:\s*(\d+)')
+    if ($found.Count -eq 0) { return -1 }
+    return [int]$found[$found.Count - 1].Groups[1].Value
 }
 
 # An entry's budget: its own timeoutMinutes, else the lane's entryTimeoutMinutes, else none (0).
@@ -108,7 +120,7 @@ function Save-Screenshot([string]$path) {
 # A Linux runner has no display, and the integration entries start the IDE's window: there each entry runs under its own
 # xvfb-run (installed by install-linux-prerequisites.sh). The Xvfb server is a child of that process tree, so the budget
 # kill below takes it down with the entry.
-function Invoke-Entry([string[]]$arguments, [int]$timeoutSeconds, [string]$logBase) {
+function Invoke-Entry([string[]]$arguments, [int]$timeoutSeconds, [string]$logBase, $environment = $null) {
     if ($IsLinux -and -not $env:DISPLAY) {
         $startInfo = [System.Diagnostics.ProcessStartInfo]::new('xvfb-run')
         foreach ($argument in @('-a', '--server-args=-screen 0 1280x1024x24', 'dotnet')) { $startInfo.ArgumentList.Add($argument) }
@@ -116,6 +128,8 @@ function Invoke-Entry([string[]]$arguments, [int]$timeoutSeconds, [string]$logBa
         $startInfo = [System.Diagnostics.ProcessStartInfo]::new('dotnet')
     }
     foreach ($argument in $arguments) { $startInfo.ArgumentList.Add($argument) }
+    # An entry's 'env' (name -> value) is set for this process tree only, so a pin such as OD_WINUI_RUNTIME cannot leak into the next entry.
+    if ($environment) { foreach ($variable in $environment.PSObject.Properties) { $startInfo.Environment[$variable.Name] = [string]$variable.Value } }
     $startInfo.UseShellExecute = $false
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
@@ -189,7 +203,8 @@ foreach ($entry in $selected) {
     $budget = if ($timeoutSeconds -gt 0) { " (budget ${timeoutSeconds}s)" } else { '' }
     Write-Host "::group::$($entry.id) [$status]$budget dotnet $($arguments -join ' ')"
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
-    $run = Invoke-Entry $arguments $timeoutSeconds (Join-Path $resultsDirectory $entry.id)
+    $entryEnvironment = if ($entry.PSObject.Properties['env']) { $entry.env } else { $null }
+    $run = Invoke-Entry $arguments $timeoutSeconds (Join-Path $resultsDirectory $entry.id) $entryEnvironment
     $exit = $run.ExitCode
     $output = $run.Output
     $watch.Stop()
@@ -197,6 +212,7 @@ foreach ($entry in $selected) {
 
     $seconds = [int][math]::Round($watch.Elapsed.TotalSeconds)
     $tests = Get-TestTotal $entry $output
+    $skipped = Get-TestSkipped $entry $output
     $note = ''
     $outcome = if ($exit -eq 0) { 'passed' } else { 'failed' }
     if ($run.TimedOut) {
@@ -210,6 +226,12 @@ foreach ($entry in $selected) {
         $note = if ($tests -lt 0) { 'no test total' } else { '0 tests' }
         $level = if ($status -eq 'required') { 'error' } else { 'warning' }
         Write-Host "::$($level) title=$($entry.id) (${status})::The run exited 0 but exercised nothing ($(if ($tests -lt 0) { 'it printed no test total' } else { 'it ran 0 tests' }))."
+    }
+    elseif ($exit -eq 0 -and $entry.kind -eq 'xunit-exe' -and $tests -gt 0 -and $skipped -eq $tests) {
+        $outcome = 'failed'
+        $note = 'every test skipped'
+        $level = if ($status -eq 'required') { 'error' } else { 'warning' }
+        Write-Host "::$($level) title=$($entry.id) (${status})::The run exited 0 but all $tests tests were skipped, so it exercised nothing (a missing checkout, host or payload)."
     }
     elseif ($exit -ne 0 -and $status -eq 'observe') {
         Write-Host "::warning title=$($entry.id) (observe)::exit code $exit after ${seconds}s; not failing the job because the entry is only observed on $Platform."

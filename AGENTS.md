@@ -297,7 +297,7 @@ verification targets. Run the full integration suite only when asked and do not 
 ## CI (GitHub Actions)
 
 One workflow, `.github/workflows/ci.yml`, driven by `.github/ci/test-plan.json`; the scripts that read it are in
-`.github/ci/`. `doc/technotes/ci-test-plan.md` explains the shape. Job names: `Plan`, `Build (<platform>)`,
+`.github/ci/`. `doc/technotes/ci-test-plan.md` explains the shape. Job names: `Plan`, `Build (<platform>)`, `winui (windows-x64)` (the observe-only WinUI cells and Gallery corpus),
 `Release grade`, and per platform the test jobs its lanes are grouped into: `fast (<platform>)` and
 `designer (<platform>)` on Windows, Linux and macOS, `mobile-android (linux-x64)`, and `mobile-ios (macos-arm64)` on its
 own. macOS once ran every lane in one `singleJob` job, which timed out, so it is split like the others. The Simulator lane is
@@ -356,7 +356,7 @@ Layout, so a change goes in the right place:
   the folder ends up without `PresentationFramework.dll`. Measured on the runner: 193 DLLs present after the first build,
   173 and missing after a rebuild.
 - A lane can declare `allowAllFailures` in its plan definition: every entry still reports (warnings, summary table) but an
-  all-failed lane stays green. Only `integration-unstable` uses it; `integration-stable` dropped it when its entries became
+  all-failed lane stays green. `integration-unstable`, `integration-winui`, `mobile-ios` and `mobile-android` use it; `integration-stable` dropped it when its entries became
   `required` on all three platforms. Do not add it back as a permanent escape hatch. While many entries still fail, the
   plan's `"focus": true` skips every `required` entry (`.github/ci/run-statuses.ps1`; dispatch with `full=true` for one
   full run, set `"focus": false` to go back). Lane jobs

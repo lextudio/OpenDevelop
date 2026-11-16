@@ -14,11 +14,11 @@ not individual test cases. They describe the complete plan, not what a focus-mod
 
 | Platform | Required | Observe | Default focus run |
 | --- | ---: | ---: | --- |
-| Windows x64 | 32 | 0 | No test entries; its build can still supply Windows ARM64. |
-| Windows ARM64 | 25 | 5 | Only the 5 observed entries run. |
-| macOS ARM64 | 26 | 8 | Only the 8 observed entries run. |
-| Linux x64 | 0 | 9 | All 9 entries are observed (unit suites, workbench/DevFlow under Xvfb, the Android debugging journey), so all run. |
-| Linux ARM64 | 0 | 8 | All 8 entries are observed (unit suites, workbench/DevFlow under Xvfb), so all run. |
+| Windows x64 | 32 | 10 | Only the 10 observed entries run (five in the fast job, the five WinUI entries in the `winui` job); its build also supplies Windows ARM64. |
+| Windows ARM64 | 25 | 10 | Only the 10 observed entries run. |
+| macOS ARM64 | 26 | 11 | Only the 11 observed entries run. |
+| Linux x64 | 0 | 11 | All 11 entries are observed (unit suites, workbench/DevFlow under Xvfb, the Android debugging journey), so all run. |
+| Linux ARM64 | 0 | 10 | All 10 entries are observed (unit suites, workbench/DevFlow under Xvfb), so all run. |
 
 **Focus mode skips every required entry. A green focus run does not prove that required coverage passed.** Use
 `workflow_dispatch` with `full=true` to run both statuses before relying on the complete gate. Its `platforms` input
@@ -373,14 +373,17 @@ the gain is that nothing depends on the 10 GB budget or on how long a lane waits
 
 ## What makes a green lane mean something
 
-`run-test-plan.ps1` refuses three shapes that used to pass silently:
+`run-test-plan.ps1` refuses four shapes that used to pass silently:
 
 * an `xunit-exe` entry that exits 0 but prints no test total, or a total of 0 - a filter that matches nothing, or an
   assembly that never ran, is a failure (a `::warning` while the entry is only `observe`, a `::error` once `required`);
 * a lane in which every entry failed, whatever their modes say, unless its definition explicitly sets `allowAllFailures`
   for observe-first rollout or a tracked host defect. Such a lane can be green with no passing tests, so its entry summary
   must be checked before promotion;
-* an entry whose test assembly was never produced - the build step is named in the error.
+* an entry whose test assembly was never produced - the build step is named in the error;
+* an `xunit-exe` entry that exits 0 with every test skipped (xUnit counts a skip in the total, so a missing checkout, host or
+  payload would otherwise pass): `Get-TestSkipped` reads the summary's `Skipped` count, and
+  `.github/ci/tests/verify-test-summary.ps1` checks it against the real summary format.
 
 Every entry also has a time budget: its own `timeoutMinutes`, else its lane's `entryTimeoutMinutes` (5 minutes in the
 integration lanes). Past it, `run-test-plan.ps1` kills the entry's process tree (the IDE the fixture started included),
@@ -436,11 +439,11 @@ those sources for classes that use `simctl`, `avdmanager`, the `emulator` binary
 * an entry runs one of them from a lane that does not declare it (by `-class` or `-method`),
 * a declared class name does not exist in the sources, so a rename cannot silently allow a different class,
 * a lane's job would run on a runner image of another OS family (the lane's own `runner`, else the platform's), or
-* an integration-test entry uses no `-class`/`-method` selector, or filters with `-namespace`/`-trait`, which could run a
-  device journey by accident.
+* an integration-test entry uses no `-class`/`-method` selector, or filters with `-namespace` or any `-trait` other than `Runtime=<WinUI cell>` (accepted only on Windows entries, where the Uno
+  iOS Simulator and Android Emulator journeys skip themselves), which could run a device journey by accident.
 
-A class that mixes device and other journeys (`AddInTests`) therefore cannot be listed even by method: move its device
-journeys into a class of their own first. The hermetic unit tests about devices stay in `base-tests` and are fine: they
+A class that mixes device and other journeys (`AddInTests`) therefore cannot be listed by `-class` or `-method`; its WinUI
+cells are selected by `-trait Runtime=<cell>` instead (Windows entries only), or move its device journeys into a class of their own. The hermetic unit tests about devices stay in `base-tests` and are fine: they
 parse `adb devices` or `simctl` text, build launch scripts, or drive a fake `adb` shell script, and they need no emulator.
 
 Each lane job provisions its own device in front of the journey:
@@ -461,9 +464,9 @@ Both lanes start with `allowAllFailures: true`, the bootstrap exception describe
 failed would otherwise be red from its first run, before there is anything to learn from it. Drop the flag and promote
 each entry to `required` after two green runs.
 
-**A skipped device journey is not a passing one.** xUnit reports a skip as a passing total, so a lane whose provisioning
-never produced a device is green with nothing exercised. Read the entry's own result and its test count in the job
-summary rather than the lane's colour; the entry notes say which prerequisites make the journey skip.
+**A skipped journey is not a passing one.** xUnit reports a skip in the total; an entry in which every test skipped is now
+recorded as failed, but a lane with `allowAllFailures` stays green around it. Read the entry's own result and its test count
+in the job summary rather than the lane's colour; the entry notes say which prerequisites make the journey skip.
 
 ## How an entry is enabled
 
@@ -477,7 +480,9 @@ summary rather than the lane's colour; the entry notes say which prerequisites m
   the tests passed; a cancelled job does not count as a run), and put the measured duration into `measuredSeconds`. The
   push that promotes it is the confirming run: if the entry fails there, set it back to `observe` instead of retrying.
 * An entry names its `lane`, `kind`, `target` (the test assembly or project), `args`, and the `project` the build job
-  compiles for it. A lane is defined once under `lanes` with its timeout.
+  compiles for it. A lane is defined once under `lanes` with its timeout. An optional `env` (name -> value) is set for that
+  entry's test process only (for example the `OD_WINUI_RUNTIME` pin of a WinUI cell); `-trait Runtime=<WinUI cell>` selections
+  are accepted by the device-journey guard on Windows entries only.
 * `additionalProjects` names fixture projects that the entry needs built before the archive is created. Optional
   `platforms` refer to the build platform: both Windows architectures consume the `windows-x64` archive. The WPF Hot
   Reload entry builds the LibreWPF application and class-library host on both build platforms, plus the Microsoft WPF
@@ -492,10 +497,11 @@ have been, and a lane is split only for a real environment need or a timeout.
 
 Since 2026-11-02 that is made explicit by the lane's `job` in the plan: lanes of one platform with the same `job` run in one
 CI job, one after another, on the one unpacked archive. `unit`, `integration-stable` and `integration-unstable` are job
-`fast` (unit first, so its result arrives within minutes); `integration-designer` is job `designer` (the longest lane, which
-also needs the GTK runtimes). Run 41395236804 spent 70 minutes of its lane jobs on downloading and unpacking against 30 minutes
-of tests, Windows ARM64 alone paying 11-15 minutes three times for 16 minutes of tests; each platform with a designer lane now
-pays it twice. A job's timeout is the sum of its lanes' timeouts plus 30 minutes of headroom for the
+`fast` (unit first, so its result arrives within minutes); `integration-designer` is job `designer` (which also needs the GTK runtimes); `integration-winui` is job `winui` (Windows x64 only, 300 minutes, `allowAllFailures`: the WinUI
+Surface, Microsoft and Uno cells, host selection and the real WinUI-Gallery corpus, with the Gallery cloned by ci.yml; all
+`observe`). Run 41395236804 spent 70 minutes of its lane jobs on downloading and unpacking against 30 minutes
+of tests, Windows ARM64 alone paying 11-15 minutes three times for 16 minutes of tests; each platform with a designer lane now pays it twice (`fast` and `designer`), and Windows x64 pays it a third time for `winui` in a full run (twice in a focus run, where its `designer` lane has no observed entry).
+A job's timeout is the sum of its lanes' timeouts plus 30 minutes of headroom for the
 preparation that sits outside every lane budget.
 Each lane still keeps its own budget: `run-test-plan.ps1` starts no further entry once the lane's `timeoutMinutes` are spent
 (they are reported as skipped, which fails a `required` entry and only warns for an `observe` one), so a slow lane cannot eat
@@ -545,7 +551,7 @@ While many entries still fail, the plan's top-level `"focus": true` runs only th
 `required` one has already passed on the last two hosted runs that completed it, so rerunning it on every push mostly buys
 the 11-15 minutes of lane preparation again. `.github/ci/run-statuses.ps1` holds the rule, and `plan-matrix.ps1`,
 `build-binaries.ps1` and `run-test-plan.ps1` all use it, so a skipped entry is neither scheduled, built nor run. With it,
-`integration-stable` has no entry left and is not scheduled on any platform (6 integration jobs instead of 9), and the
+`integration-stable` was left with no entry at all on the platforms that had promoted everything (6 integration jobs instead of 9; observe entries added since, such as `project-lifecycle` on Windows, schedule it again), and the
 build lists shrank from 23 to 15 Windows x64 and from 21 to 14 macOS ARM64 lines when focus mode was introduced
 (each later promotion shrinks them further). `add-reference-journey` moved to
 `integration-unstable` for that reason while it was `observe` on Windows ARM64 only (it would otherwise have kept
@@ -561,20 +567,21 @@ failures are under control. Focus mode does not gate anything: the `required` en
   `doc/technotes/addin-sdk.md` says; `dotnet build` of the same file fails because its restore changes what the asserted
   targets see). They need no IDE process.
 * Lanes `integration-stable`, `integration-unstable` and `integration-designer`: the integration entries, grouped as
-  described under "Lanes".
+  described under "Lanes". Lane `integration-winui` (Windows x64 only, job `winui`): the WinUI Surface, Microsoft and Uno
+  cells (selected by `-trait Runtime=<cell>`, so the `AddInTests` WinUI journeys run there), host selection and the real
+  WinUI-Gallery corpus, all `observe`.
 * Lanes `mobile-ios` and `mobile-android`: the iOS Simulator and Android emulator debugging journeys. Each needs the one
   runner image family that hosts its device (see "Device journeys"); either way the lane is its own job (`mobile-ios` is
   its own `standalone` job on macOS, `mobile-android` is the linux-x64 job). Both run `observe` and are the reason
   plan entries may now declare `deviceClasses`.
 
-Not planned yet: `AddInTests` (about 15 minutes, its own lane), the Microsoft designer
-backends (need Visual Studio), and the heavy or environment-bound ones named in
+Not planned yet: the rest of `AddInTests` beyond the WinUI cells above (about 15 minutes, its own lane), and the heavy or environment-bound ones named in
 `tests/OpenDevelop.IntegrationTests/TESTING.md` (dotnetup SDK installs, runtime upgrade, performance gates, probes).
 The Profiler tests and the Terminal journey are plan entries now; `profiler.yml` and `terminal-cross-platform.yml` were
 deleted with that fold. The Profiler shares the `unit` lane (its data layer attaches to a real process and needs no IDE
 host), and the Terminal journey runs in the integration lanes and gets its `win-x64` add-in from `buildLast`, the way its own
-workflow built it. Windows ARM64 and macOS ARM64 still have observed integration entries (Windows x64 has none left);
-Linux remains disabled.
+workflow built it. Every platform still has observed entries (Windows x64 has ten, among them the five WinUI entries of
+`integration-winui`); Linux runs observed entries only.
 The `platformNotes` in the plan record each decision.
 
 ## The archives

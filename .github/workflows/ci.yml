@@ -95,6 +95,9 @@ jobs:
       - name: Verify the plan runs no emulator or simulator journeys
         shell: pwsh
         run: ./.github/ci/tests/verify-no-device-journeys.ps1
+      - name: Verify the test summary parsing
+        shell: pwsh
+        run: ./.github/ci/tests/verify-test-summary.ps1
       - id: matrix
         shell: pwsh
         env:
@@ -318,6 +321,20 @@ jobs:
         shell: pwsh
         run: |
           ./.github/ci/prepare-windows-desktop.ps1
+
+      # The WinUI Gallery corpus (entry winui-gallery-corpus) opens the real microsoft/WinUI-Gallery checkout; the
+      # tests skip without one (run-test-plan.ps1 fails an entry whose every test skipped; the lane itself stays green through allowAllFailures, so read the entry row). A shallow clone into the runner temp folder, found through OD_WINUI_GALLERY_ROOT.
+      - name: Clone the WinUI Gallery for the designer corpus
+        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
+        # Best effort: without the checkout the Gallery tests skip.
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $gallery = Join-Path $env:RUNNER_TEMP 'WinUI-Gallery'
+          git clone --depth 1 https://github.com/microsoft/WinUI-Gallery.git $gallery
+          if ($LASTEXITCODE -ne 0) { throw "git clone of WinUI-Gallery failed ($LASTEXITCODE)" }
+          if (-not (Test-Path (Join-Path $gallery 'WinUIGallery.slnx'))) { throw 'The clone has no WinUIGallery.slnx.' }
+          "OD_WINUI_GALLERY_ROOT=$gallery" | Add-Content -Path $env:GITHUB_ENV
 
       - name: Install Linux display and native runtime prerequisites
         if: runner.os == 'Linux'

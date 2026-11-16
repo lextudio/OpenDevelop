@@ -15,7 +15,7 @@
   adb) and fails when an entry would run any test of one of them without a declaration. A class that mixes device and
   other journeys (AddInTests) therefore cannot be listed, not even by method, until the device journeys are moved into a
   class of their own. An entry for the integration test project must select with -class or -method (no selector,
-  -namespace and -trait would run every journey of the project), and a plan without entries is an error. The
+  -namespace and an arbitrary -trait would run every journey of the project; only -trait Runtime=<WinUI cell> is accepted, on Windows entries, see below), and a plan without entries is an error. The
   hermetic unit tests that only parse adb/simctl text or drive a fake adb script are in OpenDevelop.Base.Tests and are fine.
 #>
 param(
@@ -75,6 +75,22 @@ foreach ($entry in $entries) {
     for ($i = 0; $i -lt $arguments.Count; $i++) {
         $name = [string]$arguments[$i]
         # Positive filters other than -class/-method (or none at all) would run every journey of the project.
+        if ($name -eq '-trait' -and $i -lt $arguments.Count - 1 -and ([string]$arguments[$i + 1]) -match '^Runtime=(MicrosoftWinUI|Uno|SurfaceWinUI)$') {
+            # A WinUI runtime cell spans classes, AddInTests among them, whose Uno iOS Simulator and Android Emulator journeys carry the
+            # Uno trait. Both skip themselves off their device OS (macOS only, and not on Windows), so on Windows-only entries the
+            # cell cannot reach a device.
+            $nonWindows = @($entry.platforms.PSObject.Properties | Where-Object { $_.Name -notlike 'windows-*' -and $_.Value -in 'observe', 'required' })
+            if ($nonWindows.Count -gt 0) { $violations.Add("entry '$($entry.id)' selects the cell $($arguments[$i + 1]) on a non-Windows platform, where its device journeys do not skip themselves") }
+            # The cell's trait names a descriptor; the runtime pin names the host (OD_WINUI_RUNTIME). An unrecognised pin silently falls back to
+            # the Surface host, so a cell pinned wrongly would run green on the wrong host: check the pair.
+            $cell = ([string]$arguments[$i + 1]).Substring('Runtime='.Length)
+            $expectedPin = @{ MicrosoftWinUI = 'microsoft'; Uno = 'uno'; SurfaceWinUI = 'surface' }[$cell]
+            $pin = if ($entry.PSObject.Properties['env'] -and $entry.env.PSObject.Properties['OD_WINUI_RUNTIME']) { [string]$entry.env.OD_WINUI_RUNTIME } else { '' }
+            $pinOk = if ($cell -eq 'SurfaceWinUI') { $pin -cin '', 'surface' } else { $pin -ceq $expectedPin }
+            if (-not $pinOk) { $violations.Add("entry '$($entry.id)' selects the cell $cell but pins OD_WINUI_RUNTIME='$pin' (expected '$expectedPin'), so it would run on another host") }
+            $selectors++
+            continue
+        }
         if ($name -in '-namespace', '-trait') { $violations.Add("entry '$($entry.id)' filters the integration tests with $name, which can run a device journey") }
         if ($name -notin '-class', '-method' -or $i -ge $arguments.Count - 1) { continue }
         $selectors++

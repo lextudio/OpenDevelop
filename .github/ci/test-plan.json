@@ -10,6 +10,7 @@
     "the job) or 'excluded' (does not run; 'reason' says why).  A platform missing from an entry is excluded.  A new batch starts as 'observe';",
     "promote it to 'required' after it has been green on that platform for several runs.",
     "A device journey (a real Android emulator or an iOS Simulator) may run only in a lane that declares its class under 'deviceClasses' together with the OS family whose runner hosts the device: 'macos' for the iOS Simulator, which is a native macOS process, and 'linux' for the Android emulator, which needs KVM. .github/ci/tests/verify-no-device-journeys.ps1 fails the plan job for any entry that runs a device class from a lane that does not declare it, and for a declared lane whose runner is not of that family. Every other entry stays off devices; those journeys run by hand on a developer machine.",
+    "An entry may carry 'env' (name -> value): those variables are set for that entry's test process only (run-test-plan.ps1), which is how one entry pins OD_WINUI_RUNTIME without affecting the next.",
     "kind: xunit-exe = dotnet <target> [args] (an xUnit v3 test assembly, run directly); msbuild = dotnet msbuild <target> -t:Build.",
     "'project' is built once in the build job (distinct projects only).  'measuredSeconds' is the last measured duration; keep it current when promoting a batch.",
     "'buildFirst' projects are built before everything else on every platform that builds: the host's build writes the host-assembly manifest that lets every add-in trim what the host already ships (without it each add-in carries ~550 MB of copy-local dependencies and AddIns reaches 13 GB); tests/OpenDevelop.IntegrationTests/TESTING.md says the same: build the application first.",
@@ -22,7 +23,7 @@
   ],
   "platformNotes": {
     "macos-arm64": "dist.macos.sh ships an osx-arm64-only payload, so this platform builds for itself and its archive drops the Windows RID trees the package never contains. It splits into 'fast' and 'designer' jobs like Windows and Linux, plus the standalone mobile-ios job. The merged single 'macos' job (commit 66e0c934ed) timed out, so it was split back.",
-    "windows-x64": "Every unit and integration entry is required here since 2026-10-27 (base-tests and xamldom-tests-microsoftwpf were the last unit entries promoted), so focus mode schedules no Windows x64 job beyond the build, which windows-arm64 still needs.",
+    "windows-x64": "Every unit and integration entry is required here since 2026-10-27 (base-tests and xamldom-tests-microsoftwpf were the last unit entries promoted), so a focus run executes only its observe entries here: a few in the fast job and the integration-winui job, whose entries are all observe. Its build also supplies windows-arm64.",
     "windows-arm64": "Runs the native Windows ARM64 Terminal journey against the same unified Windows payload the x64 lane tests: dist.windows.bat ships one package with runtimes/ plus per-RID win-x64/win-arm64 folders and both launchers, so 'buildFrom': 'windows-x64' keeps a single compile for both lanes.",
     "linux-x64": "Enabled on 2026-11-02 with the unit suites (Profiler among them, which profiler.yml once ran on ubuntu-latest) and the workbench and DevFlow journeys, all 'observe'. The IDE entries run under xvfb-run with Mesa's software Vulkan driver (install-linux-prerequisites.sh); promote per the usual two green runs.",
     "linux-arm64": "Same entries and rules as linux-x64, on the native ubuntu-24.04-arm runner: dist.linux.sh ships one archive per Linux architecture, so each builds for itself."
@@ -107,7 +108,15 @@
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "allowAllFailures": true,
-      "note": "Entries with known hosted failures or under investigation: macOS Terminal pointer input and debugger-journeys on Windows ARM64 (one flaky stop, fixed in c7497292df, awaiting a second green run). base-tests-arm, add-reference-journey and debugger-feature-journeys are required on every platform since 2026-10-28 but stay here for now: moving them into integration-stable would lengthen a lane with a 55-minute timeout that nobody has re-measured, and a full run is not due yet. Plan order runs the required entries first, then Hot Reload, then the two WinUI observe entries (winui-surface-designer-journeys, winui-host-selection) last, so a hang or a long Surface run there can only cost the second observe entry and never a required one; keep any entry that can hang for tens of minutes after the required ones. The lane budget is 60 minutes: the measured required entries (about 10 minutes) plus the Surface entry's own 45-minute budget, with room left for the 15 of winui-host-selection to start after a normal Surface run. The lane is defined last so its pointer journeys run after the other lanes of a shared job: a leftover IDE window from an observe entry must not sit in front of a designer drag."
+      "note": "Entries with known hosted failures or under investigation: macOS Terminal pointer input and debugger-journeys on Windows ARM64 (one flaky stop, fixed in c7497292df, awaiting a second green run). base-tests-arm, add-reference-journey and debugger-feature-journeys are required on every platform since 2026-10-28 but stay here for now: moving them into integration-stable would lengthen a lane with a 55-minute timeout that nobody has re-measured, and a full run is not due yet. Plan order runs the required entries first, then Hot Reload; keep any entry that can hang for tens of minutes after the required ones. The WinUI observe entries moved to the integration-winui lane. It is the last lane of the shared fast job, so its pointer journeys run after the other lanes of that job: a leftover IDE window from an observe entry must not sit in front of a designer drag."
+    },
+    "integration-winui": {
+      "job": "winui",
+      "timeoutMinutes": 300,
+      "entryTimeoutMinutes": 5,
+      "needsNuGetCache": true,
+      "allowAllFailures": true,
+      "note": "The WinUI designer cells and journeys (Surface, Microsoft, Uno, host selection, the real WinUI-Gallery corpus) in a job of their own, so their long first renders and Windows App SDK prerequisites cannot stretch the fast job. ci.yml clones the Gallery for this job. Windows x64 only; every entry starts as observe. allowAllFailures because the runner may lack Visual Studio MSBuild or the Windows App SDK, which fails every entry at once; promote entries, and drop this flag, after two green runner runs."
     }
   },
   "buildFirst": [
@@ -832,21 +841,21 @@
     {
       "id": "winui-surface-designer-journeys",
       "batch": 4,
-      "lane": "integration-unstable",
+      "lane": "integration-winui",
       "timeoutMinutes": 45,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
-      "args": ["-class", "OpenDevelop.IntegrationTests.WinUISurfaceDesignerTests", "-parallel", "none"],
+      "args": ["-trait", "Runtime=SurfaceWinUI", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "platforms": { "windows-x64": "observe" },
       "reason": "The WinUI Surface host and its provisioner are Windows-only; ARM64 has not been measured.",
-      "note": "The five journeys of WinUISurfaceDesignerTests (render with outline, source edit refresh, Properties pad edit with undo/redo, element selection geometry, real-drag toolbox drop) passed locally on Windows 11 x64, 100-300 s each (about 15 minutes on a developer machine, more with a cold provisioning cache), hence the 45-minute budget. The sixth Surface-cell journey, the resize-handle drag, is not selected: it lives in AddInTests, a class the Plan job's device-journey guard (tests/verify-no-device-journeys.ps1) refuses even by -method, and the guard also refuses -trait, so the cell cannot be selected by its Runtime=SurfaceWinUI trait. Selecting the whole cell needs a reviewed change to that guard or the test moved out of AddInTests. The Surface is the default WinUI selection, so no OD_WINUI_RUNTIME pin is needed. It sits in integration-unstable (allowAllFailures, the lane for entries with expected hosted failures) and not in integration-designer on purpose: run-test-plan.ps1 fails a lane in which every entry failed, observe or not, and in focus mode this entry and winui-host-selection would be the only windows-x64 designer entries, so a runner without the prerequisites below would turn the designer job red. Move both to integration-designer once the prerequisites exist. Prerequisites the runner may lack, which would make this entry fail while it is observe: the Windows App Runtime (windowsappruntimeinstall-x64.exe --quiet --force), a .NET SDK the provisioner can build the matched host with, and the toolbox-drop journey uses real OS pointer input, which needs the interactive desktop that prepare-windows-desktop.ps1 sets up. The first open provisions a matched host (about a minute cold). Starts as observe; promote after two green runner runs."
+      "note": "The whole Surface cell (-trait Runtime=SurfaceWinUI): six journeys - the five of WinUISurfaceDesignerTests (render with outline, source edit refresh, Properties pad edit with undo/redo, element selection geometry, real-drag toolbox drop) and the resize-handle drag of AddInTests - passed locally on Windows 11 x64, 100-300 s each (about 15-20 minutes on a developer machine, more with a cold provisioning cache), hence the 45-minute budget. The trait selection is accepted by tests/verify-no-device-journeys.ps1 only on Windows entries (the device journeys sharing AddInTests skip themselves there). The Surface is the default WinUI selection, so no OD_WINUI_RUNTIME pin is needed. It sits in integration-winui (allowAllFailures) because the runner may lack the prerequisites that would make this entry fail while it is observe: the Windows App Runtime (windowsappruntimeinstall-x64.exe --quiet --force), a .NET SDK the provisioner can build the matched host with, and the interactive desktop that prepare-windows-desktop.ps1 sets up for the real-pointer journeys. The first open provisions a matched host (about a minute cold). run-test-plan.ps1 fails the entry if every test skipped (a missing Surface payload). Starts as observe; promote after two green runner runs."
     },
     {
       "id": "winui-host-selection",
       "batch": 4,
-      "lane": "integration-unstable",
+      "lane": "integration-winui",
       "timeoutMinutes": 15,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -856,6 +865,50 @@
       "platforms": { "windows-x64": "observe" },
       "reason": "Both WinUI hosts these tests select between are Windows-only.",
       "note": "Two journeys, each in an IDE of its own (own config directory and environment): with the Surface payload missing the designer reports why and nothing renders through another host (no fallback), and a stored Tools > Options choice of microsoft selects the Microsoft host, not the Surface. Both passed locally on Windows 11 x64 (about 150 s each). The second needs the Microsoft host built with Visual Studio MSBuild (build.ps1 microsofthost), which the CI build may not have produced, so it can fail on a runner for that reason; the first does not need it. Starts as observe."
+    },
+    {
+      "id": "winui-microsoft-cell",
+      "batch": 4,
+      "lane": "integration-winui",
+      "timeoutMinutes": 60,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-trait", "Runtime=MicrosoftWinUI", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "env": { "OD_WINUI_RUNTIME": "microsoft", "OD_WINUI_GALLERY_ROOT": "gallery-not-cloned-for-this-entry" },
+      "platforms": { "windows-x64": "observe" },
+      "reason": "The Microsoft WinUI host is Windows-only.",
+      "note": "The whole Microsoft cell (-trait Runtime=MicrosoftWinUI) against the Microsoft WinUI host: 36 tests, 9 run and 27 Gallery tests skipped when last measured locally (all passing). OD_WINUI_GALLERY_ROOT is pinned to a deliberately absent path (an empty value would fall back to a sibling WinUI-Gallery directory) so the Gallery tests skip; winui-gallery-corpus runs them. run-test-plan.ps1 fails an entry whose every test skipped. The Microsoft cell contains no device journey; the guard (tests/verify-no-device-journeys.ps1) accepts the Runtime traits only on Windows entries because the Uno cell's iOS Simulator and Android Emulator journeys skip themselves there. Needs Visual Studio MSBuild, the Windows App SDK and the host built by build.ps1 microsofthost; observe until promoted."
+    },
+    {
+      "id": "winui-uno-cell",
+      "batch": 4,
+      "lane": "integration-winui",
+      "timeoutMinutes": 60,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-trait", "Runtime=Uno", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "env": { "OD_WINUI_RUNTIME": "uno" },
+      "platforms": { "windows-x64": "observe" },
+      "reason": "Windows x64 is the only platform measured; the Uno cell on macOS and Linux is a separate question.",
+      "note": "The whole Uno cell (-trait Runtime=Uno) against the Uno Skia Win32 host: 25 tests, 23 passed and 2 skipped (the iOS Simulator and Android Emulator device journeys, which skip off their OS) when last measured locally. The toolbox-drag test failed when run alone three times yet passes within the full cell (unexplained order dependence), so this entry runs the whole cell, never a single test. Observe until promoted."
+    },    {
+      "id": "winui-gallery-corpus",
+      "batch": 4,
+      "lane": "integration-winui",
+      "timeoutMinutes": 90,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "env": { "OD_WINUI_RUNTIME": "microsoft", "OD_WINUI_GALLERY_BUILD": "1" },
+      "platforms": { "windows-x64": "observe" },
+      "reason": "The Microsoft WinUI host and the Windows App SDK Gallery are Windows-only; ARM64 has not been measured.",
+      "note": "The real microsoft/WinUI-Gallery corpus against the Microsoft WinUI design host (27 cases today; the last full pass recorded in doc/technotes/winui-designer.md was 25 of 25 on 2026-09-13). ci.yml shallow-clones the Gallery into the runner temp folder on windows-x64 and exports OD_WINUI_GALLERY_ROOT; the entry pins OD_WINUI_RUNTIME=microsoft and OD_WINUI_GALLERY_BUILD=1 so each Gallery case builds the Gallery (Debug-Unpackaged, x64) through od.build-solution before opening its page (the first build is the long one, later ones are incremental). Needs Visual Studio MSBuild, the Windows App SDK and the Microsoft host built by build.ps1 microsofthost, none of which this plan guarantees on a runner, so it may fail for those reasons; each page opens in a fresh design host (about 30 s of theme build), hence the 90-minute budget. Starts as observe; promote after two green runner runs. The clone step is best-effort and the class skips itself without a checkout; xUnit counts a skip in the total, so run-test-plan.ps1 records the entry as failed (every test skipped) when the clone failed. The lane stays green only because the entry is observe and the lane has allowAllFailures: read the entry's own row in the job summary, and promote only a run whose cases passed."
     },
     {
       "id": "wpf-designer-assembly-lock-integration",
@@ -889,7 +942,7 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.IosSimulatorDebuggingIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "platforms": { "macos-arm64": "observe" },
-      "note": "Builds a net11.0-ios app with the SDK 11 the lane installed, installs and launches it stopped through simctl, attaches SharpDbg with the app's own retargeted mscordbi, and stops at a breakpoint in FinishedLaunching. The journey skips when no iPhone simulator or SDK 11 with the iOS workload exists, and xUnit reports a skip as a passing total, so read the entry's own result rather than the lane's colour."
+      "note": "Builds a net11.0-ios app with the SDK 11 the lane installed, installs and launches it stopped through simctl, attaches SharpDbg with the app's own retargeted mscordbi, and stops at a breakpoint in FinishedLaunching. The journey skips when no iPhone simulator or SDK 11 with the iOS workload exists, and xUnit counts a skip in the total (run-test-plan.ps1 records an entry whose every test skipped as failed, but this allowAllFailures lane stays green around it), so read the entry's own result rather than the lane's colour."
     },
     {
       "id": "android-debugging-journey",
@@ -901,7 +954,7 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.AndroidDebuggingIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "platforms": { "linux-x64": "observe" },
-      "note": "Builds a net11.0-android app with the SDK 11 the lane installed, deploys it to the headless emulator through adb, stops at a breakpoint, steps, evaluates and checks that the session leaves no debug-app setting or adb forward behind; then repeats the session. The journey skips when adb or exactly one connected device is missing, and xUnit reports a skip as a passing total, so read the entry's own result rather than the lane's colour."
+      "note": "Builds a net11.0-android app with the SDK 11 the lane installed, deploys it to the headless emulator through adb, stops at a breakpoint, steps, evaluates and checks that the session leaves no debug-app setting or adb forward behind; then repeats the session. The journey skips when adb or exactly one connected device is missing, and xUnit counts a skip in the total (run-test-plan.ps1 records an entry whose every test skipped as failed, but this allowAllFailures lane stays green around it), so read the entry's own result rather than the lane's colour."
     }
   ]
 }

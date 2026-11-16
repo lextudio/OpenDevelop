@@ -265,11 +265,11 @@ described here plus the toolbox drag and the resize-handle drag (7.2). The text 
    cells once each. The Microsoft cell pins `microsoft` through the environment so it is unaffected, but `Uno` and every
    test that opens the WinUI sample without a pin (`AddInTests` methods that call `OpenWinUIDesignerAsync`) now route
    through whatever is the default. Also run the Options page by hand (selected value shows, persists, restart applies).
-5. **CI: partly done (7.3).** Promote `surfacehost-tests` from `observe` after two green runner runs (this plan records no runner result for it); add the
-   `SurfaceWinUI` cell as a lane entry once the Windows App Runtime install step (`windowsappruntimeinstall-x64.exe --quiet
-   --force`) is in the runner setup, with `observe` first. Since `9e4c71a18d` the class `WinUISurfaceDesignerTests` (five of the cell's
-   six journeys) and `WinUIHostSelectionTests` are `observe` entries even though that install step is still absent (so they may fail on a
-   runner; they sit in the `allowAllFailures` lane for that reason); the whole cell, the Microsoft and Uno cells and the promotion are still open.
+5. **CI: partly done (7.3).** Promote `surfacehost-tests` from `observe` after two green runner runs (this plan records no runner result for it); the Windows App Runtime install step
+   (`windowsappruntimeinstall-x64.exe --quiet --force`) is still absent from the runner setup. Since the CI change that followed `9e4c71a18d`,
+   the whole Surface cell, the Microsoft cell, the Uno cell, `WinUIHostSelectionTests` and the real WinUI-Gallery corpus are `observe` entries
+   of the `integration-winui` lane (`allowAllFailures`), so they may fail on a runner for that reason; what remains open is a first runner run,
+   the missing runner prerequisites, and the promotion.
 6. **Known functional gaps to cover or document:** `PickAt` finds nothing in frame mode (only native mode); native mode
    answers `UpdateXaml` with `Hwnd`, not a frame; a machine without the Windows App Runtime (the `0x80670016` message is tested
    with a fake surface only). The gesture journeys (drag toolbox item, resize handle) that the Microsoft and Uno cells have are
@@ -347,14 +347,10 @@ through the Microsoft host) and `StoredMicrosoftChoice_SelectsTheMicrosoftHost_N
 
 ### 7.3 CI entries and the Options page
 
-- **CI (`9e4c71a18d`):** two Windows x64 `observe` entries in `integration-unstable`, after its required entries: `winui-surface-designer-journeys` (`-class WinUISurfaceDesignerTests`, five
-  journeys) and `winui-host-selection` (`-class WinUIHostSelectionTests`). Not in CI: the Surface resize journey (it is in `AddInTests`, which the device-journey guard refuses even by
-  method; the guard also refuses `-trait`), and the Microsoft and Uno cells (they need an `OD_WINUI_RUNTIME` pin; the plan has no per-entry environment). The runner has no Windows App Runtime
-  install step and no Visual Studio MSBuild build of the Microsoft host, and its interactive desktop is only a best-effort preparation (`ci.yml` runs `.github/ci/prepare-windows-desktop.ps1`), so
-  real pointer input is not guaranteed; first runs may fail, and nothing has run on a runner yet.
+- **CI (`9e4c71a18d`, extended after it):** Windows x64 `observe` entries in a lane of their own, `integration-winui` (job `winui`, `allowAllFailures`): `winui-surface-designer-journeys` (the whole Surface cell by `-trait Runtime=SurfaceWinUI`, six journeys including the resize drag), `winui-host-selection`, `winui-microsoft-cell` and `winui-uno-cell` (whole cells by trait, with `OD_WINUI_RUNTIME` pinned through the plan's new per-entry `env`) and `winui-gallery-corpus` (ci.yml shallow-clones microsoft/WinUI-Gallery and exports `OD_WINUI_GALLERY_ROOT`). The device-journey guard accepts `-trait Runtime=<cell>` on Windows entries only, and `run-test-plan.ps1` fails an entry whose every test skipped. The runner has no Windows App Runtime install step and no Visual Studio MSBuild build of the Microsoft host, and its interactive desktop is only a best-effort preparation (`ci.yml` runs `.github/ci/prepare-windows-desktop.ps1`), so first runs may fail, and nothing has run on a runner yet.
 - **Options page (`2e6a572517`):** the dialog is modal, so `od.winui-designer.options [choice] [save]` builds the page from the Options tree and loads it as the dialog does, selects a choice on its
   combo box, saves it as accepting would, and reports the stored value and the runtime the next start resolves. Two `WinUIHostSelectionTests` journeys use it: the page's path, choices, text (no
   fallback promise) and the select / save / reselect round trip, and a stored `uno` (shown as the default) surviving an accept without change. Not covered: pixels in the dialog, the file written on
   disk (the IDE is killed, not closed) and an actual restart.
 
-**Not done:** promoting the CI entries (two green runner runs, and the prerequisites above), the Microsoft and Uno cells and the Surface resize journey in CI, and the 27 Gallery tests (no Gallery checkout).
+**Not done:** a first runner run of the `integration-winui` entries, the runner prerequisites above (Windows App Runtime, Visual Studio MSBuild, the Microsoft host build), and promoting the entries (two green runner runs). The Microsoft and Uno cells, the Surface resize journey and the Gallery corpus are `observe` entries since the CI change that followed `9e4c71a18d`.
