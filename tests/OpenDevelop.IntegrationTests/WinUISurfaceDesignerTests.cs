@@ -19,7 +19,7 @@ namespace OpenDevelop.IntegrationTests;
 [Trait(RuntimeCell.TraitName, RuntimeCell.SurfaceWinUI)]
 public sealed class WinUISurfaceDesignerTests : IDisposable
 {
-    const string SurfaceStatusMarker = "WinUI Surface host";
+    internal const string SurfaceStatusMarker = "WinUI Surface host";
     // public: xUnit resolves SkipUnless by name and only finds a public static member.
     public static bool SurfaceAvailable => OperatingSystem.IsWindows();
 
@@ -181,5 +181,78 @@ public sealed class WinUISurfaceDesignerTests : IDisposable
         var bounds = await _app.InvokeAsync("od.winui-designer.describe-element", "PrimaryButton");
         Assert.True(bounds.GetProperty("success").GetBoolean(), bounds.ToString());
         Assert.False(string.IsNullOrWhiteSpace(bounds.GetProperty("description").GetString()));
+    }
+
+    /// <summary>
+    /// The Toolbox-to-design-surface path with a REAL OS mouse drag (press, stepped move, release), as the Uno and Microsoft cells
+    /// have it: the pad's own drag, the shared surface's drop handling over the Surface frame, and resolving the drop point to the
+    /// container aimed at. The Surface has no document model, so the insertion must arrive as a source edit in the parent.
+    /// </summary>
+    [Fact(Skip = "The WinUI Surface host is Windows-only.", SkipUnless = nameof(SurfaceAvailable))]
+    public async Task SurfaceHost_DragToolboxItemOntoDesignSurface_InsertsIntoDroppedContainer()
+    {
+        var status = await OpenSurfaceDesignerAsync();
+        var namesBefore = status.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()).ToList();
+
+        // The shared ToolsPad realizes its rows only once it has been shown.
+        await _app.InvokeAsync("od.show-pad", "Tools");
+        await _app.InvokeAsync("od.activate");
+
+        var toolboxBounds = await _app.InvokeAsync("od.winui-designer.toolbox.query-item-bounds", "TextBlock");
+        Assert.True(toolboxBounds.GetProperty("success").GetBoolean(), toolboxBounds.ToString());
+        var target = await _app.InvokeAsync("od.winui-designer.query-element-screen-bounds", "PrimaryButton");
+        Assert.True(target.GetProperty("success").GetBoolean(), target.ToString());
+
+        // Aim at the part of the button that is inside the visible design viewport: a small IDE window clips it (see the click test in
+        // AddInTests), and a drop outside the viewport never reaches the surface.
+        var geometry = await _app.InvokeAsync("od.winui-designer.surface-geometry");
+        double toX = target.GetProperty("centerX").GetDouble(), toY = target.GetProperty("centerY").GetDouble();
+        if (geometry.TryGetProperty("viewport", out var viewport) && viewport.GetProperty("width").GetDouble() > 0)
+        {
+            double left = Math.Max(target.GetProperty("x").GetDouble(), viewport.GetProperty("x").GetDouble());
+            double top = Math.Max(target.GetProperty("y").GetDouble(), viewport.GetProperty("y").GetDouble());
+            double right = Math.Min(target.GetProperty("x").GetDouble() + target.GetProperty("width").GetDouble(),
+                viewport.GetProperty("x").GetDouble() + viewport.GetProperty("width").GetDouble());
+            double bottom = Math.Min(target.GetProperty("y").GetDouble() + target.GetProperty("height").GetDouble(),
+                viewport.GetProperty("y").GetDouble() + viewport.GetProperty("height").GetDouble());
+            Assert.True(right > left && bottom > top, "PrimaryButton is entirely outside the visible design viewport: " + target + " vs " + viewport);
+            toX = (left + right) / 2;
+            toY = (top + bottom) / 2;
+        }
+        double fromX = toolboxBounds.GetProperty("centerX").GetDouble(), fromY = toolboxBounds.GetProperty("centerY").GetDouble();
+
+        var reset = await _app.InvokeAsync("od.pointer-events", true);
+        Assert.True(reset.GetProperty("success").GetBoolean(), reset.ToString());
+        var pressed = await _app.PressPointerAsync(fromX, fromY);
+        Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
+        var delivery = await _app.InvokeAsync("od.pointer-events", false);
+        Assert.True(delivery.GetProperty("count").GetInt32() > 0, "The toolbox press did not reach the main window: " + delivery);
+        AddInTests.AssertPointerDeliveryMatchesScreenPoint(delivery, fromX, fromY);
+        await _app.DragPointerInStepsAsync(fromX, fromY, toX, toY, steps: 8);
+
+        JsonElement after = default;
+        var inserted = await OpenDevelopAppFixture.PollUntilAsync(async () =>
+        {
+            after = await _app.InvokeAsync("od.winui-designer.status");
+            return after.GetProperty("elementNames").GetArrayLength() > namesBefore.Count;
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 100, maxDelayMs: 500);
+        Assert.True(inserted, "A real toolbox drag should have added an element: " + after + "\npointer events: " + delivery);
+        Assert.Contains(SurfaceStatusMarker, after.GetProperty("status").GetString() ?? "", StringComparison.Ordinal);
+
+        var newName = after.GetProperty("elementNames").EnumerateArray().Select(n => n.GetString()).Except(namesBefore).Single();
+        Assert.StartsWith("TextBlock", newName);
+
+        // A genuine, well-formed source edit that landed beside PrimaryButton (the drop target's container).
+        await _app.InvokeAsync("od.file.save-all");
+        var onDisk = await File.ReadAllTextAsync(_pagePath);
+        System.Xml.Linq.XDocument document = null;
+        try { document = System.Xml.Linq.XDocument.Parse(onDisk); }
+        catch (System.Xml.XmlException exception) { Assert.Fail($"Drop produced malformed XAML: {exception.Message}\n{onDisk}"); }
+        System.Xml.Linq.XNamespace xNs = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var created = document.Descendants().Where(e => (string)e.Attribute(xNs + "Name") == newName).ToList();
+        Assert.True(created.Count == 1, $"Expected exactly one element named '{newName}', found {created.Count}:\n{onDisk}");
+        Assert.Equal("TextBlock", created[0].Name.LocalName);
+        var primaryButton = document.Descendants().Single(e => (string)e.Attribute(xNs + "Name") == "PrimaryButton");
+        Assert.Equal(primaryButton.Parent, created[0].Parent);
     }
 }

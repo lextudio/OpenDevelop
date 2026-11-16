@@ -5260,9 +5260,15 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
     public Task WinUIXamlDesigner_ResizeDrag_MicrosoftWinUI_SelectionAndHandleTrackRenderedElement()
         => WinUIResizeDragSelectionAndHandleTrackRenderedElementAsync(RuntimeCell.MicrosoftWinUI);
 
+    [Fact(Skip = "The WinUI Surface host is Windows-only.", SkipUnless = nameof(WinUISurfaceDesignerTests.SurfaceAvailable), SkipType = typeof(WinUISurfaceDesignerTests))]
+    [Trait(RuntimeCell.TraitName, RuntimeCell.SurfaceWinUI)]
+    public Task WinUIXamlDesigner_ResizeDrag_SurfaceWinUI_SelectionAndHandleTrackRenderedElement()
+        => WinUIResizeDragSelectionAndHandleTrackRenderedElementAsync(RuntimeCell.SurfaceWinUI);
+
     async Task WinUIResizeDragSelectionAndHandleTrackRenderedElementAsync(string cell)
     {
-		var microsoftWinUi = cell == RuntimeCell.MicrosoftWinUI;
+		// Both Windows App SDK hosts (Microsoft and Surface) take the WinUI sample; only Uno takes the Uno one.
+		var microsoftWinUi = cell != RuntimeCell.Uno;
         // Drag a selected element's bottom-right resize handle and assert the shared-canvas
         // invariant: the selection outline always hugs the rendered element and the resize
         // handle stays at the element's bottom-right corner, before and after the drag. The
@@ -5306,10 +5312,17 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         var rendered = await OpenDevelopAppFixture.PollUntilAsync(async () => {
             status = await _app.InvokeAsync("od.winui-designer.status");
             return status.GetProperty("rendered").GetBoolean();
-        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
+        // The Surface host provisions a matched host on its first open (about a minute cold), the others only start a child.
+        }, cell == RuntimeCell.SurfaceWinUI ? TimeSpan.FromMinutes(4) : TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 500);
 		Assert.True(rendered, "The selected WinUI runtime host did not render. Status: " + status);
 		Assert.Equal(microsoftWinUi ? "WinUI" : "Uno", status.GetProperty("framework").GetString());
 		RuntimeCell.AssertWinUIBackend(status, cell);
+		if (cell == RuntimeCell.SurfaceWinUI)
+		{
+			// The Surface and Microsoft cells both report backend "WinUI", so only the status text tells them apart: without this the
+			// journey would pass against the Microsoft host when the cell is run without its OD_WINUI_RUNTIME pin.
+			Assert.Contains(WinUISurfaceDesignerTests.SurfaceStatusMarker, status.GetProperty("status").GetString() ?? "", StringComparison.Ordinal);
+		}
 
         await _app.InvokeAsync("od.winui-designer.activate-design");
         await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");
@@ -5553,7 +5566,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         return null;
     }
 
-    static void AssertPointerDeliveryMatchesScreenPoint(JsonElement delivery, double screenX, double screenY)
+    internal static void AssertPointerDeliveryMatchesScreenPoint(JsonElement delivery, double screenX, double screenY)
     {
         Assert.True(delivery.GetProperty("success").GetBoolean(), delivery.ToString());
         var recorded = delivery.GetProperty("events").EnumerateArray().Last().GetString();
