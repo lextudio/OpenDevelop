@@ -123,7 +123,9 @@ sealed class SurfaceDesignRpc
 			Runtime = Runtime,
 			ProcessId = Environment.ProcessId,
 			SessionId = sessionId,
-			Capabilities = new DesignerCapabilities { Runtime = Runtime, SessionId = sessionId },
+			// The Toolbox is advertised from static data: the Surface renders and has no runtime in this process to reflect a control
+			// list from, and without it the Tools pad stays empty and nothing can be dragged onto the design surface.
+			Capabilities = new DesignerCapabilities { Runtime = Runtime, SessionId = sessionId, Toolbox = ICSharpCode.WinUIXamlDesigner.UnoHost.WinUIControlCatalog.StaticCatalog() },
 		};
 	}
 

@@ -22,6 +22,11 @@
     <ProjectReference Include="..\WinUIXamlDesigner.SurfaceHost\WinUIXamlDesigner.SurfaceHost.csproj" />
     <ProjectReference Include="..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The Toolbox's groups and default markup, shared with the hosts that reflect their catalog from a loaded runtime. The child
+         has no WinUI runtime to reflect, so it advertises the static catalog (see SurfaceDesignRpc.Initialize). -->
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\WinUIControlCatalog.cs" Link="WinUIControlCatalog.cs" />
+  </ItemGroup>
   <!-- SurfacePayload/HostSDK (provisioner inputs) and SurfacePayload/Surface/win-x64|win-arm64 (bundled surface). -->
   <Target Name="CopySurfacePayload" AfterTargets="Build" Condition="'$(PkgLeXtudio_WinUISurface)' != ''">
     <ItemGroup>

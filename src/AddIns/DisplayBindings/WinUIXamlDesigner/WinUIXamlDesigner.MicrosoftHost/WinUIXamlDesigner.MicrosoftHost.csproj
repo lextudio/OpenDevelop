@@ -62,6 +62,7 @@
     <Compile Include="..\WinUIXamlDesigner.UnoHost\CompileTimeBindingStripper.cs" Link="CompileTimeBindingStripper.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\TemplateXBindPlan.cs" Link="TemplateXBindPlan.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\TemplatePlanMarker.cs" Link="TemplatePlanMarker.cs" />
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\WinUIControlCatalog.cs" Link="WinUIControlCatalog.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\EventHandlerAttributeStripper.cs" Link="EventHandlerAttributeStripper.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\ConditionalXmlnsStripper.cs" Link="ConditionalXmlnsStripper.cs" />
     <Compile Include="..\WinUIXamlDesigner.UnoHost\UnrenderableRootUnwrapper.cs" Link="UnrenderableRootUnwrapper.cs" />
