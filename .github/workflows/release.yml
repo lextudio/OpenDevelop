@@ -31,6 +31,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      skip_platforms:
+        description: Skip these platforms in this rehearsal, comma separated (for example macos-arm64). Adds to the repository variable CI_SKIP_PLATFORMS, which a tag push honours.
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -52,13 +57,34 @@ jobs:
   prepare:
     name: Check the tag
     runs-on: ubuntu-latest
+    outputs:
+      # The platforms this release leaves out (macos-arm64 only, for now): the repository variable CI_SKIP_PLATFORMS, the one
+      # ci.yml honours, plus the dispatch input. A skipped platform is not built, verified or attached, and the draft says so.
+      skipped: ${{ steps.skipped.outputs.skipped }}
     steps:
+      - id: skipped
+        name: Decide which platforms this release skips
+        shell: bash
+        env:
+          # Through env, never interpolated into the script: a dispatch input must not be able to inject shell.
+          SKIPPED_RAW: ${{ vars.CI_SKIP_PLATFORMS }},${{ inputs.skip_platforms }}
+        run: |
+          set -euo pipefail
+          raw="$SKIPPED_RAW"
+          skipped=$(echo "$raw" | tr ", " "\n\n" | sed "/^$/d" | sort -u | paste -sd, -)
+          for platform in ${skipped//,/ }; do
+            [[ "$platform" == "macos-arm64" ]] || { echo "::error::The release can only skip macos-arm64 for now (asked to skip $platform)."; exit 1; }
+          done
+          echo "skipped=$skipped" >> "$GITHUB_OUTPUT"
+          [[ -z "$skipped" ]] || echo "::warning::This release skips: $skipped."
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: The tag is a release version, on master, with a release-grade CI run, and not released yet
         if: github.event_name == 'push'
         shell: bash
+        env:
+          RELEASE_SKIPPED: ${{ steps.skipped.outputs.skipped }}
         run: |
           set -euo pipefail
           if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
@@ -76,7 +102,16 @@ jobs:
               --jq '.workflow_runs[] | select(.conclusion == "success") | .id'); do
             marker=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?name=release-grade" \
               --jq '[.artifacts[] | select(.expired == false)] | length')
-            if [[ "$marker" -ge 1 ]]; then green=$((green + 1)); fi
+            [[ "$marker" -ge 1 ]] || continue
+            # The marker names the platforms that run skipped (ci.yml CI_SKIP_PLATFORMS). It qualifies only for a release that
+            # skips at least those: a CI run without macOS cannot vouch for a release that ships a macOS build.
+            # A bad candidate (artifact expired between the listing and the download, a transient error) is skipped, not fatal.
+            gh run download "$run_id" -n release-grade -D "$RUNNER_TEMP/release-grade-$run_id" || { echo "Run $run_id: the release-grade marker could not be downloaded; not counted."; continue; }
+            if ci_skipped=$(bash .github/ci/release-grade-covers.sh "$RUNNER_TEMP/release-grade-$run_id/release-grade.txt" "$RELEASE_SKIPPED"); then
+              green=$((green + 1))
+            else
+              echo "Run $run_id skipped ($ci_skipped), which this release does not skip, or its marker is unusable; not counted."
+            fi
           done
           if [[ "$green" -lt 1 ]]; then
             # Escape hatch for a release whose CI is red only for infrastructure reasons (hosted
@@ -85,7 +120,7 @@ jobs:
             if [[ "${{ vars.RELEASE_SKIP_CI_GATE }}" == "true" ]]; then
               echo "::warning::No release-grade CI run exists for $GITHUB_SHA; continuing because RELEASE_SKIP_CI_GATE is true."
             else
-              echo "::error::No release-grade CI run exists for $GITHUB_SHA. Dispatch ci.yml on this commit with full=true and no through_batch/platforms/skip_platforms, and with the repository variable CI_SKIP_PLATFORMS deleted (a plain push is release-grade only when the plan is not in focus mode)."; exit 1
+              echo "::error::No release-grade CI run exists for $GITHUB_SHA. Dispatch ci.yml on this commit with full=true and no through_batch/platforms (a run that skipped a platform via CI_SKIP_PLATFORMS or skip_platforms qualifies only for a release that skips the same platform; a plain push is release-grade only when the plan is not in focus mode)."; exit 1
             fi
           fi
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
@@ -140,6 +175,8 @@ jobs:
   macos:
     name: Package and verify macOS ARM64
     needs: prepare
+    # Skipped when the release leaves macOS out (repository variable CI_SKIP_PLATFORMS, as for ci.yml).
+    if: ${{ !contains(needs.prepare.outputs.skipped, 'macos-arm64') }}
     # The same image ci.yml runs macOS on; dist.macos.sh probes for a linking toolchain and is sensitive to the SDK.
     runs-on: macos-26
     timeout-minutes: 90
@@ -301,9 +338,10 @@ jobs:
 
   draft:
     name: Draft the GitHub Release
-    needs: [verify-windows, macos, linux]
-    # A manual dispatch is a rehearsal and drafts nothing.
-    if: github.event_name == 'push'
+    needs: [prepare, verify-windows, macos, linux]
+    # A manual dispatch is a rehearsal and drafts nothing. A skipped macos job (the release leaves macOS out) is fine; a
+    # failed or cancelled one is not, and !cancelled() keeps the skipped dependency from skipping this job.
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.verify-windows.result == 'success' && needs.linux.result == 'success' && (needs.macos.result == 'success' || (needs.macos.result == 'skipped' && contains(needs.prepare.outputs.skipped, 'macos-arm64'))) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -325,7 +363,12 @@ jobs:
         run: |
           set -euo pipefail
           ls -l artifacts/release
-          assets=(OpenDevelop-win.7z OpenDevelop-macos.dmg OpenDevelop-linux-x64.tar.xz OpenDevelop-linux-arm64.tar.xz)
+          assets=(OpenDevelop-win.7z OpenDevelop-linux-x64.tar.xz OpenDevelop-linux-arm64.tar.xz)
+          if [[ "${{ needs.prepare.outputs.skipped }}" == *macos-arm64* ]]; then
+            printf '\n> **macOS is not part of this release:** the macOS ARM64 build was skipped (no macOS runners). There is no OpenDevelop-macos.dmg for this tag.\n' >> release-notes.md
+          else
+            assets+=(OpenDevelop-macos.dmg)
+          fi
           for asset in "${assets[@]}"; do
             [[ -f "artifacts/release/$asset" ]] || { echo "::error::$asset was not produced."; exit 1; }
           done

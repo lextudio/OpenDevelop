@@ -89,6 +89,7 @@ jobs:
           # The device-journey guard below reads the integration test sources to find the classes that need a device.
           sparse-checkout: |
             .github/ci
+            .github/workflows
             tests/OpenDevelop.IntegrationTests
       - name: Verify shared build selection
         shell: pwsh
@@ -105,6 +106,9 @@ jobs:
       - name: Verify platform skipping
         shell: pwsh
         run: ./.github/ci/tests/verify-skip-platforms.ps1
+      - name: Verify the release-grade marker contract and the workflow files
+        shell: pwsh
+        run: ./.github/ci/tests/verify-release-grade-marker.ps1
       - id: matrix
         shell: pwsh
         env:
@@ -674,7 +678,9 @@ jobs:
         shell: pwsh
         env:
           NEEDS: ${{ toJSON(needs) }}
-          NARROWED: ${{ (inputs.through_batch || inputs.platforms || inputs.skip_platforms || vars.CI_SKIP_PLATFORMS) && 'true' || 'false' }}
+          NARROWED: ${{ (inputs.through_batch || inputs.platforms) && 'true' || 'false' }}
+          # The marker records these (release-grade.ps1); release.yml accepts the run only for a release that skips the same platforms.
+          SKIPPED: ${{ vars.CI_SKIP_PLATFORMS }},${{ inputs.skip_platforms }}
         run: ./.github/ci/release-grade.ps1 -Output release-grade.txt
       - uses: actions/upload-artifact@v7
         with:
