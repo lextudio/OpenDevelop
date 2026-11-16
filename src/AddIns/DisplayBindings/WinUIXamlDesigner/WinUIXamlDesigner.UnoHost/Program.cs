@@ -46,6 +46,43 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 
 	}
 
+	/// <summary>
+	/// The Win32 platform host shows the activated window as a real top-level window, which on Windows sat on the user's screen (and over
+	/// the IDE, so pointer tests never reached it). Activation is what makes the tree live, so the window is not hidden: it is moved far
+	/// offscreen without activating it, as the Microsoft host does. The native window appears on the UI thread a moment after
+	/// <c>Activate()</c>, so this looks for this process's visible top-level windows for a few seconds and moves each one once.
+	/// Native-live mode positions the window itself afterwards and is not affected (the search has ended by then).
+	/// </summary>
+	static class OffscreenWindow
+	{
+		delegate bool EnumWindowsProc(nint hwnd, nint lParam);
+
+		[System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc callback, nint lParam);
+		[System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool IsWindowVisible(nint hwnd);
+		[System.Runtime.InteropServices.DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(nint hwnd, out uint processId);
+		[System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int cx, int cy, uint flags);
+
+		const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
+
+		public static void MoveAway()
+		{
+			var thread = new Thread(() => {
+				var self = (uint)Environment.ProcessId;
+				var moved = new System.Collections.Generic.HashSet<nint>();
+				for (var attempt = 0; attempt < 100; attempt++) {
+					EnumWindows((hwnd, _) => {
+						if (IsWindowVisible(hwnd) && GetWindowThreadProcessId(hwnd, out var pid) != 0 && pid == self && moved.Add(hwnd))
+							SetWindowPos(hwnd, 0, -32000, -32000, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+						return true;
+					}, 0);
+					if (moved.Count > 0 && attempt > 10) break;
+					Thread.Sleep(100);
+				}
+			}) { IsBackground = true, Name = "design-host-offscreen" };
+			thread.Start();
+		}
+	}
+
 	class HostApp : Application
 	{
 		public static string[] LaunchArgs { get; set; } = Array.Empty<string>();
@@ -63,6 +100,8 @@ namespace ICSharpCode.WinUIXamlDesigner.UnoHost
 			stage = new Grid { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
 			window = new Window { Content = stage };
 			window.Activate();
+			if (OperatingSystem.IsWindows())
+				OffscreenWindow.MoveAway();
 			HostDispatcher.Current = new DesktopDispatcher(window.DispatcherQueue, () => Shutdown.Set());
 			InstallHooks();
 
