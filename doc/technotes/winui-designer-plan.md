@@ -21,7 +21,7 @@ Dates are 2026-11.
 
 | Capability | Where | Evidence |
 |---|---|---|
-| Surface renderer as the default Microsoft WinUI runtime (Options can choose Microsoft host), matched host per project, private run copies | `WinUIXamlDesigner.SurfaceHost`, `.Child`, fork provisioner | live in the IDE; unavailable payload falls back to Microsoft host |
+| Surface renderer as the default Microsoft WinUI runtime (Options can choose Microsoft host), matched host per project, private run copies | `WinUIXamlDesigner.SurfaceHost`, `.Child`, fork provisioner | live in the IDE; unavailable payload is reported, never replaced by another host (7.1) |
 | Described frames: authored element tree with bounds (package 0.3.0) | `describe: true`, `FrameTree.cs`; `SurfaceDesignDocument` | 313 ms update with the tree; IDE outline resolves names |
 | Hit-test and selection from the frame (no native mode) | `SurfaceDesignDocument.HitTestAsync` | fake-surface and real-surface DDP tests |
 | Layout metadata (package 0.4.0): margin, parent kind, Grid row/col/span and tracks, Canvas position, z-index, orientation | `FrameLayout` -> `GridTracks`, `LayoutInsets`, `ZIndex` | real-surface probe of Grid, Canvas, StackPanel |
@@ -254,7 +254,7 @@ provisioner, the standalone `UnoDesignClient`).
 1. Run the four tests one at a time (`-p:RuntimeCell=SurfaceWinUI`, or `dotnet run` with `-method`), fix what the first run
    exposes, then run the cell. Prerequisites: the add-in built with `-p:SkipWinUIHotReloadTap=true` (stop the IDE first), the
    Windows App Runtime installed, a short `OD_SURFACE_ROOT`.
-2. **Fallback test (missing).** Prove that with `OD_WINUI_RUNTIME=surface` and no `SurfaceHost/` payload (or a project the
+2. **Fallback test: done (no fallback by decision, see 7.1).** Originally: prove that with `OD_WINUI_RUNTIME=surface` and no `SurfaceHost/` payload (or a project the
    bootstrap declines) the designer reports the bootstrap's reason and renders nothing, and that `OD_WINUI_RUNTIME=microsoft`
    and an Options value of `microsoft` still select the Microsoft host. Note the code today does **not** silently fall back
    to the Microsoft host when the Surface payload is present but provisioning fails (section 2: "no surface is started");
@@ -314,10 +314,17 @@ Tools install lacked the `.NET SDK` component (`Microsoft.NetCore.Component.SDK`
    (`ChildRuntimeMajor`, read from the `MicrosoftHost\netN.M[-windowsappsdk...]` folder; the legacy flat child counts as net10).
 With these, `AddInTests.WinUIOnly_DesignerOpensWinUIProject` (`Runtime=MicrosoftWinUI`) passes. The other 14 Microsoft-cell tests were not run.
 
-**Uno cell: broken on Windows by `1b19885d62`.** `UnoHost/Program.cs` now builds `UnoPlatformHostBuilder.Create().App(...).UseMacOS().Build()`;
-on Windows the child exits at once with `No platform host could be selected`, and the designer shows `Uno design host failed to start: A task was canceled.`
-(`AddInTests.OpenUnoXamlFile_UsesWinUIXamlDesignerInsteadOfWpfDesigner` fails). The Uno fixtures (`UnoHotReloadFixture`) also do not compile here (`InitializeComponent`
-missing). Not fixed: it needs a per-platform host (Win32 on Windows) and a Uno rebuild, which is the commit author's call.
+**Uno cell: was broken on Windows by `1b19885d62`, fixed in `3bec47feea`.** `UnoHost/Program.cs` selected only `UseMacOS()`, so on Windows the child exited with
+`No platform host could be selected`. It now picks the host by OS (Win32, MacOS, else X11). After the fix `OpenUnoXamlFile_UsesWinUIXamlDesignerInsteadOfWpfDesigner`,
+`RendersButtonWithVisibleLightThemeColors` and the properties-pad edit test pass. The Uno fixtures (`UnoHotReloadFixture`) still do not compile here (`InitializeComponent` missing); not investigated.
 
-**Not done:** CI (`surfacehost-tests` on a runner, the `SurfaceWinUI` cell as an `observe` entry), the fallback test as an automated test (the scenarios above are scripted
-by hand, `C:\wxp\scenario.ps1`), the Options page click-through, and the toolbox-drag and resize-handle Surface journeys.
+**No fallback (commit `8bf05d9824`, owner's decision).** The Surface host never falls back to the Microsoft or Uno host. `WinUIRuntimeSelection.HostsToRegister` is the rule
+(`surface` registers uno + surface, no Microsoft host; `uno` registers microsoft + uno; `microsoft` registers uno + microsoft). When no host takes a Microsoft WinUI document the
+designer says why (`WinUI 3 runtime host is not installed.` plus each registered factory's reason, e.g. the missing `SurfaceHost` folder); when a deployed Surface host fails to
+start its own error is shown, ending with a note that the Microsoft host is not used automatically. The Options text no longer promises a fallback. This supersedes the
+scenario table above, whose second row now reads: the designer names the missing Surface files. Automated by `WinUIHostSelectionTests` (own IDE each, both pass):
+`SurfaceHostFilesMissing_IsReported_AndNothingIsRenderedThroughAnotherHost` (`OD_SURFACE_HOST_ROOT` simulates a missing payload; fails against the old behaviour, which rendered
+through the Microsoft host) and `StoredMicrosoftChoice_SelectsTheMicrosoftHost_NotTheSurface`.
+
+**Not done:** CI (`surfacehost-tests` on a runner, the `SurfaceWinUI` cell as an `observe` entry), the Options page click-through, the toolbox-drag and resize-handle Surface
+journeys, and the remaining Microsoft-cell (14) and Uno-cell (22) tests.
