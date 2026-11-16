@@ -228,7 +228,7 @@ Properties pad re-renders without a build; `OD_WINUI_LIVE_BINDINGS=0` turns the 
 
 State on 2026-11-15, written on macOS where the Surface cannot run (it is Windows-only and needs the Windows App Runtime).
 The default switch (`RegisterDevFlowActionsCommand.DefaultRuntimePreference = "surface"`, plus the Tools > Options page) is in
-the tree but **never run in an IDE**: before it, every verification of the Surface in the IDE was manual
+the tree but **had never been run in an IDE when this was written** (since then it has: the default selection in 7.1, the Options page in 7.3): before it, every verification of the Surface in the IDE was manual
 (2026-11-12) and every automated one was the `WinUIXamlDesigner.SurfaceHost.Tests` suite (fake surface, child process,
 provisioner, the standalone `UnoDesignClient`).
 
@@ -260,14 +260,16 @@ described here plus the toolbox drag and the resize-handle drag (7.2). The text 
    to the Microsoft host when the Surface payload is present but provisioning fails (section 2: "no surface is started");
    the Options text ("falls back automatically") only holds for an undeployed payload or a declined project. Decide which
    behaviour is intended, then fix the text or the code.
-3. **Default-selection unit test: done on macOS.** The resolution is now the pure `WinUIRuntimeSelection.Resolve` (environment, then stored `WinUIXamlDesigner.Runtime`, then `surface`; blank ignored; unrecognised reported and replaced by the default), source-linked into `OpenDevelop.Base.Tests` and covered by `WinUIRuntimeSelectionTests` (13 cases, passing). The add-in project itself builds (`-p:SkipWinUIHotReloadTap=true`), so `RegisterDevFlowActionsCommand` and the Options page compile; neither has run.
-4. **Default-on regressions: cells done (7.2); the Options page click-through is not.** With the default now `surface`, run the existing `Runtime=MicrosoftWinUI` and `Runtime=Uno`
+3. **Default-selection unit test: done on macOS.** The resolution is now the pure `WinUIRuntimeSelection.Resolve` (environment, then stored `WinUIXamlDesigner.Runtime`, then `surface`; blank ignored; unrecognised reported and replaced by the default), source-linked into `OpenDevelop.Base.Tests` and covered by `WinUIRuntimeSelectionTests` (13 cases, passing). The add-in project itself builds (`-p:SkipWinUIHotReloadTap=true`), so `RegisterDevFlowActionsCommand` and the Options page compile; neither had run when this was written (since then both have: the command registers the hosts in every Windows run of 7.1-7.2, and the page is exercised through `od.winui-designer.options`, 7.3).
+4. **Default-on regressions: cells done (7.2); the Options page is driven through `od.winui-designer.options` (7.3), not clicked in the modal dialog.** With the default now `surface`, run the existing `Runtime=MicrosoftWinUI` and `Runtime=Uno`
    cells once each. The Microsoft cell pins `microsoft` through the environment so it is unaffected, but `Uno` and every
    test that opens the WinUI sample without a pin (`AddInTests` methods that call `OpenWinUIDesignerAsync`) now route
    through whatever is the default. Also run the Options page by hand (selected value shows, persists, restart applies).
-5. **CI.** Promote `surfacehost-tests` from `observe` after two green runner runs (it has never run on one); add the
+5. **CI: partly done (7.3).** Promote `surfacehost-tests` from `observe` after two green runner runs (this plan records no runner result for it); add the
    `SurfaceWinUI` cell as a lane entry once the Windows App Runtime install step (`windowsappruntimeinstall-x64.exe --quiet
-   --force`) is in the runner setup, with `observe` first.
+   --force`) is in the runner setup, with `observe` first. Since `9e4c71a18d` the class `WinUISurfaceDesignerTests` (five of the cell's
+   six journeys) and `WinUIHostSelectionTests` are `observe` entries even though that install step is still absent (so they may fail on a
+   runner; they sit in the `allowAllFailures` lane for that reason); the whole cell, the Microsoft and Uno cells and the promotion are still open.
 6. **Known functional gaps to cover or document:** `PickAt` finds nothing in frame mode (only native mode); native mode
    answers `UpdateXaml` with `Hwnd`, not a frame; a machine without the Windows App Runtime (the `0x80670016` message is tested
    with a fake surface only). The gesture journeys (drag toolbox item, resize handle) that the Microsoft and Uno cells have are
@@ -296,8 +298,8 @@ The first run failed twice, both bugs in the test: `SurfaceAvailable` was privat
 
 Text vs code, for the owner to decide: the Options text ("automatically falls back to the Microsoft host") is true only when the payload is absent
 *and* the Microsoft host is deployed, and false when provisioning fails. The generic "not installed" text also hides which host is missing.
-The Options dialog itself has no DevFlow hook, so display, persistence and restart were not clicked through (the pure logic is covered by
-`WinUIRuntimeSelectionTests`); only the stored-value selection above was exercised.
+The Options dialog itself had no DevFlow hook when this was written, so display, persistence and restart were not clicked through (the pure logic is covered by
+`WinUIRuntimeSelectionTests`); only the stored-value selection above was exercised. Superseded for the page itself by 7.3 (`od.winui-designer.options`).
 
 **Microsoft host: needed four source fixes and a Visual Studio component before it could run at all.** `build.ps1` builds it with VS MSBuild, and this Build
 Tools install lacked the `.NET SDK` component (`Microsoft.NetCore.Component.SDK`, added with the VS Installer; without it VS MSBuild reports
@@ -343,6 +345,16 @@ through the Microsoft host) and `StoredMicrosoftChoice_SelectsTheMicrosoftHost_N
   earlier `InitializeComponent` failure (seen once, in 7.1) did not reproduce and its cause was not determined: no commit touched the fixture in between (its last change is
   `1b19885d62`), so a stale `obj/` or a different build invocation is the likely explanation, not a code fix. Treat the fixture as unverified for hot reload.
 
-**Not done:** CI (the `SurfaceWinUI` cell and the other WinUI cells need a Windows App Runtime install step, a Visual Studio MSBuild build of the Microsoft host and a short
-`OD_SURFACE_ROOT` on the runner, none of which the plan or `ci.yml` has; `surfacehost-tests` is already an `observe` entry), the Options page click-through (no DevFlow hook), and the
-27 Gallery tests (no Gallery checkout).
+### 7.3 CI entries and the Options page
+
+- **CI (`9e4c71a18d`):** two Windows x64 `observe` entries in `integration-unstable`, after its required entries: `winui-surface-designer-journeys` (`-class WinUISurfaceDesignerTests`, five
+  journeys) and `winui-host-selection` (`-class WinUIHostSelectionTests`). Not in CI: the Surface resize journey (it is in `AddInTests`, which the device-journey guard refuses even by
+  method; the guard also refuses `-trait`), and the Microsoft and Uno cells (they need an `OD_WINUI_RUNTIME` pin; the plan has no per-entry environment). The runner has no Windows App Runtime
+  install step and no Visual Studio MSBuild build of the Microsoft host, and its interactive desktop is only a best-effort preparation (`ci.yml` runs `.github/ci/prepare-windows-desktop.ps1`), so
+  real pointer input is not guaranteed; first runs may fail, and nothing has run on a runner yet.
+- **Options page (`2e6a572517`):** the dialog is modal, so `od.winui-designer.options [choice] [save]` builds the page from the Options tree and loads it as the dialog does, selects a choice on its
+  combo box, saves it as accepting would, and reports the stored value and the runtime the next start resolves. Two `WinUIHostSelectionTests` journeys use it: the page's path, choices, text (no
+  fallback promise) and the select / save / reselect round trip, and a stored `uno` (shown as the default) surviving an accept without change. Not covered: pixels in the dialog, the file written on
+  disk (the IDE is killed, not closed) and an actual restart.
+
+**Not done:** promoting the CI entries (two green runner runs, and the prerequisites above), the Microsoft and Uno cells and the Surface resize journey in CI, and the 27 Gallery tests (no Gallery checkout).
