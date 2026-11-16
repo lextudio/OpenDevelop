@@ -37,6 +37,8 @@
          the debuggee, not the IDE. -->
     <ProjectReference Include="..\..\..\..\Main\HotReload\WinUIHotReload.Agent\WinUIHotReload.Agent.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" Private="false" />
 	<ProjectReference Include="..\..\..\..\Main\Designer\Designer.Shell\Designer.Shell.csproj" Private="false" />
+    <!-- The Toolbox's standard control list and default markup, shared with the design hosts (see WinUIXamlDesignerViewContent's constructor). -->
+    <Compile Include="..\WinUIXamlDesigner.UnoHost\WinUIControlCatalog.cs" Link="WinUIControlCatalog.cs" />
     <!-- IPropertyGridEventSource / the shared Properties pad's Xceed grid (IPropertyGridEventSource). -->
     <PackageReference Include="LeXtudio.Wpf.Toolkit" ExcludeAssets="runtime" />
     <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />

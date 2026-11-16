@@ -60,6 +60,10 @@ public sealed class WinUIXamlDesignerViewContent : AbstractViewContentHandlingLo
 	{
 		Framework = framework;
 		previewHost = new WinUIXamlHost(framework, file?.FileName?.ToString() ?? "Preview.xaml");
+		// The standard WinUI controls are known without a running host, which only starts after the project's designer build (and, for the
+		// Surface, its provisioning): list them now so the Tools pad is not empty for that whole wait. The host's own catalog, reported
+		// once it connects (OnPreviewStateChanged), adds whatever else the project's runtime offers; items already listed are skipped.
+		WinUIXamlToolbox.Instance.PopulateFromCatalog(ICSharpCode.WinUIXamlDesigner.UnoHost.WinUIControlCatalog.StaticCatalog());
 		previewHost.StateChanged += OnPreviewStateChanged;
 		previewHost.ComponentTrayItemSelected += OnComponentTrayItemSelected;
 		previewHost.ElementPicked += OnElementPickedOnSurface;
