@@ -2301,6 +2301,24 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         var x = bounds.GetProperty("centerX").GetDouble();
         var y = bounds.GetProperty("centerY").GetDouble();
 
+        // The element's centre is not always on screen: in a small IDE window the design viewport clips the element (measured: a 126 px
+        // tall viewport ended 1.5 px above the button's centre, so the press landed on the editor chrome below the canvas and the
+        // surface never saw a click). Press the centre of the part of the element that is inside the viewport instead.
+        var geometry = await _app.InvokeAsync("od.winui-designer.surface-geometry");
+        if (geometry.TryGetProperty("viewport", out var viewport) && viewport.GetProperty("width").GetDouble() > 0)
+        {
+            double left = Math.Max(bounds.GetProperty("x").GetDouble(), viewport.GetProperty("x").GetDouble());
+            double top = Math.Max(bounds.GetProperty("y").GetDouble(), viewport.GetProperty("y").GetDouble());
+            double right = Math.Min(bounds.GetProperty("x").GetDouble() + bounds.GetProperty("width").GetDouble(),
+                viewport.GetProperty("x").GetDouble() + viewport.GetProperty("width").GetDouble());
+            double bottom = Math.Min(bounds.GetProperty("y").GetDouble() + bounds.GetProperty("height").GetDouble(),
+                viewport.GetProperty("y").GetDouble() + viewport.GetProperty("height").GetDouble());
+            Assert.True(right > left && bottom > top,
+                "The element is entirely outside the visible design viewport, so it cannot be clicked: " + bounds + " vs " + viewport);
+            x = (left + right) / 2;
+            y = (top + bottom) / 2;
+        }
+
         JsonElement status = default;
         var selected = await OpenDevelopAppFixture.PollUntilAsync(async () =>
         {
