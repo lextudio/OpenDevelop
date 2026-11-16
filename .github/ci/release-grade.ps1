@@ -1,6 +1,6 @@
 # Decides whether a ci.yml run may gate a release, and writes the marker file that the release-grade job uploads.
 # release.yml accepts a commit only when one of its CI runs carries that artifact.  A green run alone proves too little:
-# the plan's "focus" mode skips every 'required' entry, and a dispatch narrowed by through_batch/platforms runs a subset.
+# the plan's "focus" mode skips every 'required' entry, and a dispatch narrowed by through_batch/platforms/skip_platforms (or the CI_SKIP_PLATFORMS variable) runs a subset.
 #
 # Reads $env:NEEDS (toJSON(needs) of the release-grade job) and $env:NARROWED ('true' for a narrowed dispatch);
 # $env:OD_CI_FULL is the workflow's 'full' input.  Writes the file only when the run qualifies, and always explains why in
@@ -12,7 +12,7 @@ $needs = $env:NEEDS | ConvertFrom-Json
 $plan = Get-Content (Join-Path $PSScriptRoot 'test-plan.json') -Raw | ConvertFrom-Json
 
 $problems = @()
-if ($env:NARROWED -eq 'true') { $problems += 'a dispatch narrowed by through_batch or platforms runs only a subset' }
+if ($env:NARROWED -eq 'true') { $problems += 'a dispatch narrowed by through_batch, platforms or skip_platforms (or the CI_SKIP_PLATFORMS variable) runs only a subset' }
 $focus = $plan.PSObject.Properties['focus'] -and $plan.focus
 if ($focus -and $env:OD_CI_FULL -ne 'true') { $problems += 'the plan is in focus mode and this run did not set full=true, so the required entries were skipped' }
 

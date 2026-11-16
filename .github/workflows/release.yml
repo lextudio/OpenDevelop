@@ -85,7 +85,7 @@ jobs:
             if [[ "${{ vars.RELEASE_SKIP_CI_GATE }}" == "true" ]]; then
               echo "::warning::No release-grade CI run exists for $GITHUB_SHA; continuing because RELEASE_SKIP_CI_GATE is true."
             else
-              echo "::error::No release-grade CI run exists for $GITHUB_SHA. Dispatch ci.yml on this commit with full=true and no through_batch/platforms (a plain push is release-grade only when the plan is not in focus mode)."; exit 1
+              echo "::error::No release-grade CI run exists for $GITHUB_SHA. Dispatch ci.yml on this commit with full=true and no through_batch/platforms/skip_platforms, and with the repository variable CI_SKIP_PLATFORMS deleted (a plain push is release-grade only when the plan is not in focus mode)."; exit 1
             fi
           fi
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then

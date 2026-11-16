@@ -24,6 +24,7 @@
 param(
     [int]$ThroughBatch = -1,
     [string]$Platforms = '',
+    [string]$SkipPlatforms = '',
     [string]$PlanPath = (Join-Path $PSScriptRoot 'test-plan.json')
 )
 
@@ -49,6 +50,28 @@ if ($onlyPlatforms.Count -gt 0) {
     if ($unknown.Count -gt 0) { throw "Unknown platform(s) in -Platforms: $($unknown -join ', '). Defined: $(($plan.platforms.PSObject.Properties.Name) -join ', ')." }
     $enabled = @($enabled | Where-Object { $_.Platform -in $onlyPlatforms })
     if ($enabled.Count -eq 0) { throw "The plan enables nothing on $($onlyPlatforms -join ', ') up to batch $ThroughBatch." }
+}
+
+# -SkipPlatforms drops the named platforms (comma separated) after -Platforms is applied: the switch for a day on which one
+# runner family (macOS) is unavailable or out of quota. ci.yml feeds it from the repository variable CI_SKIP_PLATFORMS (set it to
+# macos-arm64 and every push skips macOS, clear it to restore) and from the dispatch input skip_platforms. A platform that
+# another kept platform builds from ('buildFrom') cannot be skipped alone.
+$skipPlatformList = @($SkipPlatforms -split '[,\s]+' | Where-Object { $_ })
+if ($skipPlatformList.Count -gt 0) {
+    $unknownSkip = @($skipPlatformList | Where-Object { $null -eq $plan.platforms.PSObject.Properties[$_] })
+    if ($unknownSkip.Count -gt 0) { throw "Unknown platform(s) in -SkipPlatforms: $($unknownSkip -join ', '). Defined: $(($plan.platforms.PSObject.Properties.Name) -join ', ')." }
+    $enabled = @($enabled | Where-Object { $_.Platform -notin $skipPlatformList })
+    if ($enabled.Count -eq 0) { throw "Skipping $($skipPlatformList -join ', ') leaves nothing to run up to batch $ThroughBatch." }
+    foreach ($kept in @($enabled.Platform | Select-Object -Unique)) {
+        # Follow the buildFrom chain: any provider on it that is skipped would leave the kept platform without an archive.
+        $provider = $kept; $hops = 0
+        while ($hops++ -lt 10) {
+            $from = $plan.platforms.PSObject.Properties[$provider].Value.PSObject.Properties['buildFrom']
+            if (-not $from -or -not $from.Value) { break }
+            $provider = [string]$from.Value
+            if ($provider -in $skipPlatformList) { throw "Platform '$kept' builds from '$provider', which -SkipPlatforms drops; skip both or neither." }
+        }
+    }
 }
 
 # One build per *packaging* unit, not per runner. dist.windows.bat ships one Windows payload for x64 and ARM64
@@ -149,7 +172,7 @@ foreach ($group in @($enabled | Group-Object { "$($_.Platform)|$(Get-EffectiveJo
 $buildJson = (@{ include = $build } | ConvertTo-Json -Compress -Depth 5)
 $laneJson = (@{ include = $lanes } | ConvertTo-Json -Compress -Depth 5)
 
-Write-Host "ThroughBatch=$ThroughBatch RunStatuses=$($runStatuses -join ',') Platforms=$(if ($onlyPlatforms.Count -gt 0) { $onlyPlatforms -join ',' } else { 'all' })"
+Write-Host "ThroughBatch=$ThroughBatch RunStatuses=$($runStatuses -join ',') Platforms=$(if ($onlyPlatforms.Count -gt 0) { $onlyPlatforms -join ',' } else { 'all' }) Skipped=$(if ($skipPlatformList.Count -gt 0) { $skipPlatformList -join ',' } else { 'none' })"
 Write-Host "build_matrix=$buildJson"
 Write-Host "lane_matrix=$laneJson"
 if ($env:GITHUB_OUTPUT) {

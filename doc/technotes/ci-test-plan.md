@@ -70,7 +70,7 @@ as a short-lived artifact. Once both architectures were green (see below) those 
 `ci.yml`; Release builds do not belong in the Debug CI, so they now run only in `release.yml` (Windows, macOS and Linux, one
 native runner per Linux architecture, each followed by the lean packaged-app check; macOS and Linux build and check in one job, Windows is built once and checked on x64 and ARM64 runners in parallel). A tag is gated on a *release-grade*
 `ci.yml` run for the commit: the `Release grade` job uploads a `release-grade` artifact only when the run executed the
-full plan (not focus mode unless `full=true`, no `through_batch`/`platforms`) and its plan and build jobs passed. The release's draft attaches `OpenDevelop-linux-x64.tar.xz` and `OpenDevelop-linux-arm64.tar.xz`. The CI invocation skips the
+full plan (not focus mode unless `full=true`, no `through_batch`/`platforms`/`skip_platforms`, and the `CI_SKIP_PLATFORMS` variable unset) and its plan and build jobs passed. The release's draft attaches `OpenDevelop-linux-x64.tar.xz` and `OpenDevelop-linux-arm64.tar.xz`. The CI invocation skips the
 developer-only local-feed synchronizer and restores directly from GitHub Packages with the workflow's short-lived
 package credential.
 
@@ -416,6 +416,16 @@ What a platform may build and how its lanes must run is the packaging contract, 
 serves x64 and ARM64, macOS ships osx-arm64 only. [`dual-architecture-packaging.md`](dual-architecture-packaging.md)
 states it, and its "CI: the same contract, enforced instead of hoped for" section maps it to the checks that live in this
 workflow (`buildFrom`, the archive rules per platform, the payload scan and the per-lane RID/architecture check).
+
+## Skipping a platform (no runners, quota)
+
+When GitHub has no runners for a family (macOS ran out of minutes), set the repository variable `CI_SKIP_PLATFORMS` to a comma
+separated platform list (`gh variable set CI_SKIP_PLATFORMS --body macos-arm64`). `ci.yml` hands it, together with the dispatch
+input `skip_platforms`, to `plan-matrix.ps1 -SkipPlatforms`, which drops those platforms' build and lane jobs after `-Platforms`
+is applied, so every push and pull request runs without them; `gh variable delete CI_SKIP_PLATFORMS` restores the full run.
+A platform that another kept platform builds from (`windows-x64` for Windows ARM64) cannot be skipped alone, and a run with
+anything skipped is never release-grade (`release-grade.ps1`, the same rule as `through_batch` and `platforms`).
+`.github/ci/tests/verify-skip-platforms.ps1` checks the matrices in the Plan job.
 
 ## Device journeys (emulator and Simulator)
 

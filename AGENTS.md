@@ -311,9 +311,10 @@ Spending runs:
 
 - **Push reviewed CI changes straight to `master`**; do not use a topic branch (`ci-probe` and the like) to try them first.
   The push is the run: read its result and follow up with another reviewed commit. A push to `master` (plus PRs) is the
-  only automatic trigger. Dispatch on `master` only for what a push cannot do (`full=true`, `through_batch`, `platforms`),
+  only automatic trigger. Dispatch on `master` only for what a push cannot do (`full=true`, `through_batch`, `platforms`, `skip_platforms`),
   and never for a commit whose push run is still going - that runs the same thing twice, which happened twice on
   2026-10-25 and cost about 28 runner minutes.
+- **No runners for a platform (macOS quota):** set the repository variable `CI_SKIP_PLATFORMS` (for example `macos-arm64`; `gh variable set CI_SKIP_PLATFORMS --body macos-arm64`) and every push and PR skips that platform's build and test jobs; delete it (`gh variable delete CI_SKIP_PLATFORMS`) to restore. A dispatch can add `skip_platforms`. Such a run is never release-grade. A platform another kept platform builds from (`windows-x64` for ARM64) cannot be skipped alone.
 - **One hypothesis, one run.** Batch related edits, read the result, then act. Cancel a superseded run
   (`gh run cancel <id>`) instead of letting it finish.
 - Read the lane's job summary table (`| Entry | Mode | Result | Seconds | Tests |`), not the console tail. `observe`
@@ -389,7 +390,7 @@ releases v5.6.0 - v5.6.3, so keep them: the title is the tag (`v5.6.4`, not `Ope
 Highlight, Known issues, Full Changelog).
 
 - The workflow checks the tag first: `vMAJOR.MINOR.PATCH[-suffix]`, on `master`, at least one **release-grade** `ci.yml` run
-  for that exact commit (one that uploaded the `release-grade` artifact: no `through_batch`/`platforms` narrowing, the plan
+  for that exact commit (one that uploaded the `release-grade` artifact: no `through_batch`/`platforms`/`skip_platforms` narrowing and no `CI_SKIP_PLATFORMS` variable, the plan
   not in focus mode or dispatched with `full=true`, and its plan and build jobs passed), and no release for it yet. A merely
   green run does not qualify. Run CI on the commit before tagging it; while `"focus": true`, dispatch it with `full=true`.
 - The packaged-app checks run the same journeys on every platform: `build/verify-packaged-common.sh` (macOS and Linux share it)

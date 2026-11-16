@@ -44,6 +44,10 @@ on:
         description: Run only these platforms, comma separated (for example windows-x64,windows-arm64; empty = all). Use it when a platform's runners are unavailable, because the lanes wait for the whole build matrix.
         required: false
         default: ''
+      skip_platforms:
+        description: Skip these platforms, comma separated (for example macos-arm64 when GitHub has no macOS runners). Adds to the repository variable CI_SKIP_PLATFORMS, which every run honours.
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -98,15 +102,21 @@ jobs:
       - name: Verify the test summary parsing
         shell: pwsh
         run: ./.github/ci/tests/verify-test-summary.ps1
+      - name: Verify platform skipping
+        shell: pwsh
+        run: ./.github/ci/tests/verify-skip-platforms.ps1
       - id: matrix
         shell: pwsh
         env:
           THROUGH_BATCH: ${{ inputs.through_batch }}
           PLATFORMS: ${{ inputs.platforms }}
+          # The repository variable (Settings > Variables > Actions) switches a platform off for every run, push and PR included,
+          # without a commit; the dispatch input adds to it for one run.
+          SKIP_PLATFORMS: ${{ vars.CI_SKIP_PLATFORMS }},${{ inputs.skip_platforms }}
         run: |
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }
-          ./.github/ci/plan-matrix.ps1 -ThroughBatch $through -Platforms $env:PLATFORMS
+          ./.github/ci/plan-matrix.ps1 -ThroughBatch $through -Platforms $env:PLATFORMS -SkipPlatforms $env:SKIP_PLATFORMS
 
   build:
     name: Build (${{ matrix.name }})
@@ -664,7 +674,7 @@ jobs:
         shell: pwsh
         env:
           NEEDS: ${{ toJSON(needs) }}
-          NARROWED: ${{ (inputs.through_batch || inputs.platforms) && 'true' || 'false' }}
+          NARROWED: ${{ (inputs.through_batch || inputs.platforms || inputs.skip_platforms || vars.CI_SKIP_PLATFORMS) && 'true' || 'false' }}
         run: ./.github/ci/release-grade.ps1 -Output release-grade.txt
       - uses: actions/upload-artifact@v7
         with:
