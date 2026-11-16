@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -126,4 +127,18 @@ public sealed class WinUIXamlDesignerOptions : OptionPanel
 	}
 
 	sealed record RuntimeOption(string Value, string Label);
+
+	/// <summary>The choices the page offers, as (stored value, label); for the DevFlow action that drives this page.</summary>
+	internal System.Collections.Generic.IReadOnlyList<(string Value, string Label)> Choices
+		=> runtime.Items.OfType<RuntimeOption>().Select(option => (option.Value, option.Label)).ToList();
+
+	/// <summary>The value of the choice currently selected in the page's combo box (what a click on an entry sets).</summary>
+	internal string SelectedChoice {
+		get => runtime.SelectedValue as string;
+		set => runtime.SelectedValue = value;
+	}
+
+	/// <summary>The text blocks the page shows, in order (title and explanation).</summary>
+	internal System.Collections.Generic.IReadOnlyList<string> Texts
+		=> (Content as Panel)?.Children.OfType<TextBlock>().Select(block => block.Text).ToList() ?? new System.Collections.Generic.List<string>();
 }

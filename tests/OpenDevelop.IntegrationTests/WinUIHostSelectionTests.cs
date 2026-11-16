@@ -111,6 +111,88 @@ public sealed class WinUIHostSelectionTests
         }
     }
 
+    /// <summary>
+    /// Tools &gt; Options &gt; Experimental Features, driven through <c>od.winui-designer.options</c>: the page is built from the Options
+    /// tree and loaded like the dialog does, a choice is selected on its combo box (what a click sets) and saved like accepting the
+    /// dialog. The stored value is what the next start resolves (<c>WinUIRuntimeSelection.Resolve</c>, covered by unit tests).
+    /// Not covered: the written file and the actual restart (the IDE is killed, not closed), and pixels (the dialog itself is modal).
+    /// </summary>
+    [Fact]
+    public async Task OptionsPage_OffersBothHosts_AndSavingAChoiceChangesTheStoredRuntime()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The WinUI hosts are Windows-only.");
+        var work = Path.Combine(Path.GetTempPath(), "WinUIHostSelection-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(work);
+        try
+        {
+            using var ide = await IsolatedIde.StartAsync(ConfigDirectory(work, null), new Dictionary<string, string?> { ["OD_WINUI_RUNTIME"] = null });
+
+            var shown = await ide.InvokeAsync("od.winui-designer.options");
+            Assert.True(shown.GetProperty("success").GetBoolean(), shown.ToString());
+            Assert.Equal("Experimental Features", shown.GetProperty("label").GetString());
+            Assert.Equal("Experimental Features", shown.GetProperty("path").EnumerateArray().Last().GetString());
+            var choices = shown.GetProperty("choices").EnumerateArray().Select(c => c.GetProperty("value").GetString()).ToList();
+            Assert.Equal(new[] { "surface", "microsoft" }, choices);
+            Assert.Equal("surface", shown.GetProperty("selected").GetString());
+            Assert.Equal("surface", shown.GetProperty("stored").GetString());
+            // The text must not promise the fallback that no longer exists, and must say what happens instead.
+            var text = string.Join(" ", shown.GetProperty("texts").EnumerateArray().Select(t => t.GetString()));
+            Assert.DoesNotContain("falls back", text, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("never switches to the Microsoft host by itself", text, StringComparison.Ordinal);
+
+            // Selecting without accepting changes nothing that is stored.
+            var selected = await ide.InvokeAsync("od.winui-designer.options", "microsoft");
+            Assert.Equal("microsoft", selected.GetProperty("selected").GetString());
+            Assert.Equal("surface", selected.GetProperty("stored").GetString());
+
+            // Accepting stores it, and that is what the next start resolves.
+            var saved = await ide.InvokeAsync("od.winui-designer.options", "microsoft", true);
+            Assert.Equal("microsoft", saved.GetProperty("stored").GetString());
+            Assert.Equal("microsoft", saved.GetProperty("resolvedOnNextStart").GetString());
+            var reopened = await ide.InvokeAsync("od.winui-designer.options");
+            Assert.Equal("microsoft", reopened.GetProperty("selectedBefore").GetString());
+
+            var back = await ide.InvokeAsync("od.winui-designer.options", "surface", true);
+            Assert.Equal("surface", back.GetProperty("stored").GetString());
+            Assert.Equal("surface", back.GetProperty("resolvedOnNextStart").GetString());
+        }
+        finally
+        {
+            try { Directory.Delete(work, recursive: true); } catch (IOException) { /* a still-running IDE may hold a file; the temp dir is disposable */ }
+        }
+    }
+
+    /// <summary>The page cannot show a stored <c>uno</c> (it offers surface and microsoft), so it displays the default; accepting the
+    /// dialog without changing the choice must not overwrite it.</summary>
+    [Fact]
+    public async Task OptionsPage_AcceptingWithoutAChange_LeavesAStoredUnoChoiceAlone()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The WinUI hosts are Windows-only.");
+        var work = Path.Combine(Path.GetTempPath(), "WinUIHostSelection-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(work);
+        try
+        {
+            using var ide = await IsolatedIde.StartAsync(ConfigDirectory(work, "uno"), new Dictionary<string, string?> { ["OD_WINUI_RUNTIME"] = null });
+
+            var shown = await ide.InvokeAsync("od.winui-designer.options");
+            Assert.Equal("uno", shown.GetProperty("stored").GetString());
+            Assert.Equal("surface", shown.GetProperty("selected").GetString());   // shown as the default
+
+            var accepted = await ide.InvokeAsync("od.winui-designer.options", null!, true);
+            Assert.True(accepted.GetProperty("success").GetBoolean(), accepted.ToString());
+            Assert.Equal("uno", accepted.GetProperty("stored").GetString());
+            Assert.Equal("uno", accepted.GetProperty("resolvedOnNextStart").GetString());
+
+            // Choosing something does replace it.
+            var changed = await ide.InvokeAsync("od.winui-designer.options", "microsoft", true);
+            Assert.Equal("microsoft", changed.GetProperty("stored").GetString());
+        }
+        finally
+        {
+            try { Directory.Delete(work, recursive: true); } catch (IOException) { /* a still-running IDE may hold a file; the temp dir is disposable */ }
+        }
+    }
+
     [Fact]
     public async Task StoredMicrosoftChoice_SelectsTheMicrosoftHost_NotTheSurface()
     {

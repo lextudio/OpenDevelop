@@ -1194,4 +1194,52 @@ public static class WinUIXamlDesignerDevFlowActions
 		view.SetDesignTheme(theme);
 		return JsonSerializer.Serialize(new { success = true, theme });
 	}
+
+	[DevFlowAction("od.winui-designer.options", Description = "Drive the WinUI designer's Tools > Options page (Experimental Features) the way the dialog does: build its descriptor from the Options tree, load the panel and report where it sits, its choices (value and label), the selected choice, its text and the stored runtime value. With a choice (surface or microsoft) it selects that entry, as a click does; with save=true it then saves the page as accepting the dialog would and reports the stored value and the runtime the next start resolves. Without a choice and with save=true it saves the page as shown, which must leave an unshowable stored value such as uno alone.")]
+	public static string ExerciseOptions(string choice = null, bool save = false)
+	{
+		try {
+			var node = ICSharpCode.Core.AddInTree.GetTreeNode("/SharpDevelop/Dialogs/OptionsDialog");
+			var path = new System.Collections.Generic.List<string>();
+			IOptionPanelDescriptor Find(System.Collections.Generic.IEnumerable<IOptionPanelDescriptor> descriptors)
+			{
+				foreach (var descriptor in descriptors) {
+					path.Add(descriptor.Label);
+					if (descriptor.ID == "WinUIXamlDesignerOptions")
+						return descriptor;
+					var inner = Find(descriptor.ChildOptionPanelDescriptors);
+					if (inner != null)
+						return inner;
+					path.RemoveAt(path.Count - 1);
+				}
+				return null;
+			}
+			var found = Find(node.BuildChildItems<IOptionPanelDescriptor>(null));
+			if (found == null || !found.HasOptionPanel)
+				return JsonSerializer.Serialize(new { success = false, error = "The WinUIXamlDesignerOptions page is not in the Options tree." });
+			var panel = found.OptionPanel;
+			panel.LoadOptions();
+			if (panel is not WinUIXamlDesignerOptions page)
+				return JsonSerializer.Serialize(new { success = false, error = "The page is a " + panel?.GetType().FullName });
+			var before = page.SelectedChoice;
+			if (choice != null)
+				page.SelectedChoice = choice;
+			if (save && !page.SaveOptions())
+				return JsonSerializer.Serialize(new { success = false, error = "SaveOptions refused." });
+			var stored = ICSharpCode.Core.PropertyService.Get(RegisterDevFlowActionsCommand.RuntimePreferenceProperty, RegisterDevFlowActionsCommand.DefaultRuntimePreference);
+			return JsonSerializer.Serialize(new {
+				success = true,
+				path = path.ToArray(),
+				label = found.Label,
+				choices = page.Choices.Select(item => new { value = item.Value, label = item.Label }).ToArray(),
+				selectedBefore = before,
+				selected = page.SelectedChoice,
+				texts = page.Texts.ToArray(),
+				stored,
+				resolvedOnNextStart = WinUIRuntimeSelection.Resolve(null, stored, out _)
+			});
+		} catch (Exception ex) {
+			return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+		}
+	}
 }
