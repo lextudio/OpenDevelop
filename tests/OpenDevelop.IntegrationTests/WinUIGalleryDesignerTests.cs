@@ -417,9 +417,39 @@ public sealed class WinUIGalleryDesignerTests
             return IsFailureStatus(GetStatusText(status));
         }, TimeSpan.FromSeconds(150), initialDelayMs: 250, maxDelayMs: 1000);
 
-        Assert.True(ready, relativePage + ": designer never reached the expected state. last status=" + status);
+        if (!ready)
+        {
+            // "WinUI design host failed to start: A task was canceled." alone does not say why the child failed; the child's own
+            // log and the designer output channel do, and a CI run cannot be reopened afterwards. The full text goes to a file
+            // (a child log is too long for an assertion message); the message carries only the tail of each.
+            var diagnostics = new System.Text.StringBuilder();
+            try
+            {
+                var child = await _app.InvokeAsync("od.winui-designer.child-log");
+                var childLog = child.TryGetProperty("log", out var childText) ? childText.GetString() ?? "" : child.ToString();
+                var output = await _app.InvokeAsync("od.output-text", "WinUI Designer");
+                var outputLog = output.TryGetProperty("text", out var outputText) ? outputText.GetString() ?? "" : output.ToString();
+                // The CI run uploads OD_TEST_LOG_DIR (the logs-<job> artifact); the fixture falls back to the temp folder the same way.
+                var logDirectory = Environment.GetEnvironmentVariable("OD_TEST_LOG_DIR");
+                if (string.IsNullOrEmpty(logDirectory))
+                    logDirectory = Path.Combine(Path.GetTempPath(), "od-test-logs");
+                Directory.CreateDirectory(logDirectory);
+                var logFile = Path.Combine(logDirectory, "od-gallery-" + Path.GetFileNameWithoutExtension(relativePage) + "-host.txt");
+                await File.WriteAllTextAsync(logFile, "--- child log ---" + Environment.NewLine + childLog + Environment.NewLine + "--- WinUI Designer output ---" + Environment.NewLine + outputLog);
+                diagnostics.AppendLine("full host logs: " + logFile);
+                diagnostics.AppendLine("--- child log (tail) ---").AppendLine(Tail(childLog));
+                diagnostics.AppendLine("--- WinUI Designer output (tail) ---").AppendLine(Tail(outputLog));
+            }
+            catch (Exception e)
+            {
+                diagnostics.AppendLine("(diagnostics unavailable: " + e.Message + ")");
+            }
+            Assert.Fail(relativePage + ": designer never reached the expected state. last status=" + status + Environment.NewLine + diagnostics);
+        }
         return status;
     }
+
+    static string Tail(string text, int maxChars = 4000) => text.Length <= maxChars ? text : "..." + text.Substring(text.Length - maxChars);
 
     // Each corpus page is opened in a FRESH design host. The out-of-process child does not survive
     // being handed one Gallery document after another (the second and later opens crash it natively

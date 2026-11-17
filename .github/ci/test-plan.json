@@ -870,7 +870,7 @@
       "id": "winui-microsoft-cell",
       "batch": 4,
       "lane": "integration-winui",
-      "timeoutMinutes": 60,
+      "timeoutMinutes": 40,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
@@ -879,13 +879,13 @@
       "env": { "OD_WINUI_RUNTIME": "microsoft", "OD_WINUI_GALLERY_ROOT": "gallery-not-cloned-for-this-entry" },
       "platforms": { "windows-x64": "observe" },
       "reason": "The Microsoft WinUI host is Windows-only.",
-      "note": "The whole Microsoft cell (-trait Runtime=MicrosoftWinUI) against the Microsoft WinUI host: 36 tests, 9 run and 27 Gallery tests skipped when last measured locally (all passing). OD_WINUI_GALLERY_ROOT is pinned to a deliberately absent path (an empty value would fall back to a sibling WinUI-Gallery directory) so the Gallery tests skip; winui-gallery-corpus runs them. run-test-plan.ps1 fails an entry whose every test skipped. The Microsoft cell contains no device journey; the guard (tests/verify-no-device-journeys.ps1) accepts the Runtime traits only on Windows entries because the Uno cell's iOS Simulator and Android Emulator journeys skip themselves there. Needs Visual Studio MSBuild, the Windows App SDK and the host built by build.ps1 microsofthost; observe until promoted."
+      "note": "The whole Microsoft cell (-trait Runtime=MicrosoftWinUI) against the Microsoft WinUI host: 36 tests, 9 run and 27 Gallery tests skipped when last measured locally (all passing). OD_WINUI_GALLERY_ROOT is pinned to a deliberately absent path (an empty value would fall back to a sibling WinUI-Gallery directory) so the Gallery tests skip; the winui-gallery-* entries run them. run-test-plan.ps1 fails an entry whose every test skipped. The Microsoft cell contains no device journey; the guard (tests/verify-no-device-journeys.ps1) accepts the Runtime traits only on Windows entries because the Uno cell's iOS Simulator and Android Emulator journeys skip themselves there. Needs Visual Studio MSBuild, the Windows App SDK and the host built by build.ps1 microsofthost; observe until promoted."
     },
     {
       "id": "winui-uno-cell",
       "batch": 4,
       "lane": "integration-winui",
-      "timeoutMinutes": 60,
+      "timeoutMinutes": 45,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
@@ -910,19 +910,49 @@
       "reason": "The Microsoft WPF design host is Windows-only.",
       "note": "The real WPFGallery application of microsoft/WPF-Samples against the Microsoft WPF design host (WpfGalleryDesignerTests, the WPF counterpart of the WinUI Gallery corpus; its opt-in full sweep stays off). ci.yml sparse-clones Sample Applications/WPFGallery of WPF-Samples into the runner temp folder and exports OD_WPF_GALLERY_ROOT; OD_WPF_GALLERY_BUILD=1 makes the class build the Gallery through DevFlow before the first page opens (an unbuilt checkout renders pages without their sample controls). Needs the Microsoft WPF design host (MicrosoftWpfDesign.SurfaceHost), which the plan's build job does not produce: the winui job's best-effort step Build the Microsoft designer hosts runs the integration project's BuildMicrosoftDesignerHostsForIntegrationTests target (build.ps1 with Visual Studio MSBuild for the WPF, WinUI and WinForms hosts and the WinUI sample), and without that host every case fails at first render (WPF designer never finished loading). It sits in integration-winui only to share that job's archive preparation. READ THE ENTRY'S ROW: the clone step is best-effort, so a failed clone skips every case, which run-test-plan.ps1 records as failed (every test skipped). Starts as observe; promote after two green runner runs."
     },    {
-      "id": "winui-gallery-corpus",
+      "id": "winui-gallery-basics",
+      "batch": 4,
+      "lane": "integration-winui",
+      "timeoutMinutes": 25,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-method", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests.Gallery_OpensAndIsRoutedToTheMicrosoftWinUIBackend", "-method", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests.GallerySettingsPage_UsesApplicationMetadataAndRendersRealToolkitControl", "-method", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests.VisualStates_AreListedForAPageThatDeclaresThem", "-method", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests.VisualStateSwitch_AppliesStateAndShowsLoadingChrome", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "env": { "OD_WINUI_RUNTIME": "microsoft", "OD_WINUI_GALLERY_BUILD": "1" },
+      "platforms": { "windows-x64": "observe" },
+      "reason": "The Microsoft WinUI host and the Windows App SDK Gallery are Windows-only; ARM64 has not been measured.",
+      "note": "The four single-page Gallery cases (routing, settings page, visual states). Split out of the former winui-gallery-corpus entry, whose single 90-minute budget let a host that never starts burn 150 s on each of 24 pages. Setup is unchanged: ci.yml shallow-clones the WinUI Gallery and exports OD_WINUI_GALLERY_ROOT; OD_WINUI_GALLERY_BUILD=1 makes each case build the Gallery (Debug-Unpackaged, x64) through od.build-solution first; each page opens in a fresh Microsoft design host. Needs Visual Studio MSBuild, the Windows App SDK and the Microsoft hosts. Budget basis: four cases at the roughly 10 minutes per 25 cases doc/technotes/winui-designer.md records for a developer machine, plus one cold Gallery build and a runner's slower host start; no runner has measured it, so read a timeout here as an unmeasured budget before a host regression. Observe until promoted; read the entry row in the job summary, because the lane stays green on allowAllFailures."
+    },
+    {
+      "id": "winui-gallery-abstract-root",
+      "batch": 4,
+      "lane": "integration-winui",
+      "timeoutMinutes": 15,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-method", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests.GalleryPage_AbstractRootFailsWithAnExplanation", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "env": { "OD_WINUI_RUNTIME": "microsoft", "OD_WINUI_GALLERY_BUILD": "1" },
+      "platforms": { "windows-x64": "observe" },
+      "reason": "The Microsoft WinUI host and the Windows App SDK Gallery are Windows-only; ARM64 has not been measured.",
+      "note": "The Gallery pages whose root is an abstract class and must fail with an explanation. Split out of the former winui-gallery-corpus entry, whose single 90-minute budget let a host that never starts burn 150 s on each of 24 pages. Setup is unchanged: ci.yml shallow-clones the WinUI Gallery and exports OD_WINUI_GALLERY_ROOT; OD_WINUI_GALLERY_BUILD=1 makes each case build the Gallery (Debug-Unpackaged, x64) through od.build-solution first; each page opens in a fresh Microsoft design host. Needs Visual Studio MSBuild, the Windows App SDK and the Microsoft hosts. Budget basis: two cases of the same per-case cost as the render entry, plus a cold Gallery build when this entry runs first; unmeasured on a runner. Observe until promoted; read the entry row in the job summary, because the lane stays green on allowAllFailures."
+    },
+    {
+      "id": "winui-gallery-render",
       "batch": 4,
       "lane": "integration-winui",
       "timeoutMinutes": 90,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
-      "args": ["-class", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests", "-parallel", "none"],
+      "args": ["-method", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests.GalleryPage_RendersWithRealContent", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "env": { "OD_WINUI_RUNTIME": "microsoft", "OD_WINUI_GALLERY_BUILD": "1" },
       "platforms": { "windows-x64": "observe" },
       "reason": "The Microsoft WinUI host and the Windows App SDK Gallery are Windows-only; ARM64 has not been measured.",
-      "note": "The real microsoft/WinUI-Gallery corpus against the Microsoft WinUI design host (27 cases today; the last full pass recorded in doc/technotes/winui-designer.md was 25 of 25 on 2026-09-13). ci.yml shallow-clones the Gallery into the runner temp folder on windows-x64 and exports OD_WINUI_GALLERY_ROOT; the entry pins OD_WINUI_RUNTIME=microsoft and OD_WINUI_GALLERY_BUILD=1 so each Gallery case builds the Gallery (Debug-Unpackaged, x64) through od.build-solution before opening its page (the first build is the long one, later ones are incremental). Needs Visual Studio MSBuild, the Windows App SDK and the Microsoft hosts, which the winui job's best-effort Build the Microsoft designer hosts step tries to build (nothing guarantees them on a runner), so it may fail for those reasons; each page opens in a fresh design host (about 30 s of theme build), hence the 90-minute budget. Starts as observe; promote after two green runner runs. The clone step is best-effort and the class skips itself without a checkout; xUnit counts a skip in the total, so run-test-plan.ps1 records the entry as failed (every test skipped) when the clone failed. The lane stays green only because the entry is observe and the lane has allowAllFailures: read the entry's own row in the job summary, and promote only a run whose cases passed."
+      "note": "The Gallery pages that must render real content (21 cases at the 3.75 minutes the failing run of 2026-11-17 averaged is about 79 minutes, hence the 90-minute budget). Split out of the former winui-gallery-corpus entry, whose single 90-minute budget let a host that never starts burn 150 s on each of 24 pages. Setup is unchanged: ci.yml shallow-clones the WinUI Gallery and exports OD_WINUI_GALLERY_ROOT; OD_WINUI_GALLERY_BUILD=1 makes each case build the Gallery (Debug-Unpackaged, x64) through od.build-solution first; each page opens in a fresh Microsoft design host. Needs Visual Studio MSBuild, the Windows App SDK and the Microsoft hosts. Observe until promoted; read the entry row in the job summary, because the lane stays green on allowAllFailures."
     },
     {
       "id": "wpf-designer-assembly-lock-integration",

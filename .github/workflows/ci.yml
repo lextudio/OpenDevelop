@@ -348,7 +348,7 @@ jobs:
         run: |
           ./.github/ci/prepare-windows-desktop.ps1
 
-      # The WinUI Gallery corpus (entry winui-gallery-corpus) opens the real microsoft/WinUI-Gallery checkout; the
+      # The WinUI Gallery corpus (entries winui-gallery-basics, winui-gallery-abstract-root and winui-gallery-render) opens the real microsoft/WinUI-Gallery checkout; the
       # tests skip without one (run-test-plan.ps1 fails an entry whose every test skipped; the lane itself stays green through allowAllFailures, so read the entry row). A shallow clone into the runner temp folder, found through OD_WINUI_GALLERY_ROOT.
       - name: Clone the WinUI Gallery for the designer corpus
         if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
@@ -492,7 +492,7 @@ jobs:
       # (run 43987453504) stopped with "Could not read the Windows SDK's Platform.xml" and then CsWinRT exit code 1.
       - name: Install the Windows 11 22H2 SDK
         if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
-        # Best effort: without it winui-gallery-corpus fails its build (observe) and the lane stays green. Bounded at 10 minutes: the job has
+        # Best effort: without it the winui-gallery-* entries fail their build (observe) and the lane stays green. Bounded at 10 minutes: the job has
         # lane timeout + 30 minutes (the lane is 320 so the job stays under GitHub's 360-minute ceiling) and this runs inside that preparation window.
         continue-on-error: true
         timeout-minutes: 10

@@ -14,7 +14,7 @@ not individual test cases. They describe the complete plan, not what a focus-mod
 
 | Platform | Required | Observe | Default focus run |
 | --- | ---: | ---: | --- |
-| Windows x64 | 32 | 11 | Only the 11 observed entries run (five in the fast job, the six WinUI and WPF Gallery entries in the `winui` job); its build also supplies Windows ARM64. |
+| Windows x64 | 32 | 13 | Only the 13 observed entries run (five in the fast job, the eight WinUI and WPF Gallery entries in the `winui` job); its build also supplies Windows ARM64. |
 | Windows ARM64 | 25 | 10 | Only the 10 observed entries run. |
 | macOS ARM64 | 26 | 11 | Only the 11 observed entries run. |
 | Linux x64 | 0 | 11 | All 11 entries are observed (unit suites, workbench/DevFlow under Xvfb, the Android debugging journey), so all run. |
@@ -595,7 +595,7 @@ Not planned yet: the rest of `AddInTests` beyond the WinUI cells above (about 15
 The Profiler tests and the Terminal journey are plan entries now; `profiler.yml` and `terminal-cross-platform.yml` were
 deleted with that fold. The Profiler shares the `unit` lane (its data layer attaches to a real process and needs no IDE
 host), and the Terminal journey runs in the integration lanes and gets its `win-x64` add-in from `buildLast`, the way its own
-workflow built it. Every platform still has observed entries (Windows x64 has eleven, among them the six entries of
+workflow built it. Every platform still has observed entries (Windows x64 has thirteen, among them the eight entries of
 `integration-winui`); Linux runs observed entries only.
 The `platformNotes` in the plan record each decision.
 
