@@ -40,6 +40,12 @@ namespace ICSharpCode.AddInManager2.Model
 			get;
 		}
 
+		/// <summary>The trusted GitHub repositories and the add-ins they release.</summary>
+		IAddInReleaseService Releases
+		{
+			get;
+		}
+
 		INuGetPackageManager NuGet
 		{
 			get;

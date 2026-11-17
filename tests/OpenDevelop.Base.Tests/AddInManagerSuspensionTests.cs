@@ -40,6 +40,7 @@ public class AddInManagerSuspensionTests
 		public IAddInManagerEvents Events => events;
 		public IPackageRepositories Repositories => throw new NotSupportedException();
 		public IAddInSetup Setup => setup;
+		public IAddInReleaseService Releases => throw new NotSupportedException();
 		public INuGetPackageManager NuGet => throw new NotSupportedException();
 		public IAddInManagerSettings Settings => throw new NotSupportedException();
 		public ISDAddInManagement SDAddInManagement => throw new NotSupportedException();

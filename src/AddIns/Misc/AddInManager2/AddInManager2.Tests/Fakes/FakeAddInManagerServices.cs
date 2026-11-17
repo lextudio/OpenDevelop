@@ -87,6 +87,11 @@ namespace ICSharpCode.AddInManager2.Tests.Fakes
 			}
 		}
 		
+		public IAddInReleaseService Releases
+		{
+			get { return null; }
+		}
+
 		public IAddInManagerSettings Settings
 		{
 			get

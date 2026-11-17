@@ -26,6 +26,8 @@ namespace ICSharpCode.AddInManager2.Tests.Fakes
 	/// </summary>
 	public class FakeAddInManagerSettings : IAddInManagerSettings
 	{
+		public string[] TrustedRepositories { get; set; }
+
 		public string[] PackageRepositories
 		{
 			get;

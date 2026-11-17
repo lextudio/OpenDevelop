@@ -38,6 +38,18 @@ namespace ICSharpCode.AddInManager2.Model
 			}
 		}
 		
+		public string[] TrustedRepositories
+		{
+			get
+			{
+				return SD.PropertyService.Get<string[]>("AddInManager2.TrustedRepositories", null);
+			}
+			set
+			{
+				SD.PropertyService.Set<string[]>("AddInManager2.TrustedRepositories", value ?? new string[0]);
+			}
+		}
+
 		public bool ShowPreinstalledAddIns
 		{
 			get

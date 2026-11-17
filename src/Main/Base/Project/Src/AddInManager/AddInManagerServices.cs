@@ -46,6 +46,12 @@ namespace ICSharpCode.AddInManager2
 				set;
 			}
     		
+			public IAddInReleaseService Releases
+			{
+				get;
+				set;
+			}
+
 			public INuGetPackageManager NuGet
 			{
 				get;
@@ -76,7 +82,46 @@ namespace ICSharpCode.AddInManager2
 			_container.SDAddInManagement = new SDAddInManagement();
 			_container.NuGet = new NuGetPackageManager(_container.Repositories, _container.Events, _container.SDAddInManagement);
 			_container.Setup = new AddInSetup(_container.Events, _container.NuGet, _container.SDAddInManagement);
+			_container.Releases = CreateReleaseService(_container);
 		}
+
+		private static IAddInReleaseService CreateReleaseService(AddInManagerServiceContainer container)
+		{
+			var options = new GitHubReleaseSourceOptions();
+			// Only an integration test (OD_TEST_MODE) may point the source at a local fake of GitHub; a
+			// production run always talks to github.com, so an environment variable cannot redirect downloads.
+			if (Environment.GetEnvironmentVariable("OD_TEST_MODE") == "1")
+			{
+				Uri api, download;
+				if (Uri.TryCreate(Environment.GetEnvironmentVariable("OD_ADDIN_GITHUB_API"), UriKind.Absolute, out api))
+				{
+					options.ApiBase = api;
+				}
+				if (Uri.TryCreate(Environment.GetEnvironmentVariable("OD_ADDIN_GITHUB_DOWNLOAD"), UriKind.Absolute, out download))
+				{
+					options.DownloadBase = download;
+				}
+			}
+			// The timeout covers a list request; a download reads its body after the headers, outside it.
+			var http = new System.Net.Http.HttpClient(new System.Net.Http.SocketsHttpHandler
+			{
+				AutomaticDecompression = System.Net.DecompressionMethods.All
+			})
+			{
+				Timeout = TimeSpan.FromSeconds(30)
+			};
+			string cacheDirectory = System.IO.Path.Combine(container.SDAddInManagement.ConfigDirectory, "AddInReleaseCache");
+			var source = new GitHubReleaseSource(http, new ReleaseCache(cacheDirectory), options);
+			return new AddInReleaseService(source, container.Settings, container.Events, container.Setup, container.SDAddInManagement);
+		}
+
+		public static IAddInReleaseService Releases
+        {
+            get
+            {
+                return _container.Releases;
+            }
+        }
 
         public static IAddInManagerEvents Events
         {

@@ -1,10 +1,10 @@
 using System.IO.Compression;
-using System.Reflection;
 using System.Text;
 using ICSharpCode.AddInManager2.Model;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
 using Xunit;
+using static OpenDevelop.Base.Tests.AddInTestSupport;
 
 namespace OpenDevelop.Base.Tests;
 
@@ -19,8 +19,7 @@ public class OdAddinPackageTests : IDisposable
 	public OdAddinPackageTests()
 	{
 		Directory.CreateDirectory(directory);
-		SD.InitializeForUnitTests();
-		SD.Services.AddService(typeof(IResourceService), KeyEchoingResourceService.Create());
+		AddInTestSupport.InitializeServices();
 	}
 
 	public void Dispose()
@@ -30,47 +29,12 @@ public class OdAddinPackageTests : IDisposable
 			Directory.Delete(directory, true);
 	}
 
-	/// <summary>
-	/// The unit-test service container has no string resources; error paths only need a message, so every
-	/// string resolves to its own key (and anything else the interface offers returns its default).
-	/// </summary>
-	public class KeyEchoingResourceService : DispatchProxy
-	{
-		public static IResourceService Create() => Create<IResourceService, KeyEchoingResourceService>();
-
-		protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
-		{
-			if (targetMethod!.Name == nameof(IResourceService.GetString) && args is { Length: 1 })
-				return "${res:" + args[0] + "}";
-			Type returnType = targetMethod.ReturnType;
-			return returnType == typeof(void) || !returnType.IsValueType ? null : Activator.CreateInstance(returnType);
-		}
-	}
-
 	// ---- helpers ------------------------------------------------------------------------------------------
 
 	static string Manifest(string identity = "Vendor.Sample", string version = "1.2.3", string extraAttributes = "") =>
-		$"""
-		<AddIn name="Sample" author="x" copyright="x" url="x" description="x" {extraAttributes}>
-		  <Manifest><Identity name="{identity}" version="{version}" /><Dependency addin="SharpDevelop" version="5.9" /></Manifest>
-		  <Runtime><Import assembly="Sample.dll" /></Runtime>
-		</AddIn>
-		""";
+		AddInTestSupport.Manifest(identity, version, extraAttributes);
 
-	string Package(string name, params (string Name, string Text)[] entries)
-	{
-		string path = Path.Combine(directory, name);
-		using (var zip = ZipFile.Open(path, ZipArchiveMode.Create))
-		{
-			foreach (var (entryName, text) in entries)
-			{
-				var entry = zip.CreateEntry(entryName);
-				using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
-				writer.Write(text);
-			}
-		}
-		return path;
-	}
+	string Package(string name, params (string Name, string Text)[] entries) => AddInTestSupport.Package(directory, name, entries);
 
 	string GoodPackage(string name = "Sample.odaddin", string identity = "Vendor.Sample", string extraAttributes = "") =>
 		Package(name,
@@ -105,9 +69,7 @@ public class OdAddinPackageTests : IDisposable
 		File.WriteAllBytes(packageFile, data);
 	}
 
-	static AddInRelease Release(string repo = "owner/my-addin", string tag = "v1.2.3") =>
-		new(RepositoryReference.Parse(repo), tag, new Version(1, 2, 3), false, "Sample.odaddin",
-			new Uri($"https://github.com/{repo}/releases/download/{tag}/Sample.odaddin"), 4, new string('a', 64), "", null, null);
+	static AddInRelease Release(string repo = "owner/my-addin", string tag = "v1.2.3") => AddInTestSupport.Release(repo, tag);
 
 	// ---- identity -----------------------------------------------------------------------------------------
 
@@ -418,30 +380,6 @@ public class OdAddinPackageTests : IDisposable
 	}
 
 	// ---- the install glue (AddInSetup) --------------------------------------------------------------------
-
-	sealed class FakeSdManagement : ISDAddInManagement
-	{
-		public List<AddIn> Installed { get; } = new();
-		public List<AddIn> AddedToTree { get; } = new();
-		public List<string> AbortedRemovals { get; } = new();
-		public string Temp { get; set; }
-		public IReadOnlyList<AddIn> AddIns => Installed;
-		public string TempInstallDirectory => Temp;
-		public string UserInstallDirectory => Temp;
-		public string ConfigDirectory => Temp;
-		public void AddToTree(AddIn addIn) { AddedToTree.Add(addIn); Installed.Add(addIn); } // the real tree lists it afterwards
-		public void AbortRemoveUserAddInOnNextStart(string identity) => AbortedRemovals.Add(identity);
-		public void Enable(IList<AddIn> addIns) { }
-		public void Disable(IList<AddIn> addIns) { }
-		public void Suspend(IList<AddIn> addIns) { }
-		public void Resume(IList<AddIn> addIns) { }
-		public void RemoveExternalAddIns(IList<AddIn> addIns) { }
-		public void RemoveUserAddInOnNextStart(string identity) { }
-		public AddIn Load(TextReader textReader) => AddIn.Load(SD.AddInTree, textReader);
-		public AddIn Load(string fileName) => AddIn.Load(SD.AddInTree, fileName);
-		public void AddExternalAddIns(IList<AddIn> addIns) { }
-		public bool IsAddInManifestInExternalPath(AddIn addIn) => false;
-	}
 
 	(AddInSetup Setup, FakeSdManagement Management, AddInManagerEvents Events, List<string> Errors) NewSetup()
 	{
