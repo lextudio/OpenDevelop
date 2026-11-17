@@ -262,7 +262,7 @@ In the running application the add-in's DevFlow probes `od.addin-manager.show`, 
 - The AddIn Manager still shows the NuGet package icon (`AddInManagerImages.Package`, see
   `Resources/license.txt`) for entries from GitHub.
 - Strings added for the new UI exist in English only (other languages fall back to English).
-- Only the first 30 releases of a repository are read (one request per repository, by design).
+- Only the 5 newest releases of a repository are read (one request per repository, by design): a stable release hidden behind more than five newer pre-releases would not be offered.
 
 ## Open questions
 

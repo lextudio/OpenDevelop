@@ -271,7 +271,7 @@ public class AddInReleaseSourceTests : IDisposable
 		Assert.Equal(ReleaseListStatus.Cached, second.Status);
 		Assert.Equal(4, second.Releases.Count);
 		var request = Assert.Single(handler.Requests);
-		Assert.Equal("https://api.github.com/repos/owner/my-addin/releases?per_page=30", request.RequestUri!.ToString());
+		Assert.Equal("https://api.github.com/repos/owner/my-addin/releases?per_page=5", request.RequestUri!.ToString());
 		Assert.Null(request.Headers.Authorization);
 		Assert.False(request.Headers.Contains("Cookie"));
 		Assert.Contains(request.Headers.UserAgent, p => p.Product!.Name == "OpenDevelop-AddInManager");

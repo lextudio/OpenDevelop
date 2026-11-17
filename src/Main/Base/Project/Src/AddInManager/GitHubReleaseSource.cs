@@ -54,7 +54,7 @@ namespace ICSharpCode.AddInManager2.Model
 	public sealed class GitHubReleaseSource : IAddInReleaseSource
 	{
 		const string UserAgentProduct = "OpenDevelop-AddInManager";
-		const int ReleasesPerRequest = 30;
+		const int ReleasesPerRequest = 5;
 
 		readonly HttpClient http;
 		readonly ReleaseCache cache;
