@@ -512,7 +512,7 @@ have been, and a lane is split only for a real environment need or a timeout.
 
 Since 2026-11-02 that is made explicit by the lane's `job` in the plan: lanes of one platform with the same `job` run in one
 CI job, one after another, on the one unpacked archive. `unit`, `integration-stable` and `integration-unstable` are job
-`fast` (unit first, so its result arrives within minutes); `integration-designer` is job `designer` (which also needs the GTK runtimes); `integration-winui` is job `winui` (Windows x64 only, 300 minutes, `allowAllFailures`: the WinUI
+`fast` (unit first, so its result arrives within minutes); `integration-designer` is job `designer` (which also needs the GTK runtimes); `integration-winui` is job `winui` (Windows x64 only, 320 minutes, `allowAllFailures`: the WinUI
 Surface, Microsoft and Uno cells, host selection and the real WinUI-Gallery corpus, plus the real WPF-Gallery corpus, with both Galleries cloned by ci.yml; all
 `observe`). Run 41395236804 spent 70 minutes of its lane jobs on downloading and unpacking against 30 minutes
 of tests, Windows ARM64 alone paying 11-15 minutes three times for 16 minutes of tests; each platform with a designer lane now pays it twice (`fast` and `designer`), and Windows x64 pays it a third time for `winui` in a full run (twice in a focus run, where its `designer` lane has no observed entry).

@@ -112,7 +112,7 @@
     },
     "integration-winui": {
       "job": "winui",
-      "timeoutMinutes": 300,
+      "timeoutMinutes": 320,
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "allowAllFailures": true,

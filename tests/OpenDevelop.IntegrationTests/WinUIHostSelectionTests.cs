@@ -107,7 +107,7 @@ public sealed class WinUIHostSelectionTests
         }
         finally
         {
-            try { Directory.Delete(work, recursive: true); } catch (IOException) { /* a still-running IDE may hold a file; the temp dir is disposable */ }
+            try { Directory.Delete(work, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* a still-running IDE may hold a file; the temp dir is disposable */ }
         }
     }
 
@@ -158,7 +158,7 @@ public sealed class WinUIHostSelectionTests
         }
         finally
         {
-            try { Directory.Delete(work, recursive: true); } catch (IOException) { /* a still-running IDE may hold a file; the temp dir is disposable */ }
+            try { Directory.Delete(work, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* a still-running IDE may hold a file; the temp dir is disposable */ }
         }
     }
 
@@ -189,7 +189,7 @@ public sealed class WinUIHostSelectionTests
         }
         finally
         {
-            try { Directory.Delete(work, recursive: true); } catch (IOException) { /* a still-running IDE may hold a file; the temp dir is disposable */ }
+            try { Directory.Delete(work, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* a still-running IDE may hold a file; the temp dir is disposable */ }
         }
     }
 
@@ -214,7 +214,7 @@ public sealed class WinUIHostSelectionTests
         }
         finally
         {
-            try { Directory.Delete(work, recursive: true); } catch (IOException) { /* a still-running IDE may hold a file; the temp dir is disposable */ }
+            try { Directory.Delete(work, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* a still-running IDE may hold a file; the temp dir is disposable */ }
         }
     }
 }

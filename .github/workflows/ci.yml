@@ -460,7 +460,24 @@ jobs:
         if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
         continue-on-error: true
         shell: pwsh
-        run: Get-ChildItem tests/fixtures/GitFixture -Recurse -Force | ForEach-Object { $_.FullName }
+        run: |
+          Get-ChildItem tests/fixtures/GitFixture -Recurse -Force | ForEach-Object { $_.FullName }
+          # Run 43987453504 showed no GitFixtureApp.csproj at all: count the project files that did arrive per fixture folder.
+          Get-ChildItem tests/fixtures -Directory | ForEach-Object { '{0}: {1} csproj' -f $_.Name, @(Get-ChildItem $_.FullName -Recurse -File -Filter *.csproj -ErrorAction SilentlyContinue).Count }
+          Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Platforms\UAP' -ErrorAction SilentlyContinue | ForEach-Object { '{0}: Platform.xml {1}' -f $_.Name, (Test-Path (Join-Path $_.FullName 'Platform.xml')) }
+      # The WinUI Gallery targets Windows SDK 10.0.22621; the runner image has the folder without its Platform.xml, and the Gallery build
+      # (run 43987453504) stopped with "Could not read the Windows SDK's Platform.xml" and then CsWinRT exit code 1.
+      - name: Install the Windows 11 22H2 SDK
+        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
+        # Best effort: without it winui-gallery-corpus fails its build (observe) and the lane stays green. Bounded at 10 minutes: the job has
+        # lane timeout + 30 minutes (the lane is 320 so the job stays under GitHub's 360-minute ceiling) and this runs inside that preparation window.
+        continue-on-error: true
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          if (Test-Path 'C:\Program Files (x86)\Windows Kits\10\Platforms\UAP\10.0.22621.0\Platform.xml') { 'The 22621 SDK is already complete.'; return }
+          choco install windows-sdk-11-version-22h2-all -y --no-progress
+          Test-Path 'C:\Program Files (x86)\Windows Kits\10\Platforms\UAP\10.0.22621.0\Platform.xml'
       - name: Verify native Terminal package assets
         if: matrix.needs_nuget_cache
         shell: pwsh
