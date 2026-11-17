@@ -171,21 +171,28 @@ Gaps found while verifying:
 
 ## Rate limits and caching
 
-Unauthenticated GitHub API access is 60 requests/hour/IP, which a handful of repositories plus
-background update checks can exhaust.
+**No authentication, ever.** The IDE sends no token and stores none: only public repositories are
+supported, and nothing secret has to be kept. (So no secret storage is needed; the repository has
+none today.)
 
-- Conditional requests: store the `ETag` per repository; a `304` does not count against the limit.
-- Cache the parsed release list on disk; background check at most once per day, manual *Refresh*
-  always allowed.
-- Optional GitHub token raises the limit to 5000/hour and allows private repositories. **First
-  version: the token is read from the `GITHUB_TOKEN` environment variable and is never stored by the
-  IDE.** The repository has no secret storage today (nothing under `src/` uses DPAPI, Keychain or
-  libsecret), and building one per platform (DPAPI via `ProtectedData` on Windows, the Keychain on
-  macOS, libsecret on Linux) is a separate feature that should not block the source. An Options
-  field backed by real secret storage is a later step; until then it must not be written to
-  PropertyService, which is plain XML.
-- Rate-limit exhaustion is a visible, non-fatal state ("limit reached, retry after HH:mm"), never a
-  crash or an empty list shown as success.
+Unauthenticated GitHub API access is 60 requests/hour per IP (`x-ratelimit-limit: 60`, measured
+2026-11-17), which a handful of repositories plus background update checks can exhaust, and an
+office or VPN address is shared by every user behind it.
+
+**Measured, and contrary to the usual advice:** without authentication a conditional request that
+answers `304 Not Modified` still counts against the limit (`x-ratelimit-remaining` went 59 -> 58 on
+the 304). An `ETag` therefore saves bandwidth only, not quota. What actually protects the quota:
+
+- One release-list request per trusted repository per check, nothing more (the list response
+  carries every asset's `name`, `size`, `browser_download_url` and `digest` (`"sha256:<hex>"`;
+  checked 2026-11-17 on a public repository), so there is no per-asset call).
+- Cache the parsed release list on disk; background checks at most once per day (and not at all when
+  the cache is younger than that), manual *Refresh* always allowed. Keep the `ETag` anyway to save
+  bandwidth.
+- Download assets from the release's `browser_download_url`, never through an API endpoint, so
+  installing does not spend quota.
+- Rate-limit exhaustion is a visible, non-fatal state ("limit reached, retry after HH:mm", from
+  `x-ratelimit-reset`), never a crash or an empty list shown as success.
 
 ## Settings
 
@@ -246,8 +253,6 @@ see it update), never the real API.
 
 - Whether the three LeXtudio add-ins (Workflow Designer, Stride, MAUI Designer) become the first
   published releases, and who owns the release workflow that builds the `.odaddin`.
-- Secret storage for a stored GitHub token (see "Rate limits and caching"): deferred, the first
-  version reads `GITHUB_TOKEN` only.
 - Whether the Windows payload now ships the SDK: needs a `release.yml` rehearsal.
 - A packaged-app journey that builds a project with `Sdk="OpenDevelop.Addin.Sdk"` against the
   installed IDE on each platform (today only verified by hand on macOS).
