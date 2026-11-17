@@ -747,6 +747,7 @@ function Test-WindowsDistributionPayload {
             throw "Distribution payload is missing the $rid WPF native runtime: $native"
         }
     }
+    Test-AddinSdkInPayload -PayloadRoot $PayloadRoot
     $addIns = Join-Path $PayloadRoot 'AddIns'
     if (-not (Test-Path -LiteralPath $addIns)) { throw "Distribution payload has no AddIns directory: $PayloadRoot" }
     if (@(Get-ChildItem -LiteralPath $addIns -Recurse -File -Filter '*.addin').Count -eq 0) { throw "Distribution payload has no addin manifests: $addIns" }
@@ -942,6 +943,53 @@ function Test-WindowsDistributionArchive {
 # ---------------------------------------------------------------------------------------------
 # Platform packaging
 # ---------------------------------------------------------------------------------------------
+
+function Copy-AddinSdkIntoPayload {
+    <#
+      Makes the Addin SDK part of the installed IDE, as the macOS bundle and the Linux payload already
+      do (build/macos/build-application-bundle.sh, build/linux/build-application-payload.sh): the SDK
+      files under Sdks/OpenDevelop.Addin.Sdk/Sdk and the MSBuild SDK resolver under
+      SdkResolvers/OpenDevelop.Addin.SdkResolver, with the resolver manifest. An add-in project that
+      says Sdk="OpenDevelop.Addin.Sdk" then builds against the installed IDE, so no SDK is published
+      separately (doc/technotes/addin-github-releases.md). The resolver is built with the host
+      (SharpDevelop.csproj references it for build order only), so its output must already exist.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$PayloadRoot,
+        [Parameter(Mandatory)][string]$Configuration
+    )
+    $sdkSource = Join-Path $RepoRoot 'src/SDK/OpenDevelop.Addin.Sdk/Sdk'
+    $resolverSource = Join-Path $RepoRoot "src/SDK/OpenDevelop.Addin.SdkResolver/bin/$Configuration/net11.0"
+    if (-not (Test-Path -LiteralPath $sdkSource -PathType Container) -or
+        -not (Test-Path -LiteralPath (Join-Path $resolverSource 'OpenDevelop.Addin.SdkResolver.dll'))) {
+        throw "dist.ps1: the OpenDevelop Addin SDK or its resolver was not built ($resolverSource). Build SharpDevelop.csproj first."
+    }
+    $sdkTarget = Join-Path $PayloadRoot 'Sdks/OpenDevelop.Addin.Sdk/Sdk'
+    $resolverTarget = Join-Path $PayloadRoot 'SdkResolvers/OpenDevelop.Addin.SdkResolver'
+    foreach ($target in $sdkTarget, $resolverTarget) {
+        if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path $target | Out-Null
+    }
+    Copy-Item -Path (Join-Path $sdkSource '*') -Destination $sdkTarget -Recurse -Force
+    Copy-Item -Path (Join-Path $resolverSource '*.dll') -Destination $resolverTarget -Force
+    [System.IO.File]::WriteAllText(
+        (Join-Path $resolverTarget 'OpenDevelop.Addin.SdkResolver.xml'),
+        "<SdkResolver><Path>OpenDevelop.Addin.SdkResolver.dll</Path></SdkResolver>`n")
+}
+
+function Test-AddinSdkInPayload {
+    param([Parameter(Mandatory)][string]$PayloadRoot)
+    foreach ($required in @(
+        'Sdks/OpenDevelop.Addin.Sdk/Sdk/Sdk.props',
+        'Sdks/OpenDevelop.Addin.Sdk/Sdk/Sdk.targets',
+        'SdkResolvers/OpenDevelop.Addin.SdkResolver/OpenDevelop.Addin.SdkResolver.dll',
+        'SdkResolvers/OpenDevelop.Addin.SdkResolver/OpenDevelop.Addin.SdkResolver.xml')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $PayloadRoot $required))) {
+            throw "Distribution payload is missing the Addin SDK file '$required' (add-in projects could not use Sdk=""OpenDevelop.Addin.Sdk""): $PayloadRoot"
+        }
+    }
+}
 
 function RemoveRuntimeWrittenSdkResolverManifest {
     <#
@@ -1475,6 +1523,8 @@ function Invoke-WindowsPayload {
     Sync-WindowsDirectoryMirror -Source (Join-Path $repoRoot 'data') -Destination (Join-Path $payloadRoot 'data') -Description 'data into Windows payload'
     Write-DistributionLegalFiles -Destination $payloadRoot
     Write-DistributionStepElapsed $payloadStepStopwatch 'data mirror'
+    Copy-AddinSdkIntoPayload -RepoRoot $repoRoot -PayloadRoot $payloadRoot -Configuration $config
+    Write-DistributionStepElapsed $payloadStepStopwatch 'Addin SDK'
 
 
     # AddIn build outputs carry their full dependency closures. Anything already supplied by the

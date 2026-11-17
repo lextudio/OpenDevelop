@@ -162,6 +162,17 @@
            Text="The manifest's Identity version must be a literal version in a .odaddin (found '$(_OdAddinIdentityVersion)'); '@Assembly.dll' is resolved at load time and cannot be compared with the release tag." />
     <Error Condition="'$(_OdAddinIdentityVersion)' != '$(OpenDevelopAddinReleaseVersion)'"
            Text="The manifest's Identity version '$(_OdAddinIdentityVersion)' does not equal the release version '$(OpenDevelopAddinReleaseVersion)'." />
+    <!-- The host range: AddInReference ("<Dependency addin=\"SharpDevelop\" version=\"5.9\"/>" or a
+         "min-max" range) is enforced by AddInTree when the add-in loads. A package without one claims
+         to work with every host, which the in-process designer protocol makes false, so it is refused.
+         The version is compared with major.minor.build.revision, ignoring unspecified fields. -->
+    <XmlPeek XmlInputPath="%(_OdAddinManifestInOutput.FullPath)" Query="/AddIn/Manifest/Dependency[@addin='SharpDevelop']/@version">
+      <Output TaskParameter="Result" PropertyName="_OdAddinHostRange" />
+    </XmlPeek>
+    <Error Condition="'$(_OdAddinHostRange)' == ''"
+           Text="The manifest must state the OpenDevelop versions it was built for, e.g. &lt;Dependency addin=&quot;SharpDevelop&quot; version=&quot;5.9&quot; /&gt; (or a range such as version=&quot;5.9-5.10&quot;): the host version it loads into is checked against it." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(_OdAddinHostRange)', '^[0-9]+(\.[0-9]+){1,3}(-[0-9]+(\.[0-9]+){1,3})?$'))"
+           Text="The SharpDevelop dependency version '$(_OdAddinHostRange)' is not a version (5.9) or a range (5.9-5.10)." />
     <PropertyGroup>
       <_OdAddinPackagePath>$(OpenDevelopAddinPackageDir)$(OpenDevelopAddinPackageName).odaddin</_OdAddinPackagePath>
     </PropertyGroup>

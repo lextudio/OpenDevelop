@@ -4,6 +4,8 @@
     <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
     <Configuration>Debug</Configuration>
     <TestRoot>$(MSBuildThisFileDirectory)obj/sdk-test/</TestRoot>
+    <!-- Overridable so the packaging refusals can be exercised with other manifests. -->
+    <SampleManifest Condition="'$(SampleManifest)' == ''">$(MSBuildThisFileDirectory)Sample.addin</SampleManifest>
     <OutputPath>$(TestRoot)AddIns/Sample/</OutputPath>
     <OpenDevelopHostBin>$(TestRoot)Host/</OpenDevelopHostBin>
     <OpenDevelopHostManifest>$(OpenDevelopHostBin)OpenDevelop.host-assemblies.txt</OpenDevelopHostManifest>
@@ -15,7 +17,7 @@
     <OpenDevelopAddinPackageDir>$(TestRoot)package/</OpenDevelopAddinPackageDir>
   </PropertyGroup>
   <ItemGroup>
-    <OpenDevelopAddinManifest Include="$(MSBuildThisFileDirectory)Sample.addin" />
+    <OpenDevelopAddinManifest Include="$(SampleManifest)" />
   </ItemGroup>
   <Import Project="$(MSBuildThisFileDirectory)../../src/SDK/OpenDevelop.Addin.Sdk/Sdk/Sdk.targets" />
   <Target Name="Build" DependsOnTargets="Prepare;RemoveHostProvidedFilesFromAddInCopyLocal;OpenDevelopDeployAddinManifest;OpenDevelopTrimAddinOutput;OpenDevelopPruneAddinDeploymentAssets;Assert">

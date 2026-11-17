@@ -71,10 +71,26 @@ package type instead of trying to load it. Layout:
 
 The in-process designer protocol changes between OpenDevelop versions and breaks out-of-tree
 add-ins at runtime (`../AGENTS.md`, "Keeping an external add-in compatible"). The manifest therefore
-declares the host range it was built for, using the existing `<Manifest>`/`<Dependency
-addin="SharpDevelop" version="...">` mechanism. The manager shows an add-in whose range excludes
-the running host as *incompatible* and disables Install/Update for it, instead of letting the IDE
-fail on the next start.
+declares the host range it was built for with the existing manifest mechanism, no schema change:
+
+```xml
+<Manifest>
+  <Identity name="Vendor.MyAddIn" version="1.2.3" />
+  <Dependency addin="SharpDevelop" version="5.9" />          <!-- or a range: version="5.9-5.10" -->
+</Manifest>
+```
+
+`SharpDevelop` is the host's own identity; its version is `@SharpDevelopCoreVersion`, the core
+version (a `v5.9.0` build is 5.9.x.y). `AddInReference.Check` (`AddInTree.cs`) already enforces the
+range when an add-in loads, comparing major.minor.build.revision and ignoring unspecified fields, so
+`5.9` accepts every 5.9.x. Every current in-repo add-in says only `<Dependency addin="SharpDevelop"/>`,
+which means "any version"; that is fine inside the host's own tree, not for a published package.
+
+`PackOdAddin` refuses a package whose manifest has no `SharpDevelop` dependency with a version or
+range (implemented, see below). The manager still has to show an add-in whose range excludes the
+running host as *incompatible* and disable Install/Update for it, instead of letting the IDE fail on
+the next start (a pre-install `AddInReference.Check` against the package's manifest; part of the
+manager step).
 
 ## Trust and security
 
@@ -108,9 +124,10 @@ folder is exactly the content of the package.
 - fails the build unless: the add-in kind is `InProcess`, exactly one `.addin` is at the root,
   `<Identity version>` is a literal equal to the version being released, and the build has no
   RuntimeIdentifier (implemented);
-- **planned, not implemented yet:** check that the host range is present, and write the host version
-  the add-in was trimmed against into the manifest (the SDK knows it from the host that supplied
-  `OpenDevelop.host-assemblies.txt`), so authors do not maintain the range by hand;
+- requires the manifest to carry `<Dependency addin="SharpDevelop" version="...">` as a version
+  (`5.9`) or range (`5.9-5.10`) (implemented). The author states the range; the SDK does not stamp
+  one, because it cannot know how far forward the protocol stays compatible, and a wrong automatic
+  range would be worse than a missing one;
 - **planned, not implemented yet:** support add-ins that carry an out-of-process child host folder
   (MAUI's native host bundles are ~100 MB each; check against GitHub's 2 GiB asset limit and warn
   above a threshold). Today `PackOdAddin` refuses every kind except `InProcess`.
@@ -140,9 +157,14 @@ OpenDevelop version it was built with; a new host version means a new add-in rel
 
 Gaps found while verifying:
 
-- The **Windows payload does not appear to ship** `Sdks/` and `SdkResolvers/OpenDevelop.Addin.SdkResolver`
-  (macOS `build-application-bundle.sh` and Linux `build-application-payload.sh` do; `dist.ps1` only
-  handles the NuGet resolver manifest). Not yet checked against a real Windows payload.
+- The **Windows payload did not ship** `Sdks/` and `SdkResolvers/OpenDevelop.Addin.SdkResolver`
+  (confirmed by reading `dist.ps1`: it only handled the NuGet resolver manifest, and
+  `SharpDevelop.csproj` references the resolver project for build order only). `dist.ps1` now has
+  `Copy-AddinSdkIntoPayload` (called by `Invoke-WindowsPayload` after the data mirror, same layout as
+  the macOS bundle) and `Test-AddinSdkInPayload` (called by `Test-WindowsDistributionPayload`, so a
+  payload without them fails the package build). The two functions were exercised on macOS with
+  PowerShell against the real build output; the Windows packaging path itself has not run, so a
+  `release.yml` rehearsal (`gh workflow run release.yml --ref master`) is still the proof.
 - CoreWF, Stride and MAUI Designer import `Sdk.props`/`Sdk.targets` by path from `$(OpenDevelopRoot)`
   (a source checkout), not through `Sdk=`. To publish from an installed OpenDevelop they must switch
   to the `Sdk=` form (or point `OpenDevelopRoot` at the install's `Sdks/` layout).
@@ -155,8 +177,13 @@ background update checks can exhaust.
 - Conditional requests: store the `ETag` per repository; a `304` does not count against the limit.
 - Cache the parsed release list on disk; background check at most once per day, manual *Refresh*
   always allowed.
-- Optional GitHub token in Options (stored with the other credentials mechanism, never in plain
-  settings) raises the limit to 5000/hour and allows private repositories.
+- Optional GitHub token raises the limit to 5000/hour and allows private repositories. **First
+  version: the token is read from the `GITHUB_TOKEN` environment variable and is never stored by the
+  IDE.** The repository has no secret storage today (nothing under `src/` uses DPAPI, Keychain or
+  libsecret), and building one per platform (DPAPI via `ProtectedData` on Windows, the Keychain on
+  macOS, libsecret on Linux) is a separate feature that should not block the source. An Options
+  field backed by real secret storage is a later step; until then it must not be written to
+  PropertyService, which is plain XML.
 - Rate-limit exhaustion is a visible, non-fatal state ("limit reached, retry after HH:mm"), never a
   crash or an empty list shown as success.
 
@@ -167,7 +194,6 @@ Reuse the PropertyService pattern of `AddInManagerSettings`:
 | Key | Value |
 |---|---|
 | `AddInManager2.TrustedRepositories` | `string[]` of `owner/repo` |
-| `AddInManager2.GitHubToken` | optional, secret storage |
 | `AddInManager2.ShowPrereleases`, `AutoSearchForUpdates`, `ShowPreinstalledAddIns` | unchanged |
 
 The old `AddInManager2.PackageRepositories` key is ignored once the NuGet path is removed; no
@@ -220,6 +246,8 @@ see it update), never the real API.
 
 - Whether the three LeXtudio add-ins (Workflow Designer, Stride, MAUI Designer) become the first
   published releases, and who owns the release workflow that builds the `.odaddin`.
-- Whether a host-version range is already expressible in the current `.addin` schema or needs a
-  small extension to the manifest reader.
-- Secret storage for the token on each platform.
+- Secret storage for a stored GitHub token (see "Rate limits and caching"): deferred, the first
+  version reads `GITHUB_TOKEN` only.
+- Whether the Windows payload now ships the SDK: needs a `release.yml` rehearsal.
+- A packaged-app journey that builds a project with `Sdk="OpenDevelop.Addin.Sdk"` against the
+  installed IDE on each platform (today only verified by hand on macOS).
