@@ -24,7 +24,9 @@ namespace ICSharpCode.AddInManager2.Model
 	public enum AddInInstallationSource
 	{
 		Offline,
-		NuGetRepository
+		NuGetRepository,
+		/// <summary>Downloaded from a trusted GitHub repository's release.</summary>
+		GitHubRelease
 	}
 	
 	/// <summary>
@@ -103,6 +105,38 @@ namespace ICSharpCode.AddInManager2.Model
 					}
 				}
 				
+				return null;
+			}
+		}
+
+		/// <summary>
+		/// The GitHub repository this add-in was installed from, recorded in its manifest when it was
+		/// downloaded; null for an add-in installed from a file, or one whose record is not a valid repository.
+		/// </summary>
+		public RepositoryReference InstalledFromRepository
+		{
+			get
+			{
+				if ((_addIn != null) && _addIn.Properties.Contains(OdAddinPackage.RepositoryManifestAttribute))
+				{
+					if (RepositoryReference.TryParse(_addIn.Properties[OdAddinPackage.RepositoryManifestAttribute], out RepositoryReference repository, out string error))
+					{
+						return repository;
+					}
+				}
+				return null;
+			}
+		}
+
+		/// <summary>The release tag (for example v1.2.3) the add-in was installed from, or null.</summary>
+		public string InstalledFromReleaseTag
+		{
+			get
+			{
+				if ((_addIn != null) && _addIn.Properties.Contains(OdAddinPackage.ReleaseManifestAttribute))
+				{
+					return _addIn.Properties[OdAddinPackage.ReleaseManifestAttribute];
+				}
 				return null;
 			}
 		}

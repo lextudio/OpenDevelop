@@ -32,6 +32,9 @@ namespace ICSharpCode.AddInManager2.Model
 			get;
 		}
 		AddIn InstallAddIn(string archiveFileName);
+
+		/// <summary>Installs a package downloaded from <paramref name="source"/>, recording where it came from (null for a local file).</summary>
+		AddIn InstallAddIn(string archiveFileName, AddInRelease source);
 		AddIn InstallAddIn(IPackage package, string packageDirectory);
 		void UninstallAddIn(AddIn addIn);
 		void CancelUpdate(AddIn addIn);

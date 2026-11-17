@@ -23,7 +23,6 @@ using System.Linq;
 using System.Xml;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
-using ICSharpCode.SharpZipLib.Zip;
 using NuGet;
 
 namespace ICSharpCode.AddInManager2.Model
@@ -78,43 +77,40 @@ namespace ICSharpCode.AddInManager2.Model
 			}
 		}
 		
-		private AddIn LoadAddInFromZip(ZipFile file)
+		/// <summary>
+		/// Reads the manifest of a <c>.odaddin</c> package without unpacking it. Fires the usual error event
+		/// and returns null when the package is not a valid add-in package.
+		/// </summary>
+		private AddIn LoadAddInFromPackage(string packageFile)
 		{
-			AddIn resultAddIn = null;
-			ZipEntry addInEntry = null;
-			foreach (ZipEntry entry in file)
+			try
 			{
-				if (entry.Name.EndsWith(".addin"))
+				string manifestText = OdAddinPackage.ReadManifestText(packageFile);
+				using (var reader = new StringReader(manifestText))
 				{
-					if (addInEntry != null)
-					{
-						_events.OnAddInOperationError(
-							new AddInOperationErrorEventArgs(
-								SD.ResourceService.GetString("AddInManager2.InvalidPackage")));
-						return null;
-					}
-					addInEntry = entry;
+					return _sdAddInManagement.Load(reader);
 				}
 			}
-			if (addInEntry == null)
+			catch (Exception ex) when (ex is InvalidDataException || ex is AddInLoadException || ex is System.Xml.XmlException)
 			{
+				SD.Log.WarnFormatted("[AddInManager2] Cannot read package {0}: {1}", packageFile, ex.Message);
 				_events.OnAddInOperationError(
 					new AddInOperationErrorEventArgs(
 						SD.ResourceService.GetString("AddInManager2.InvalidPackage")));
 				return null;
 			}
-			using (Stream s = file.GetInputStream(addInEntry))
-			{
-				using (StreamReader r = new StreamReader(s))
-				{
-					resultAddIn = _sdAddInManagement.Load(r);
-				}
-			}
-			
-			return resultAddIn;
 		}
 		
 		public AddIn InstallAddIn(string fileName)
+		{
+			return InstallAddIn(fileName, null);
+		}
+
+		/// <summary>
+		/// Installs from a file. <paramref name="source"/> names the GitHub release a <c>.odaddin</c> was downloaded
+		/// from (recorded in the installed manifest so updates can be found), or is null for a local file.
+		/// </summary>
+		public AddIn InstallAddIn(string fileName, AddInRelease source)
 		{
 			if (fileName != null)
 			{
@@ -144,34 +140,14 @@ namespace ICSharpCode.AddInManager2.Model
 						break;
 						
 					case ".odaddin":
-						
 						SD.Log.DebugFormatted("[AddInManager2] Trying to load {0} as local AddIn package.", fileName);
-						
-						// Try to load the *.odaddin file as ZIP archive
-						ZipFile zipFile = null;
-						try
+						addIn = LoadAddInFromPackage(fileName);
+						if (addIn == null)
 						{
-							zipFile = new ZipFile(fileName);
-							addIn = LoadAddInFromZip(zipFile);
-						}
-						catch (Exception)
-						{
-							// ZIP file seems not to be valid
-							_events.OnAddInOperationError(
-								new AddInOperationErrorEventArgs(
-									SD.ResourceService.GetString("AddInManager2.InvalidPackage")));
 							return null;
 						}
-						finally
-						{
-							if (zipFile != null)
-							{
-								zipFile.Close();
-							}
-						}
-						
 						break;
-						
+
 					default:
 						// Unknown format of file
 						_events.OnAddInOperationError(
@@ -210,8 +186,24 @@ namespace ICSharpCode.AddInManager2.Model
 					
 					if (!installAsExternal)
 					{
+						// The identity becomes a directory name (created, and deleted again on update), so it
+						// must not be able to name anything else.
+						if (!OdAddinPackage.IsSafeIdentity(identity))
+						{
+							SD.Log.WarnFormatted("[AddInManager2] Refusing package {0}: identity '{1}' cannot be used as a folder name.", fileName, identity);
+							_events.OnAddInOperationError(
+								new AddInOperationErrorEventArgs(
+									SD.ResourceService.GetString("AddInManager2.InvalidPackage")));
+							return null;
+						}
 						// Create target directory for AddIn in user profile & copy package contents there
-						CopyAddInFromZip(addIn, fileName);
+						if (!CopyAddInFromZip(addIn, fileName, source))
+						{
+							_events.OnAddInOperationError(
+								new AddInOperationErrorEventArgs(
+									SD.ResourceService.GetString("AddInManager2.InvalidPackage")));
+							return null;
+						}
 						
 						// Install the AddIn using manifest
 						if (foundAddIn != null)
@@ -419,41 +411,58 @@ namespace ICSharpCode.AddInManager2.Model
 			}
 		}
 		
-		private bool CopyAddInFromZip(AddIn addIn, string zipFile)
+		private bool CopyAddInFromZip(AddIn addIn, string zipFile, AddInRelease source)
 		{
-			if ((addIn != null) && (addIn.Manifest != null))
+			if ((addIn == null) || (addIn.Manifest == null))
 			{
+				return false;
+			}
+			string targetDir = Path.Combine(_sdAddInManagement.TempInstallDirectory,
+			                                addIn.Manifest.PrimaryIdentity);
+			try
+			{
+				if (Directory.Exists(targetDir))
+				{
+					Directory.Delete(targetDir, true);
+				}
+				OdAddinPackage.Extract(zipFile, targetDir);
+				// Find the .addin file to set it in the AddIn object; it carries the source of the installation.
+				var addInFile = OdAddinPackage.FindUnpackedManifest(targetDir);
+				if (addInFile == null)
+				{
+					throw new InvalidDataException("The unpacked package has no .addin manifest.");
+				}
+				OdAddinPackage.PatchSourceAttributes(addInFile.FullName, source);
+				if (addIn.FileName == null)
+				{
+					addIn.FileName = addInFile.FullName;
+				}
+				// Also set the properties of the loaded AddIn object, which was read before the manifest was rewritten.
+				addIn.Properties.Remove(OdAddinPackage.RepositoryManifestAttribute);
+				addIn.Properties.Remove(OdAddinPackage.ReleaseManifestAttribute);
+				if (source != null)
+				{
+					addIn.Properties.Set(OdAddinPackage.RepositoryManifestAttribute, source.Repository.FullName);
+					addIn.Properties.Set(OdAddinPackage.ReleaseManifestAttribute, source.Tag);
+				}
+				return true;
+			}
+			catch (Exception ex) when (ex is InvalidDataException || ex is IOException || ex is UnauthorizedAccessException || ex is System.Xml.XmlException)
+			{
+				SD.Log.WarnFormatted("[AddInManager2] Cannot unpack package {0}: {1}", zipFile, ex.Message);
 				try
 				{
-					string targetDir = Path.Combine(_sdAddInManagement.TempInstallDirectory,
-					                                addIn.Manifest.PrimaryIdentity);
 					if (Directory.Exists(targetDir))
 					{
 						Directory.Delete(targetDir, true);
 					}
-					var directoryInfo = Directory.CreateDirectory(targetDir);
-					FastZip fastZip = new FastZip();
-					fastZip.CreateEmptyDirectories = true;
-					fastZip.ExtractZip(zipFile, targetDir, null);
-					
-					if (addIn.FileName == null) {
-						// Find .addin file to set it in AddIn object
-						var addInFiles = directoryInfo.GetFiles("*.addin", SearchOption.TopDirectoryOnly);
-						var addInFile = addInFiles.FirstOrDefault();
-						if (addInFile != null) {
-							addIn.FileName = addInFile.FullName;
-						}
-					} 
-					
-					return true;
 				}
-				catch (Exception)
+				catch (IOException)
 				{
-					return false;
 				}
-			}
-			else
-			{
+				catch (UnauthorizedAccessException)
+				{
+				}
 				return false;
 			}
 		}

@@ -58,6 +58,11 @@ namespace ICSharpCode.AddInManager2.Tests.Fakes
 			set;
 		}
 
+        public ICSharpCode.Core.AddIn InstallAddIn(string archiveFileName, ICSharpCode.AddInManager2.Model.AddInRelease source)
+        {
+            return InstallAddIn(archiveFileName);
+        }
+
         public ICSharpCode.Core.AddIn InstallAddIn(NuGet.IPackage package, string packageDirectory)
         {
             if (InstallAddInFromArchiveCallback != null)
