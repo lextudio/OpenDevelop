@@ -348,6 +348,18 @@ jobs:
           git clone --depth 1 https://github.com/microsoft/WinUI-Gallery.git $gallery
           if ($LASTEXITCODE -ne 0) { throw "git clone of WinUI-Gallery failed ($LASTEXITCODE)" }
           if (-not (Test-Path (Join-Path $gallery 'WinUIGallery.slnx'))) { throw 'The clone has no WinUIGallery.slnx.' }
+          # The Gallery's own NuGet.config lists a private Azure DevOps feed that answers 401 to an anonymous runner (restore then fails,
+          # NETSDK1004 on every project). This is a throwaway clone, so restore from nuget.org alone.
+          Get-ChildItem -Path $gallery -Recurse -File -Filter NuGet.config | Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } | Remove-Item -Force
+          @'
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+            </packageSources>
+          </configuration>
+          '@ | Set-Content -Path (Join-Path $gallery 'NuGet.config')
           "OD_WINUI_GALLERY_ROOT=$gallery" | Add-Content -Path $env:GITHUB_ENV
 
       # The WPF Gallery corpus (entry wpf-gallery-corpus) opens the real WPFGallery of microsoft/WPF-Samples; the tests skip without
@@ -421,6 +433,34 @@ jobs:
         timeout-minutes: 25
         shell: pwsh
         run: dotnet msbuild tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj -t:BuildMicrosoftDesignerHostsForIntegrationTests -p:Configuration=Debug -p:SkipFeedSync=true
+      # The Microsoft WinUI design host is an unpackaged Windows App SDK app: without the framework packages it cannot start ("design
+      # host failed to start: the operation has timed out"). The runtime package that the NuGet cache just unpacked carries the MSIX files.
+      - name: Install the Windows App Runtime
+        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
+        # Best effort: without it the Microsoft-host entries fail (observe) and the lane stays green.
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:NUGET_PACKAGES microsoft.windowsappsdk.runtime
+          foreach ($version in Get-ChildItem -Path $root -Directory) {
+            $dir = Join-Path $version.FullName tools/MSIX/win10-x64
+            if (-not (Test-Path $dir)) { continue }
+            # The framework first, then the Main/Singleton/DDLM packages that depend on it.
+            foreach ($name in 'Microsoft.WindowsAppRuntime.*.msix') {
+              foreach ($msix in Get-ChildItem -Path $dir -Filter $name | Sort-Object { $_.Name.Length }) {
+                try { Add-AppxPackage -Path $msix.FullName -ErrorAction Stop; "installed $($version.Name) $($msix.Name)" }
+                catch { "skipped $($version.Name) $($msix.Name): $($_.Exception.Message)" }
+              }
+            }
+          }
+          Get-AppxPackage -Name Microsoft.WindowsAppRuntime* | ForEach-Object { $_.PackageFullName }
+      # Temporary diagnostic (remove in the next commit): AddInTests copies tests/fixtures/GitFixture and its git add failed on the runner for
+      # GitFixtureApp/GitFixtureApp.csproj although the file is tracked.
+      - name: Diagnose the GitFixture template
+        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
+        continue-on-error: true
+        shell: pwsh
+        run: Get-ChildItem tests/fixtures/GitFixture -Recurse -Force | ForEach-Object { $_.FullName }
       - name: Verify native Terminal package assets
         if: matrix.needs_nuget_cache
         shell: pwsh
