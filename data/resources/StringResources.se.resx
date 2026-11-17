@@ -202,7 +202,7 @@
     <value>Installationspaket för tillägg</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop Tillägg|*.addin;*.sdaddin|Alla filer|*.*</value>
+    <value>SharpDevelop Tillägg|*.addin;*.odaddin|Alla filer|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>&amp;Installera Tillägg</value>
@@ -331,7 +331,7 @@ Dessa kommer att sluta fungera om detta AddIn avaktiveras! Är du säker på att
 Dessa kommer att sluta fungera om detta AddIn tas bort! Är du säker på att du vill fortsätta?</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>SharpDevelop AddIns|*.sdaddin;*.addin|Alla filer|*.*</value>
+    <value>OpenDevelop AddIns|*.odaddin;*.addin|Alla filer|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>Klicka här för att se uppdateringarna.</value>

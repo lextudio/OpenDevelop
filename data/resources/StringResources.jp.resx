@@ -202,7 +202,7 @@
     <value>アドイン インストール パッケージ</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop アドイン|*.addin;*.sdaddin|すべてのファイル|*.*</value>
+    <value>SharpDevelop アドイン|*.addin;*.odaddin|すべてのファイル|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>アドインのインストール(&amp;I)</value>

@@ -202,7 +202,7 @@
     <value>Pacote para Instalação de AddIn</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop AddIns|*.addin;*.sdaddin|All files|*.*</value>
+    <value>SharpDevelop AddIns|*.addin;*.odaddin|All files|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>&amp;Instalar AddIn</value>

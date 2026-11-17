@@ -117,25 +117,25 @@
     <None Include="TestResources\AddInManager2Test.addin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="TestResources\AddInManager2Test.sdaddin">
+    <None Include="TestResources\AddInManager2Test.odaddin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="TestResources\AddInManager2Test_2.addin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="TestResources\AddInManager2Test_2.sdaddin">
+    <None Include="TestResources\AddInManager2Test_2.odaddin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="TestResources\AddInManager2Test_2_New.addin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="TestResources\AddInManager2Test_2_New.sdaddin">
+    <None Include="TestResources\AddInManager2Test_2_New.odaddin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="TestResources\AddInManager2Test_New.addin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="TestResources\AddInManager2Test_New.sdaddin">
+    <None Include="TestResources\AddInManager2Test_New.odaddin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="TestResources\AddInManager2Test_noIdentity.addin">

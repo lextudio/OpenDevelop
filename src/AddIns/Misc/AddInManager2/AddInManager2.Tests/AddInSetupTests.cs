@@ -256,7 +256,7 @@ namespace ICSharpCode.AddInManager2.Tests
 			Assert.That(addInOperationErrorReceived, "AddInOperationError event sent");
 		}
 		
-		[Test, Description("AddIn must be installed from offline *.sdaddin package. Pending installation must be cancellable.")]
+		[Test, Description("AddIn must be installed from offline *.odaddin package. Pending installation must be cancellable.")]
 		public void InstallValidAddInFromOfflinePackageAndCancel()
 		{
 			CreateAddIns();
@@ -282,9 +282,9 @@ namespace ICSharpCode.AddInManager2.Tests
 				}
 			};
 			
-			// Install the AddIn from *.sdaddin package
+			// Install the AddIn from *.odaddin package
 			_sdAddInManagement.AddInToLoad = _addIn1;
-			AddIn installedAddIn = _addInSetup.InstallAddIn(@"TestResources\AddInManager2Test.sdaddin");
+			AddIn installedAddIn = _addInSetup.InstallAddIn(@"TestResources\AddInManager2Test.odaddin");
 			
 			// The AddIn must have been added to AddInTree
 			Assert.That(installedAddIn, Is.Not.Null, "InstallAddIn() returns valid AddIn object");
@@ -318,7 +318,7 @@ namespace ICSharpCode.AddInManager2.Tests
 			Assert.That(addInUninstalledEventReceived, "AddInUninstalled event sent with correct AddIn");
 		}
 		
-		[Test, Description("Installed AddIn must be updated from offline *.sdaddin package. Pending update must be cancellable.")]
+		[Test, Description("Installed AddIn must be updated from offline *.odaddin package. Pending update must be cancellable.")]
 		public void UpdateValidAddInFromOfflinePackageAndCancel()
 		{
 			CreateAddIns();
@@ -351,7 +351,7 @@ namespace ICSharpCode.AddInManager2.Tests
 			
 			// Install the new version of AddIn from manifest
 			_sdAddInManagement.AddInToLoad = _addIn1_new;
-			AddIn installedAddIn = _addInSetup.InstallAddIn(@"TestResources\AddInManager2Test_New.sdaddin");
+			AddIn installedAddIn = _addInSetup.InstallAddIn(@"TestResources\AddInManager2Test_New.odaddin");
 			
 			// Test updated AddIn in AddInTree
 			Assert.That(installedAddIn, Is.Not.Null, "InstallAddIn() returns valid AddIn object");
@@ -729,7 +729,7 @@ namespace ICSharpCode.AddInManager2.Tests
 			Assert.That(nuGetPackageUninstalled, Is.False, "Downloaded NuGet package should be uninstalled.");
 		}
 		
-		[Test, Description("AddIn installed from a NuGet package must be updated from an offline *.sdaddin file. Pending update must be cancellable.")]
+		[Test, Description("AddIn installed from a NuGet package must be updated from an offline *.odaddin file. Pending update must be cancellable.")]
 		public void UpdateAddInFromDownloadedNuGetPackageWithOfflineAddInAndCancel()
 		{
 			CreateAddIns();
@@ -780,7 +780,7 @@ namespace ICSharpCode.AddInManager2.Tests
 			
 			// Install the new version of AddIn from manifest
 			_sdAddInManagement.AddInToLoad = _addIn1_new;
-			AddIn installedAddIn = _addInSetup.InstallAddIn(@"TestResources\AddInManager2Test_New.sdaddin");
+			AddIn installedAddIn = _addInSetup.InstallAddIn(@"TestResources\AddInManager2Test_New.odaddin");
 			
 			// Test updated AddIn in AddInTree
 			Assert.That(installedAddIn, Is.Not.Null, "InstallAddIn() returns valid AddIn object");
@@ -821,7 +821,7 @@ namespace ICSharpCode.AddInManager2.Tests
 			Assert.That(nuGetPackageUninstalled, Is.False, "Already installed NuGet package must not be removed.");
 		}
 		
-		[Test, Description("AddIn installed from a NuGet package must be updated from an offline *.sdaddin file with an older version. Pending update must be cancellable.")]
+		[Test, Description("AddIn installed from a NuGet package must be updated from an offline *.odaddin file with an older version. Pending update must be cancellable.")]
 		public void UpdateAddInFromDownloadedNuGetPackageWithOlderOfflineAddInAndCancel()
 		{
 			CreateAddIns();
@@ -872,7 +872,7 @@ namespace ICSharpCode.AddInManager2.Tests
 			
 			// Install the new version of AddIn from manifest
 			_sdAddInManagement.AddInToLoad = _addIn1;
-			AddIn installedAddIn = _addInSetup.InstallAddIn(@"TestResources\AddInManager2Test.sdaddin");
+			AddIn installedAddIn = _addInSetup.InstallAddIn(@"TestResources\AddInManager2Test.odaddin");
 			
 			// Test updated AddIn in AddInTree
 			Assert.That(installedAddIn, Is.Not.Null, "InstallAddIn() returns valid AddIn object");

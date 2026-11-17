@@ -203,7 +203,7 @@ et linjeskift</value>
     <value>Pakke for tilleggsinstallering</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop tillegg|*.addin;*.sdaddin|Alle filer|*.*</value>
+    <value>SharpDevelop tillegg|*.addin;*.odaddin|Alle filer|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>&amp;Installer tillegg</value>

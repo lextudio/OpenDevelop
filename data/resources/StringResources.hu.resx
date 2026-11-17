@@ -203,7 +203,7 @@ Valamint soremelést tartalmaz.</value>
     <value>Kiegészítőtelepítő-csomag</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop-kiegészítők|*.addin;*.sdaddin|Minden fájl|*.*</value>
+    <value>SharpDevelop-kiegészítők|*.addin;*.odaddin|Minden fájl|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>K&amp;iegészítő telepítése</value>

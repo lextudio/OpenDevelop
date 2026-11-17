@@ -202,7 +202,7 @@
     <value>Instalační balíček AddInu.</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop AddIny|*.addin;*.sdaddin|Všechny soubory|*.*</value>
+    <value>SharpDevelop AddIny|*.addin;*.odaddin|Všechny soubory|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>Na&amp;instalovat</value>
@@ -358,7 +358,7 @@ Aplikace se vše potřebné také pokusí stáhnout a nainstalovat. Pokračovat?
 Ty přestanou fungovat, pokud první doplněk odstraníte! Skutečně to chcete udělat?</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>Doplňky SharpDevelop |*.sdaddin;*.addin|Všechny soubory|*.*</value>
+    <value>Doplňky SharpDevelop |*.odaddin;*.addin|Všechny soubory|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>Klikněte pro zobrazení aktualizací.</value>

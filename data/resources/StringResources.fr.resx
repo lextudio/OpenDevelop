@@ -202,7 +202,7 @@
     <value>Paquet d'installation d'AddIn</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>AddIns SharpDevelop|*.addin;*.sdaddin|Tous les fichiers|*.*</value>
+    <value>AddIns SharpDevelop|*.addin;*.odaddin|Tous les fichiers|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>&amp;Installer un AddIn</value>
@@ -358,7 +358,7 @@ Si vous ne le souhaitez pas, veuillez cliquer sur "Je décline".</value>
 Ils ne fonctionneront plus si vous désinstallez cet Add-In! Souhaitez-vous continuer?</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>SharpDevelop Add-Ins|*.sdaddin;*.addin|Tous les fichiers|*.*</value>
+    <value>SharpDevelop Add-Ins|*.odaddin;*.addin|Tous les fichiers|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>Cliquer pour voir les mises à jour.</value>

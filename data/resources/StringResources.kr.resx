@@ -202,7 +202,7 @@
     <value>추가 기능 설치 패키지</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop 추가 기능|*.addin;*.sdaddin|모든 파일|*.*</value>
+    <value>SharpDevelop 추가 기능|*.addin;*.odaddin|모든 파일|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>추가 기능 설치(&amp;I)</value>

@@ -208,7 +208,7 @@
     <value>AddIn Installation Package</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop AddIns|*.addin;*.sdaddin|All files|*.*</value>
+    <value>SharpDevelop AddIns|*.addin;*.odaddin|All files|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>&amp;Install AddIn</value>
@@ -380,7 +380,7 @@ If you do not agree to the license terms click "I Decline".</value>
 They will stop working after removing this AddIn! Are you sure you want to continue?</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>SharpDevelop AddIns|*.sdaddin;*.addin|All files|*.*</value>
+    <value>OpenDevelop AddIns|*.odaddin;*.addin|All files|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>Click here to see the updates.</value>

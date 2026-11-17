@@ -202,7 +202,7 @@
     <value>AddIn Installationspaket</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop AddIns|*.addin;*.sdaddin|Alle Dateien|*.*</value>
+    <value>SharpDevelop AddIns|*.addin;*.odaddin|Alle Dateien|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>AddIn &amp;installieren</value>
@@ -367,7 +367,7 @@ Wenn Sie den Lizenzbedingungen nicht zustimmen, klicken Sie auf "Ablehnen".</val
 Sie werden nicht mehr funktionieren, nachdem dieses AddIn entfernt wurde! Sind Sie sicher, dass Sie fortfahren möchten?</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>SharpDevelop AddIns|*.sdaddin;*.addin|Alle Dateien|*.*</value>
+    <value>OpenDevelop AddIns|*.odaddin;*.addin|Alle Dateien|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>Klicken Sie hier um die Updates zu sehen.</value>

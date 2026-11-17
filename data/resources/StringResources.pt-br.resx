@@ -202,7 +202,7 @@
     <value>Pacote de instalação de recurso(s).</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>Adicionais do SharpDevelop|*.addin;*.sdaddin|Todos os arquivos|*.*</value>
+    <value>Adicionais do SharpDevelop|*.addin;*.odaddin|Todos os arquivos|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>&amp;Instalar recurso adicional</value>

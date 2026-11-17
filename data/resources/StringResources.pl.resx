@@ -203,7 +203,7 @@
     <value>Pakiet Instalacyjny Dodatku</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>Dodatki SharpDevelop|*.addin;*.sdaddin|Wszystkie pliki|*.*</value>
+    <value>Dodatki SharpDevelop|*.addin;*.odaddin|Wszystkie pliki|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>&amp;Instaluj Dodatek</value>

@@ -203,7 +203,7 @@
     <value>Установочный пакет плагина</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>Плагины SharpDevelop|*.addin;*.sdaddin|Все файлы|*.*</value>
+    <value>Плагины SharpDevelop|*.addin;*.odaddin|Все файлы|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>Установить плагин</value>
@@ -364,7 +364,7 @@
 Они перестанут работать, если удалить данный плагин! Вы уверены, что хотите продолжить?</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>Плагины SharpDevelop|*.sdaddin;*.addin|Все файлы|*.*</value>
+    <value>Плагины SharpDevelop|*.odaddin;*.addin|Все файлы|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>Щелкните сюда, чтобы посмотреть обновления</value>

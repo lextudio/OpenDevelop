@@ -203,7 +203,7 @@ un retorno de línea.</value>
     <value>Paquete de Instalación de Complemento</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>AddIns de SharpDevelop|*.addin;*.sdaddin|Todos los archivos|*.*</value>
+    <value>AddIns de SharpDevelop|*.addin;*.odaddin|Todos los archivos|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>&amp;Instalar AddIn</value>
@@ -368,7 +368,7 @@ Si usted no está de acuerdo con los términos de licencia haga clic en "Rechaza
 Dejarán de funcionar después de desinstalar este complemento! ¿Esta seguro de que quiere continuar?</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>Complementos de SharpDevelop|*.sdaddin;*.addin|Todos los archivos|*.*</value>
+    <value>Complementos de SharpDevelop|*.odaddin;*.addin|Todos los archivos|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>Clic aquí para ver las actualizaciones.</value>

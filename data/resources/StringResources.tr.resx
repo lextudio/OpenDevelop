@@ -202,7 +202,7 @@
     <value>Eklenti Yükleme Paketi</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop Eklentileri|*.addin;*.sdaddin|All files|*.*</value>
+    <value>SharpDevelop Eklentileri|*.addin;*.odaddin|All files|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>Eklenti Kur</value>
@@ -367,7 +367,7 @@ Eğer lisans şartlarını kabul etmiyorsanız "Reddet" tıklayın.</value>
 Eklenti kaldırıldıktan sonra çalışması durabilir! Devam etmek istediğinizden emin misiniz?</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>SharpDevelop Eklentileri|*.sdaddin;*.addin|All files|*.*</value>
+    <value>SharpDevelop Eklentileri|*.odaddin;*.addin|All files|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>Güncellemeleri görmek için buraya tıklayın.</value>

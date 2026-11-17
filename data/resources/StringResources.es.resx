@@ -203,7 +203,7 @@ un salto de línea</value>
     <value>Paquete de Instalación de Complemento</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>Complementos de SharpDevelop|*.addin;*.sdaddin|Todos los archivos|*.*</value>
+    <value>Complementos de SharpDevelop|*.addin;*.odaddin|Todos los archivos|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>&amp;Instalar Complemento</value>
@@ -369,7 +369,7 @@ Si no acepta los términos de la licencia haga clic en "No acepto".</value>
 Dejarán de funcionar al remover este Complemento! ¿Quiere continuar?</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>AddIns de SharpDevelop |*.sdaddin;*.addin|Todos los archivos|*.*</value>
+    <value>AddIns de SharpDevelop |*.odaddin;*.addin|Todos los archivos|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>Clic aquí para ver las actualizaciones.</value>

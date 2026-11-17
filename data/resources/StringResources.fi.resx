@@ -202,7 +202,7 @@
     <value>Tiedosto sidos</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>Suodata|*.addin;*.sdaddin|Kaikki suodattimet|*.*</value>
+    <value>Suodata|*.addin;*.odaddin|Kaikki suodattimet|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>Asenna</value>

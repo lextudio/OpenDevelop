@@ -211,7 +211,7 @@
     <value>插件安装包</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop插件|*.addin;*.sdaddin|所有文件|*.*</value>
+    <value>SharpDevelop插件|*.addin;*.odaddin|所有文件|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>插件安装(&amp;I)</value>
@@ -7707,7 +7707,7 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
 移除此插件后它们将停止工作！确定要继续吗？</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>SharpDevelop 插件|*.sdaddin;*.addin|所有文件|*.*</value>
+    <value>SharpDevelop 插件|*.odaddin;*.addin|所有文件|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>单击此处查看更新。</value>

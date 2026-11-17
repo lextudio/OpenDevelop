@@ -203,7 +203,7 @@ una riga a capo</value>
     <value>Pacchetto Installazione Componente</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>Componenti di SharpDevelop|*.addin;*.sdaddin|Tutti i file|*.*</value>
+    <value>Componenti di SharpDevelop|*.addin;*.odaddin|Tutti i file|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>&amp;Install Componente</value>
@@ -368,7 +368,7 @@ Se non accetti i termini di licenza clicca "Rifiuto".</value>
 Smetteranno di funzionare dopo la rimozione di questo Componente! Sei sicuro di voler continuare?</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>Componenti di SharpDevelop|*.sdaddin;*.addin|All files|*.*</value>
+    <value>Componenti di SharpDevelop|*.odaddin;*.addin|All files|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>Clicca qui per visualizzare gli aggiornamenti.</value>

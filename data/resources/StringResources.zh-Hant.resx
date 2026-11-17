@@ -211,7 +211,7 @@
     <value>增益集安裝包</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop增益集|*.addin;*.sdaddin|所有檔案|*.*</value>
+    <value>SharpDevelop增益集|*.addin;*.odaddin|所有檔案|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>增益集安裝(&amp;I)</value>
@@ -7707,7 +7707,7 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
 移除此增益集後它們將停止工作！確定要繼續嗎？</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>SharpDevelop 增益集|*.sdaddin;*.addin|所有檔案|*.*</value>
+    <value>SharpDevelop 增益集|*.odaddin;*.addin|所有檔案|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>按一下此處查看更新。</value>

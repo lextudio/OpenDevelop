@@ -202,7 +202,7 @@
     <value>Invoegtoepassing Installatiepakket</value>
   </data>
   <data name="AddInManager.FileFilter" xml:space="preserve">
-    <value>SharpDevelop invoegtoepassingen|*.addin;*.sdaddin|Alle bestanden|*.*</value>
+    <value>SharpDevelop invoegtoepassingen|*.addin;*.odaddin|Alle bestanden|*.*</value>
   </data>
   <data name="AddInManager.InstallButton" xml:space="preserve">
     <value>&amp;Installeren</value>
@@ -365,7 +365,7 @@ Als u het niet eens bent met de licentie voorwaarden, klik dan de "Ik weiger" kn
 Deze stoppen met werken nadat deze AddIn wordt  verwijderd. Weet u zeker dat u wilt doorgaan?</value>
   </data>
   <data name="AddInManager2.SDAddInFileFilter" xml:space="preserve">
-    <value>SharpDevelop AddIns|*.sdaddin;*.addin|Alle bestanden|*.*</value>
+    <value>OpenDevelop AddIns|*.odaddin;*.addin|Alle bestanden|*.*</value>
   </data>
   <data name="AddInManager2.UpdateNotifier.BubbleText" xml:space="preserve">
     <value>Hier klikken om de updates te zien.</value>
