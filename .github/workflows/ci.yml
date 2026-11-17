@@ -191,6 +191,12 @@ jobs:
         if: runner.os != 'Linux'
         shell: pwsh
         run: ./.github/ci/verify-bitness.ps1 -Platform '${{ matrix.name }}' -PayloadOnly
+      # Temporary diagnostic (remove with the GitFixture one): which side of the workspace archive loses a GitFixture file.
+      - name: List the GitFixture template before packing
+        if: matrix.name == 'windows-x64'
+        continue-on-error: true
+        shell: pwsh
+        run: Get-ChildItem tests/fixtures/GitFixture -Recurse -File -Force | ForEach-Object { '{0} {1}' -f $_.FullName, $_.Length }
       - name: Pack the workspace
         shell: pwsh
         run: ./.github/ci/package-workspace.ps1 -Platform '${{ matrix.name }}' -Directory '${{ runner.temp }}/archive'
@@ -238,6 +244,12 @@ jobs:
       - name: Unpack the workspace built by the build job
         shell: pwsh
         run: ./.github/ci/package-workspace.ps1 -Extract -Directory '${{ runner.temp }}/archive'
+      # Temporary diagnostic (remove with the GitFixture one): which side of the workspace archive loses a GitFixture file.
+      - name: List the GitFixture template after unpacking
+        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
+        continue-on-error: true
+        shell: pwsh
+        run: Get-ChildItem tests/fixtures/GitFixture -Recurse -File -Force | ForEach-Object { '{0} {1}' -f $_.FullName, $_.Length }
       - uses: actions/setup-dotnet@v6
         with:
           # Match the build job: net10 is a fixture compatibility contract, not the SDK
@@ -360,6 +372,17 @@ jobs:
             </packageSources>
           </configuration>
           '@ | Set-Content -Path (Join-Path $gallery 'NuGet.config')
+          # The corpus builds the whole solution, and the Gallery's own test projects (self-contained) reference its app (framework-dependent):
+          # NETSDK1150 fails the build although the app itself compiled. The corpus needs the app only, so drop the test projects from the solution.
+          $slnx = Join-Path $gallery 'WinUIGallery.slnx'
+          [xml]$solution = Get-Content $slnx -Raw
+          $tests = @($solution.SelectNodes('//Project') | Where-Object { $_.GetAttribute('Path') -match '^tests[\/]' })
+          if ($tests.Count -eq 0) { Write-Warning 'No tests projects found in WinUIGallery.slnx; the solution is unchanged.' }
+          else {
+            foreach ($node in $tests) { [void]$node.ParentNode.RemoveChild($node) }
+            if ($solution.SelectNodes('//Project').Count -eq 0) { throw 'Removing the test projects left no project in WinUIGallery.slnx.' }
+            $solution.Save($slnx)
+          }
           "OD_WINUI_GALLERY_ROOT=$gallery" | Add-Content -Path $env:GITHUB_ENV
 
       # The WPF Gallery corpus (entry wpf-gallery-corpus) opens the real WPFGallery of microsoft/WPF-Samples; the tests skip without
