@@ -15,4 +15,9 @@ namespace WinFormsSample
         {
         }
     }
+
+    /// <summary>A subclass of <see cref="Form1"/>, so Find Derived Classes has something to find.</summary>
+    public class Form1Derived : Form1
+    {
+    }
 }

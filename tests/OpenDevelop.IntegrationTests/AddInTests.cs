@@ -7816,7 +7816,13 @@ EndGlobal
         Assert.True((await _app.InvokeAsync("od.open-file", _widgetServicePath)).GetProperty("opened").GetBoolean());
 
         // "Widget" in "IEnumerable<Widget>" on line 8: navigate to the class declaration.
-        var result = await _app.InvokeAsync("od.go-to-definition", _widgetServicePath, 8, 28);
+        // The language service of a freshly (re)opened solution needs a moment before it resolves; poll instead of
+        // asking once (a single immediate query failed when it ran after other solution-switching tests).
+        JsonElement result = default;
+        await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            result = await _app.InvokeAsync("od.go-to-definition", _widgetServicePath, 8, 28);
+            return result.TryGetProperty("count", out var c) && c.GetInt32() > 0;
+        }, TimeSpan.FromSeconds(60), initialDelayMs: 200, maxDelayMs: 1000);
 
         Assert.True(result.TryGetProperty("count", out var count), result.ToString());
         Assert.True(count.GetInt32() > 0, $"Expected at least one definition target, got: {result}");
@@ -8238,6 +8244,387 @@ EndGlobal
 
         Assert.True(files.Any(f => f.EndsWith("Services/WidgetService.cs")),
             $"Expected a reference from WidgetService.cs (IEnumerable<Widget>), got: {result}");
+    }
+
+    [Fact]
+    public async Task FindReferences_LooseFilesWithoutProject_ReportsWhatItFinds()
+    {
+        // GitHub issue #37 ("Find references only lists the current file"): the user may open files
+        // without a project/solution. Copy the two files into a directory with no project so only the
+        // loose ad-hoc workspace project can serve them, open both, and look up Widget.
+        var dir = Path.Combine(Path.GetTempPath(), "LooseFindRefs-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var widget = Path.Combine(dir, "Widget.cs");
+            var service = Path.Combine(dir, "WidgetService.cs");
+            File.Copy(_widgetPath, widget);
+            File.Copy(_widgetServicePath, service);
+            Assert.True((await _app.InvokeAsync("od.open-file", widget)).GetProperty("opened").GetBoolean());
+            Assert.True((await _app.InvokeAsync("od.open-file", service)).GetProperty("opened").GetBoolean());
+
+            var (line, column) = Locate(widget, "class Widget", "Widget");
+            var result = await _app.InvokeAsync("od.find-references", widget, line, column);
+            var files = result.GetProperty("references").EnumerateArray()
+                .Select(r => Path.GetFileName(r.GetProperty("filePath").GetString()!)).Distinct().ToList();
+            Assert.True(files.Contains("WidgetService.cs"),
+                $"Loose files lost the cross-file reference (files: {string.Join(", ", files)}): {result}");
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.close-all-document-views");
+            try { Directory.Delete(dir, true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task FindReferences_FromWinFormsCodeView_FindsProgramReference()
+    {
+        // GitHub issue #37 is filed under the WinForms Designer area: with Form1 open (its designer
+        // view loaded), Find References on the Form1 type must list Program.cs (new Form1()), not just Form1.cs.
+        var solution = _app.FormsDesignSolutionPath;
+        // Sources live under the Microsoft sample's directory; the LibreWinForms solution links them.
+        var dir = Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!;
+        var formPath = Path.Combine(dir, "Form1.cs");
+        Assert.True((await _app.ReopenSolutionAsync(solution)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", formPath)).GetProperty("opened").GetBoolean());
+        JsonElement status = default;
+        await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            status = await _app.InvokeAsync("od.forms-designer.status");
+            return status.GetProperty("designerLoaded").GetBoolean();
+        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
+        Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
+
+        var (typeLine, typeColumn) = Locate(formPath, "class Form1", "Form1");
+        var typeRefs = await _app.InvokeAsync("od.find-references", formPath, typeLine, typeColumn);
+        var typeFiles = typeRefs.GetProperty("references").EnumerateArray()
+            .Select(r => Path.GetFileName(r.GetProperty("filePath").GetString()!)).Distinct().ToList();
+        Assert.True(typeFiles.Contains("Program.cs"),
+            $"Expected Program.cs among Form1 references, got: {string.Join(", ", typeFiles)}: {typeRefs}");
+        // Declarations are not references: Roslyn's ReferencedSymbol.Locations omits the definition, so
+        // InitializeComponent (declared in Form1.Designer.cs) lists only its call site in Form1.cs.
+    }
+
+    static List<string> ReferenceFileNames(JsonElement result) =>
+        result.GetProperty("references").EnumerateArray()
+            .Select(r => Path.GetFileName(r.GetProperty("filePath").GetString()!)).Distinct().ToList();
+
+    [Fact]
+    public async Task FindReferences_WinFormsControlField_ListsDesignerAndCodeFileUsages()
+    {
+        // GitHub issue #37 (WinForms Designer area): a control field declared in Form1.Designer.cs
+        // and used in Form1.cs must be found from either side - the whole point of "all references"
+        // for a designer-generated member. Work on a copy so Form1.cs can be edited.
+        var sourceDir = Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!;
+        var dir = Path.Combine(Path.GetTempPath(), "WinFormsFindRefs-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            foreach (var file in new[] { "Form1.cs", "Form1.Designer.cs", "Form1.resx", "Program.cs", "WinFormsSample.csproj", "WinFormsSample.slnx" })
+            {
+                Directory.CreateDirectory(dir);
+                File.Copy(Path.Combine(sourceDir, file), Path.Combine(dir, file));
+            }
+            var formPath = Path.Combine(dir, "Form1.cs");
+            var designerPath = Path.Combine(dir, "Form1.Designer.cs");
+            File.WriteAllText(formPath, File.ReadAllText(formPath).Replace(
+                "private void Form1_Load(System.Object sender, System.EventArgs e)\n        {",
+                "private void Form1_Load(System.Object sender, System.EventArgs e)\n        {\n            dropPanel.Visible = true;")
+                .Replace("private void Form1_Load(System.Object sender, System.EventArgs e)\r\n        {",
+                "private void Form1_Load(System.Object sender, System.EventArgs e)\r\n        {\r\n            dropPanel.Visible = true;"));
+            Assert.Contains("dropPanel.Visible", File.ReadAllText(formPath));
+
+            Assert.True((await _app.ReopenSolutionAsync(Path.Combine(dir, "WinFormsSample.slnx"))).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeAsync("od.open-file", formPath)).GetProperty("opened").GetBoolean());
+            Assert.True((await _app.InvokeAsync("od.open-file", designerPath)).GetProperty("opened").GetBoolean());
+
+            var (useLine, useColumn) = Locate(formPath, "dropPanel.Visible", "dropPanel");
+            var fromCode = await _app.InvokeAsync("od.find-references", formPath, useLine, useColumn);
+            Assert.True(ReferenceFileNames(fromCode).Contains("Form1.Designer.cs"),
+                $"From Form1.cs the designer-file usages of dropPanel are missing: {fromCode}");
+
+            var (declLine, declColumn) = Locate(designerPath, "dropPanel = new", "dropPanel");
+            var fromDesigner = await _app.InvokeAsync("od.find-references", designerPath, declLine, declColumn);
+            Assert.True(ReferenceFileNames(fromDesigner).Contains("Form1.cs"),
+                $"From Form1.Designer.cs the Form1.cs usage of dropPanel is missing: {fromDesigner}");
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.close-all-document-views");
+            try { Directory.Delete(dir, true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task FindReferences_AcrossProjectsOfOneSolution_ListsReferencingProject()
+    {
+        // GitHub issue #37 asks for references "in all project files": with two projects, a type in the
+        // library must be found from its use in the referencing application project.
+        var dir = Path.Combine(Path.GetTempPath(), "TwoProjectFindRefs-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(dir, "Lib"));
+            Directory.CreateDirectory(Path.Combine(dir, "App"));
+            File.WriteAllText(Path.Combine(dir, "Lib", "Lib.csproj"),
+                "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>");
+            File.WriteAllText(Path.Combine(dir, "Lib", "Greeter.cs"),
+                "namespace Lib { public class Greeter { public string Hello() => \"hi\"; } }\n");
+            File.WriteAllText(Path.Combine(dir, "App", "App.csproj"),
+                "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework></PropertyGroup>" +
+                "<ItemGroup><ProjectReference Include=\"../Lib/Lib.csproj\" /></ItemGroup></Project>");
+            File.WriteAllText(Path.Combine(dir, "App", "Program.cs"),
+                "class Program { static void Main() { System.Console.WriteLine(new Lib.Greeter().Hello()); } }\n");
+            var solution = Path.Combine(dir, "TwoProjects.slnx");
+            File.WriteAllText(solution, "<Solution><Project Path=\"Lib/Lib.csproj\" /><Project Path=\"App/App.csproj\" /></Solution>");
+            var greeter = Path.Combine(dir, "Lib", "Greeter.cs");
+
+            Assert.True((await _app.ReopenSolutionAsync(solution)).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeAsync("od.open-file", greeter)).GetProperty("opened").GetBoolean());
+
+            var (line, column) = Locate(greeter, "class Greeter", "Greeter");
+            var result = await _app.InvokeAsync("od.find-references", greeter, line, column);
+            Assert.True(ReferenceFileNames(result).Contains("Program.cs"),
+                $"Greeter's use in the referencing project is missing: {result}");
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.close-all-document-views");
+            try { Directory.Delete(dir, true); } catch (IOException) { }
+        }
+    }
+
+    /// <summary>Right-clicks <paramref name="identifier"/> (after <paramref name="anchor"/>) in <paramref name="file"/> through the
+    /// editor's real context menu, clicks its Find References item, and returns the files the Search Results pad then lists.</summary>
+    async Task<(List<string> Files, JsonElement Pad, JsonElement Menu)> FindReferencesViaContextMenuAsync(string file, string anchor, string identifier)
+    {
+        await _app.InvokeAsync("od.search.clear-last-results");
+        var (line, column) = Locate(file, anchor, identifier);
+        // The Entity items (Goto Definition / Rename / Find references) are gated by
+        // SymbolTypeAtCaretConditionEvaluator, which answers "no symbol" on the first build for a caret
+        // position and computes the kind in the background: like a user, right-click again until the item shows.
+        JsonElement menu = default, clicked = default;
+        var builds = 0;
+        await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            builds++;
+            menu = await _app.InvokeAsync("od.editor.context-menu", file, line, column);
+            Assert.True(menu.GetProperty("success").GetBoolean(), menu.ToString());
+            var header = menu.GetProperty("headers").EnumerateArray().Select(h => h.GetString()!)
+                .FirstOrDefault(h => h.Contains("Find References", StringComparison.OrdinalIgnoreCase));
+            if (header == null) return false;
+            clicked = await _app.InvokeAsync("od.editor.context-menu", file, line, column, header);
+            return clicked.GetProperty("invoked").GetBoolean();
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 200, maxDelayMs: 500);
+        Assert.True(clicked.ValueKind == JsonValueKind.Object && clicked.GetProperty("invoked").GetBoolean(),
+            $"Find References never became clickable at {line}:{column} after {builds} context-menu builds. Last build: {menu}; click: {clicked}");
+        var activeView = clicked.GetProperty("activeView").GetString();
+        var activeHasEditor = clicked.GetProperty("activeViewHasTextEditor").GetBoolean();
+
+        JsonElement pad = default;
+        await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            pad = await _app.InvokeAsync("od.search.last-results");
+            return pad.GetProperty("count").GetInt32() > 0;
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 100, maxDelayMs: 500);
+        Assert.True(pad.GetProperty("count").GetInt32() > 0,
+            $"Clicking Find References put nothing in the Search Results pad ({pad}). The command reads the ACTIVE view's ITextEditor; active view: {activeView}, has ITextEditor: {activeHasEditor}.");
+        var files = pad.TryGetProperty("matches", out var matches)
+            ? matches.EnumerateArray().Select(m => Path.GetFileName(m.GetProperty("filePath").GetString()!)).Distinct().ToList()
+            : new List<string>();
+        return (files, pad, menu);
+    }
+
+    [Fact]
+    public async Task FindReferences_ViaEditorContextMenu_ShowsCrossFileResultsInSearchPad()
+    {
+        // GitHub issue #37 is about the RIGHT-CLICK -> Find References item: drive the real editor context
+        // menu (caret moved to Widget, item clicked) and read what the Search Results pad then shows.
+        Assert.True((await _app.InvokeAsync("od.open-solution", _solutionPath)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", _widgetServicePath)).GetProperty("opened").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", _widgetPath)).GetProperty("opened").GetBoolean());
+
+        var (files, pad, menu) = await FindReferencesViaContextMenuAsync(_widgetPath, "class Widget", "Widget");
+        Assert.True(files.Contains("WidgetService.cs"),
+            $"The Search Results pad lists only [{string.Join(", ", files)}] after the context-menu Find References; pad: {pad}; menu: {menu}");
+    }
+
+    [Fact]
+    public async Task FindReferences_ViaEditorContextMenu_InWinFormsForm_ShowsProgramReference()
+    {
+        var dir = Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!;
+        var formPath = Path.Combine(dir, "Form1.cs");
+        Assert.True((await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", formPath)).GetProperty("opened").GetBoolean());
+        JsonElement status = default;
+        await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            status = await _app.InvokeAsync("od.forms-designer.status");
+            return status.GetProperty("designerLoaded").GetBoolean();
+        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
+
+        // Control: the same command run WITHOUT a menu owner (od.menu.invoke calls Execute(null), exactly what the
+        // command did before it read Owner) has to find the editor through the active view, which is the designer
+        // here and has none - so nothing reaches the pad. This proves the context-menu click below is what supplies it.
+        await _app.InvokeAsync("od.search.clear-last-results");
+        Assert.True((await _app.InvokeAsync("od.menu.invoke", "ICSharpCode.SharpDevelop.Editor.Commands.FindReferencesCommand")).GetProperty("success").GetBoolean());
+        await Task.Delay(2000);
+        Assert.Equal(-1, (await _app.InvokeAsync("od.search.last-results")).GetProperty("count").GetInt32());
+
+        var (files, pad, menu) = await FindReferencesViaContextMenuAsync(formPath, "class Form1", "Form1");
+        Assert.True(files.Contains("Program.cs"),
+            $"The Search Results pad lists only [{string.Join(", ", files)}] after the context-menu Find References; pad: {pad}; menu: {menu}");
+    }
+
+    /// <summary>Opens WinFormsSample's Form1.cs (designer view loaded, so the designer is the ACTIVE view) and clicks
+    /// the context-menu item <paramref name="header"/> at the identifier; returns the click result.</summary>
+    async Task OpenFormsDesignerAsync()
+    {
+        var formPath = FormsSampleFile("Form1.cs");
+        Assert.True((await _app.ReopenSolutionAsync(_app.FormsDesignSolutionPath)).GetProperty("success").GetBoolean());
+        Assert.True((await _app.InvokeAsync("od.open-file", formPath)).GetProperty("opened").GetBoolean());
+        JsonElement status = default;
+        await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            status = await _app.InvokeAsync("od.forms-designer.status");
+            return status.GetProperty("designerLoaded").GetBoolean();
+        }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
+        Assert.True(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
+    }
+
+    async Task<JsonElement> ClickFormsContextMenuItemAsync(string anchor, string identifier, string header, int selectLength = 0)
+    {
+        var formPath = FormsSampleFile("Form1.cs");
+        await OpenFormsDesignerAsync();
+        var (line, column) = Locate(formPath, anchor, identifier);
+        JsonElement clicked = default;
+        await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            clicked = await _app.InvokeAsync("od.editor.context-menu", formPath, line, column, header, selectLength);
+            return clicked.GetProperty("invoked").GetBoolean();
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 200, maxDelayMs: 500);
+        Assert.True(clicked.GetProperty("invoked").GetBoolean(), $"'{header}' never became clickable: {clicked}");
+        return clicked;
+    }
+
+    string FormsSampleFile(string name) => Path.Combine(Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!, name);
+
+    [Fact]
+    public async Task FindBaseClasses_InWinFormsForm_UsesTheContextMenuEditor()
+    {
+        // Same owner problem as Find References: with the designer as the active view there is no ITextEditor on it.
+        var formPath = FormsSampleFile("Form1.cs");
+        await OpenFormsDesignerAsync();
+        var (line, column) = Locate(formPath, "partial class Form1", "Form1");
+
+        // Control: no owner -> the active view's editor, which the designer does not have.
+        var without = await _app.InvokeAsync("od.editor.hierarchy", formPath, line, column, "base", false);
+        Assert.True(without.GetProperty("success").GetBoolean(), without.ToString());
+        Assert.False(without.GetProperty("activeViewHasTextEditor").GetBoolean(), "the designer must be the active view: " + without);
+        Assert.False(without.GetProperty("found").GetBoolean(), "without an owner the query must find nothing: " + without);
+
+        JsonElement with = default;
+        await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            with = await _app.InvokeAsync("od.editor.hierarchy", formPath, line, column, "base", true);
+            return with.GetProperty("success").GetBoolean() && with.GetProperty("found").GetBoolean();
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 200, maxDelayMs: 500);
+        Assert.True(with.GetProperty("found").GetBoolean(), with.ToString());
+        Assert.Contains("Form", with.GetProperty("nodes").EnumerateArray().Select(n => n.GetString()).Concat(new[] { with.GetProperty("subject").GetString() }).First(x => x!.Contains("Form"))!);
+    }
+
+    [Fact]
+    public async Task FindDerivedClasses_InWinFormsForm_UsesTheContextMenuEditor()
+    {
+        var formPath = FormsSampleFile("Form1.cs");
+        await OpenFormsDesignerAsync();
+        var (line, column) = Locate(formPath, "partial class Form1", "Form1");
+
+        var without = await _app.InvokeAsync("od.editor.hierarchy", formPath, line, column, "derived", false);
+        Assert.True(without.GetProperty("success").GetBoolean(), without.ToString());
+        Assert.False(without.GetProperty("activeViewHasTextEditor").GetBoolean(), "the designer must be the active view: " + without);
+        Assert.False(without.GetProperty("found").GetBoolean(), "without an owner the query must find nothing: " + without);
+
+        JsonElement with = default;
+        await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            with = await _app.InvokeAsync("od.editor.hierarchy", formPath, line, column, "derived", true);
+            return with.GetProperty("success").GetBoolean() && with.GetProperty("found").GetBoolean();
+        }, TimeSpan.FromSeconds(30), initialDelayMs: 200, maxDelayMs: 500);
+        Assert.True(with.GetProperty("found").GetBoolean(), with.ToString());
+        Assert.Contains(with.GetProperty("nodes").EnumerateArray().Select(n => n.GetString()), n => n!.Contains("Form1Derived"));
+    }
+
+    [Fact]
+    public async Task ContextMenu_GotoDefinition_InWinFormsForm_MovesToTheDesignerFileDeclaration()
+    {
+        // InitializeComponent is declared in Form1.Designer.cs (a secondary file of the SAME designer view, so the
+        // active file does not change); the jump is observable as the Designer.cs editor's caret moving there.
+        var designerPath = FormsSampleFile("Form1.Designer.cs");
+        var (declLine, _) = Locate(designerPath, "void InitializeComponent()", "InitializeComponent");
+        // Control: with no menu owner (od.menu.invoke = Execute(null), the behaviour before the fix) the command
+        // reads the ACTIVE view's editor, which is the designer and has none, so the Designer.cs caret must not move.
+        var formPath = FormsSampleFile("Form1.cs");
+        var (callLine, callColumn) = Locate(formPath, "InitializeComponent();", "InitializeComponent");
+        await OpenFormsDesignerAsync();
+        await _app.InvokeAsync("od.editor.context-menu", designerPath, 1, 1);
+        await _app.InvokeAsync("od.editor.context-menu", formPath, callLine, callColumn);
+        Assert.True((await _app.InvokeAsync("od.menu.invoke", "ICSharpCode.SharpDevelop.Editor.Commands.GoToDefinition")).GetProperty("success").GetBoolean());
+        await Task.Delay(2000);
+        Assert.Equal(1, (await _app.InvokeAsync("od.editor.context-menu", designerPath, 0, 0)).GetProperty("caretLine").GetInt32());
+
+        await ClickFormsContextMenuItemAsync("InitializeComponent();", "InitializeComponent", "Goto Definition");
+        var designerCaret = await _app.InvokeAsync("od.editor.context-menu", designerPath, 0, 0);
+        Assert.True(designerCaret.GetProperty("success").GetBoolean(), designerCaret.ToString());
+        await OpenDevelopAppFixture.PollUntilAsync(async () => {
+            designerCaret = await _app.InvokeAsync("od.editor.context-menu", designerPath, 0, 0);
+            return designerCaret.GetProperty("caretLine").GetInt32() == declLine;
+        }, TimeSpan.FromSeconds(15), initialDelayMs: 200, maxDelayMs: 500);
+        Assert.True(designerCaret.GetProperty("caretLine").GetInt32() == declLine,
+            $"Goto Definition left the Form1.Designer.cs caret at line {designerCaret.GetProperty("caretLine")} instead of {declLine}");
+    }
+
+    [Fact]
+    public async Task ContextMenu_Reformat_InWinFormsForm_FormatsTheSelection()
+    {
+        // Reformat reads the active view's editor too. Work on a copy whose Form1.cs has a badly spaced call.
+        var sourceDir = Path.GetDirectoryName(_app.WinFormsSampleSolutionPath)!;
+        var dir = Path.Combine(Path.GetTempPath(), "WinFormsReformat-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(dir);
+            foreach (var file in new[] { "Form1.cs", "Form1.Designer.cs", "Form1.resx", "Program.cs", "WinFormsSample.csproj", "WinFormsSample.slnx" })
+                File.Copy(Path.Combine(sourceDir, file), Path.Combine(dir, file));
+            var formPath = Path.Combine(dir, "Form1.cs");
+            File.WriteAllText(formPath, File.ReadAllText(formPath).Replace("InitializeComponent();", "InitializeComponent  (  )  ;"));
+            Assert.True((await _app.ReopenSolutionAsync(Path.Combine(dir, "WinFormsSample.slnx"))).GetProperty("success").GetBoolean());
+            Assert.True((await _app.InvokeAsync("od.open-file", formPath)).GetProperty("opened").GetBoolean());
+            JsonElement status = default;
+            await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                status = await _app.InvokeAsync("od.forms-designer.status");
+                return status.GetProperty("designerLoaded").GetBoolean();
+            }, TimeSpan.FromSeconds(60), initialDelayMs: 100, maxDelayMs: 1000);
+            const string messy = "InitializeComponent  (  )  ;";
+            var (line, column) = Locate(formPath, messy, "InitializeComponent");
+            // Put the caret and the selection on the messy statement without clicking anything yet.
+            await _app.InvokeAsync("od.editor.context-menu", formPath, line, 1, "", 0);
+            var selected = await _app.InvokeAsync("od.editor.context-menu", formPath, line, column - 1, "", messy.Length);
+            Assert.Equal(messy.Length, selected.GetProperty("selectionLength").GetInt32());
+
+            // Control: Execute(null) (the pre-fix behaviour) cannot find the editor behind the active designer view.
+            Assert.True((await _app.InvokeAsync("od.menu.invoke", "ICSharpCode.SharpDevelop.Editor.Commands.ReformatSelection")).GetProperty("success").GetBoolean());
+            await Task.Delay(2500);
+            var unchanged = await _app.InvokeAsync("od.editor.context-menu", formPath, 0, 0);
+            Assert.Contains(messy, unchanged.GetProperty("documentText").GetString()!);
+
+            JsonElement clicked = default;
+            await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                clicked = await _app.InvokeAsync("od.editor.context-menu", formPath, line, column - 1, "Reformat", messy.Length);
+                return clicked.GetProperty("invoked").GetBoolean();
+            }, TimeSpan.FromSeconds(30), initialDelayMs: 200, maxDelayMs: 500);
+            Assert.True(clicked.GetProperty("invoked").GetBoolean(), clicked.ToString());
+            Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+                var now = await _app.InvokeAsync("od.editor.context-menu", formPath, 0, 0);
+                return !now.GetProperty("documentText").GetString()!.Contains(messy);
+            }, TimeSpan.FromSeconds(30), initialDelayMs: 200, maxDelayMs: 500),
+                "Reformat from the context menu left the badly spaced call as it was");
+        }
+        finally
+        {
+            await _app.InvokeAsync("od.close-all-document-views");
+            try { Directory.Delete(dir, true); } catch (IOException) { }
+        }
     }
 
     [Fact]

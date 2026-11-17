@@ -42,7 +42,9 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 
 		async Task RunAsync()
 		{
-			ITextEditor editor = SD.GetActiveViewContentService<ITextEditor>();
+			// The editor context menu passes its editor as the owner; with a designer as the active view
+			// content there is no ITextEditor on the active view.
+			ITextEditor editor = Owner as ITextEditor ?? SD.GetActiveViewContentService<ITextEditor>();
 			if (editor == null)
 				return;
 			

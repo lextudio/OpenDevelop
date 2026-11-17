@@ -43,7 +43,9 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 	{
 		public override void Run()
 		{
-			var editor = SD.GetActiveViewContentService<ITextEditor>();
+			// The editor context menu passes its editor as the owner. The active view is not that
+			// editor when a designer (WinForms Form1.cs) is the active view content and has no ITextEditor.
+			var editor = Owner as ITextEditor ?? SD.GetActiveViewContentService<ITextEditor>();
 			if (editor == null || editor.FileName == null)
 				return;
 			_ = RunAsync(editor);
@@ -124,7 +126,9 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 	{
 		public override void Run()
 		{
-			var editor = SD.GetActiveViewContentService<ITextEditor>();
+			// The editor context menu passes its editor as the owner. The active view is not that
+			// editor when a designer (WinForms Form1.cs) is the active view content and has no ITextEditor.
+			var editor = Owner as ITextEditor ?? SD.GetActiveViewContentService<ITextEditor>();
 			if (editor == null || editor.FileName == null)
 				return;
 			_ = RunAsync(editor);

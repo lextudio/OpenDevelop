@@ -22,7 +22,7 @@ namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 
 		async Task RunAsync()
 		{
-			var result = await QueryAsync();
+			var result = await QueryAsync(Owner as ITextEditor);
 			if (result == null) {
 				MessageService.ShowError("${res:ICSharpCode.Refactoring.NoClassOrMemberUnderCursorError}");
 				return;
@@ -34,9 +34,10 @@ namespace ICSharpCode.AvalonEdit.AddIn.ContextActions
 			new ContextActionsPopup { Actions = model }.OpenAtCaretAndFocus();
 		}
 
-		static async Task<SymbolHierarchyResult> QueryAsync()
+		internal static async Task<SymbolHierarchyResult> QueryAsync(ITextEditor owner)
 		{
-			ITextEditor editor = SD.GetActiveViewContentService<ITextEditor>();
+			// The context menu passes its editor as owner; a designer as active view has no ITextEditor.
+			ITextEditor editor = owner ?? SD.GetActiveViewContentService<ITextEditor>();
 			var registry = SD.GetService<LanguageServiceRegistry>();
 			if (editor == null || registry == null || !registry.TryGetProtocol(editor.FileName, out var protocol))
 				return null;

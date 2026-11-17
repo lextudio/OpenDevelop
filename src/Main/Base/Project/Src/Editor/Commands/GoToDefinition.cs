@@ -24,7 +24,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Commands
 
 		async Task RunAsync()
 		{
-			var editor = SD.GetActiveViewContentService<ITextEditor>();
+			var editor = Owner as ITextEditor ?? SD.GetActiveViewContentService<ITextEditor>();
 			var registry = SD.GetService<LanguageServiceRegistry>();
 			// Routed through the protocol rather than ILanguageService directly: this call site is
 			// then already written against the surface that survives the language service moving

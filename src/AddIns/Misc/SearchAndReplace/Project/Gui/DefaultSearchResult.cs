@@ -51,6 +51,11 @@ namespace SearchAndReplace
 			rootNode = new SearchRootNode(title, this.matches);
 		}
 		
+		/// <summary>The matches this result lists (read by the DevFlow <c>od.search.last-results</c> action).</summary>
+		public IReadOnlyList<SearchResultMatch> Matches {
+			get { return (IReadOnlyList<SearchResultMatch>)matches ?? System.Array.Empty<SearchResultMatch>(); }
+		}
+
 		public string Text {
 			get {
 				return rootNode.Title + " (" + SearchRootNode.GetOccurrencesString(rootNode.Occurrences) + SearchRootNode.GetWasCancelledString(rootNode.WasCancelled) + ")";

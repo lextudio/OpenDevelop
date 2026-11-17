@@ -62,6 +62,31 @@ namespace SearchAndReplace
 			}
 		}
 
+		[DevFlowAction("od.search.clear-last-results", Description = "Forget the Search Results pad's previous searches, so od.search.last-results afterwards reports only what a later command shows")]
+		public static string ClearLastResults()
+		{
+			SearchResultsHost.Current?.ClearLastSearchesList();
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
+		[DevFlowAction("od.search.last-results", Description = "What the Search Results pad last showed: title, the pad's own text (with the occurrence count) and every match's file/line/column. count is -1 when no search was shown or the last result is not a DefaultSearchResult (the Find References and plain-text search flows both produce one). Lets a test verify what a real command, such as the editor's Find References context-menu item, put into the pad.")]
+		public static string LastResults()
+		{
+			var last = SearchResultsHost.Current?.LastSearches.LastOrDefault();
+			if (last is not SearchAndReplace.DefaultSearchResult result)
+				return JsonSerializer.Serialize(new { count = -1, found = last != null });
+			return JsonSerializer.Serialize(new {
+				found = true,
+				text = result.Text,
+				count = result.Matches.Count,
+				matches = result.Matches.Select(m => new {
+					filePath = m.FileName?.ToString(),
+					line = m.StartLocation.Line,
+					column = m.StartLocation.Column
+				})
+			});
+		}
+
 		[DevFlowAction("od.search.show-results", Description = "Run the same real plain-text search as od.search.find, but display the results in the Search Results pad (SearchResultsPad.ShowSearchResults), mirroring the FindReferences flow - unlike od.search.find, which never populates the pad")]
 		public static string ShowResults(string pattern, string scope = "solution", bool matchCase = false, bool wholeWord = false, bool useRegex = false, string filter = "*.*")
 		{
