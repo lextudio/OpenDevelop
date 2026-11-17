@@ -3,10 +3,8 @@ using Microsoft.VisualStudio.ProjectSystem;
 namespace ICSharpCode.SharpDevelop.Services;
 
 /// <summary>
-/// CPS <see cref="ProjectTreeFlags"/> -> <see cref="ProjectBrowserNodeKind"/> mapping, shared by
-/// both hosts' CPS-tree-to-UI-node conversion (UnoDevelop's CpsTreeConverter, OpenDevelop's
-/// ProjectBrowserTreeBuilder - see doc/technotes/solution-explorer.md). Canonically the more
-/// refined of the two prior implementations: it distinguishes a ghost/ready-to-include file
+/// CPS <see cref="ProjectTreeFlags"/> -> <see cref="ProjectBrowserNodeKind"/> mapping used by
+/// ProjectBrowserTreeBuilder (see doc/technotes/solution-explorer.md). It distinguishes a ghost/ready-to-include file
 /// (<see cref="ProjectTreeFlags.Common.IncludeInProjectCandidate"/>) from a missing one (present in
 /// the project but absent from disk, via the *lack* of
 /// <see cref="ProjectTreeFlags.Common.FileSystemEntity"/>) using CPS's own flags, rather than an

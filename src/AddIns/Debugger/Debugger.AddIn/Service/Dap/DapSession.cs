@@ -518,9 +518,8 @@ namespace Debugger.AddIn.Service.Dap
 			// Fire-and-forget: the caller (Break/Continue/StepInto/StepOver/StepOut) is a void method
 			// on this class's own public API, and the DAP "continued"/"stopped" event that actually
 			// follows is what callers observe, not this request's response. Not
-			// ICSharpCode.SharpDevelop.SharpDevelopExtensions.FireAndForget() - that extension isn't
-			// linked into every host this class is shared with (e.g. UnoDevelop links only this Dap/
-			// subtree, not all of SharpDevelopExtensions.cs), so surface a fault the same way inline.
+			// ICSharpCode.SharpDevelop.SharpDevelopExtensions.FireAndForget() - this class's Dap/
+			// subtree does not depend on that extension, so surface a fault the same way inline.
 			_ = client.SendRequestAsync(command, new JsonObject { ["threadId"] = ActiveThreadId })
 				.ContinueWith(t => log("Control request '" + command + "' failed: " + t.Exception), CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
 		}

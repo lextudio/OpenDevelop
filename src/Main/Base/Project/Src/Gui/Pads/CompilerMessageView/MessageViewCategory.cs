@@ -33,11 +33,9 @@ namespace ICSharpCode.SharpDevelop.Gui
 
 		void IOutputCategory.Activate(bool bringPadToFront)
 		{
-#if !HAS_UNO
 			SD.OutputPad.CurrentCategory = this;
 			if (bringPadToFront)
 				SD.OutputPad.BringToFront();
-#endif
 		}
 
 		void IOutputCategory.Clear()
@@ -84,9 +82,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			MessageViewCategory newMessageViewCategory = new MessageViewCategory(category, displayCategory);
 			if (System.Threading.Interlocked.CompareExchange(ref messageViewCategory, newMessageViewCategory, null) == null) {
 				// this thread was successful creating the category, so add it
-#if !HAS_UNO
 				(SD.Services.GetService(typeof(IOutputPadHost)) as IOutputPadHost)?.AddCategory(newMessageViewCategory);
-#endif
 			}
 		}
 		#endregion
@@ -142,11 +138,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 		public void AppendText(string text)
 		{
 			const int MaxTextSize = 50 * 1000 * 1000; // 50m chars = 100 MB
-#if HAS_UNO
-			string truncatedText = "[Output truncated]\r\n";
-#else
 			string truncatedText = SD.ResourceService.GetString("MainWindow.Windows.OutputWindow.TextTooLong") + "\r\n";
-#endif
 
 			lock (textBuilder) {
 				if (textBuilder.Length + text.Length > MaxTextSize) {

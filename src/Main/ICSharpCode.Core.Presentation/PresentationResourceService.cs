@@ -331,7 +331,7 @@ namespace ICSharpCode.Core.Presentation
 			{ "Icons.16x16.AssemblyUnpinned", "Resources/VS2026/Assembly/Assembly_16x.xaml" },
 
 			// Solution Explorer file-type icons (SolutionExplorerIconService). Folder names here
-			// match the VS2017 Image Library / UnoDevelop's Icons/*.svg base names 1:1.
+			// match the VS2017 Image Library base names 1:1.
 			{ "Icons.16x16.CSFile", "Resources/VS2026/CSFile/CSFile_16x.xaml" },
 			{ "Icons.16x16.CSSourceFile", "Resources/VS2026/CSSourceFile/CSSourceFile_16x.xaml" },
 			{ "Icons.16x16.Control", "Resources/VS2026/Control/Control_16x.xaml" },

@@ -1,9 +1,8 @@
 #nullable enable
 // R6c (see doc/technotes/solution-explorer.md): builds the WPF-bindable node tree shown by
 // ProjectBrowserPad, directly from SharpDevelop's native ISolution/IProject model. This is new
-// code (UnoDevelop's tree builder walks its own WinUI-only UnoSolutionModel, so there was nothing
-// to port) - it is deliberately simpler than the CPS MutableProjectTree bridge
-// (SharpDevelopProjectTreeProvider) built for R6b: a flat file/folder tree is all the MVP tree view
+// code - it is deliberately simpler than the CPS MutableProjectTree bridge
+// (SharpDevelopProjectTreeProvider): a flat file/folder tree is all the MVP tree view
 // needs, and building it directly off IProject.Items avoids a second, redundant walk of the CPS tree.
 
 using System;
@@ -211,11 +210,9 @@ internal static class ProjectBrowserTreeBuilder
         return node;
     }
     
-    // Shared with UnoDevelop's CpsTreeConverter (see doc/technotes/solution-explorer.md) - this used
-    // to check File.Exists on disk per node instead of CPS's own FileSystemEntity/
-    // IncludeInProjectCandidate flags, which meant a ghost (ready-to-include) file was
-    // indistinguishable from a normal one here (it exists on disk, so File.Exists was true) - the
-    // shared resolver now recognizes it as GhostFile like UnoDevelop's tree always did.
+    // The resolver uses CPS's own FileSystemEntity/IncludeInProjectCandidate flags (not File.Exists
+    // per node), so a ghost (ready-to-include) file is recognized as GhostFile rather than being
+    // indistinguishable from a normal one (see doc/technotes/solution-explorer.md).
     private static ProjectBrowserNodeKind GetNodeKind(IProjectTree tree) =>
         ProjectBrowserTreeKindResolver.ResolveKind(tree);
     

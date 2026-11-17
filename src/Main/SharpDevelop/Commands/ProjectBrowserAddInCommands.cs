@@ -1,8 +1,6 @@
 #nullable enable
-// Ported from UnoDevelop's ProjectBrowserAddInCommands.cs (see doc/technotes/solution-explorer.md).
-// Commands tied to WinUI-only concerns (NuGet package management dialog, T4 template runner,
-// MainPage.Current-based toolbar actions) are out of MVP scope and were not ported; every command
-// here maps 1:1 onto IProjectBrowserController, which OpenDevelop already implements natively.
+// Project Browser commands (see doc/technotes/solution-explorer.md). Every command here maps 1:1
+// onto IProjectBrowserController, which OpenDevelop implements natively.
 
 using System;
 using System.Diagnostics;

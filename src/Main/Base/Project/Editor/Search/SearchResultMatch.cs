@@ -95,11 +95,7 @@ namespace ICSharpCode.SharpDevelop.Editor.Search
 		{
 			int startOffset = document.GetOffset(startLocation);
 			int endOffset = document.GetOffset(endLocation);
-#if HAS_UNO
-			RichText inlineBuilder = null;
-#else
 			var inlineBuilder = SearchResultFactory.CreateInlineBuilder(startLocation, endLocation, document, highlighter);
-#endif
 			var defaultTextColor = highlighter.DefaultTextColor;
 			return new SearchResultMatch(FileName.Create(document.FileName),
 			                             startLocation, endLocation,

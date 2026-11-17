@@ -45,7 +45,7 @@
     <EmbeddedResource Include="Resources\WinFormsToolboxIcons\*.bmp" LogicalName="%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
-    <!-- For NuGetPackageSearchService.cs (shared with UnoDevelop, doc/technotes/nuget.md) -->
+    <!-- For NuGetPackageSearchEngine.cs (doc/technotes/nuget.md) -->
     <PackageReference Include="NuGet.Protocol" />
     <PackageReference Include="Microsoft.Build" />
     <PackageReference Include="Microsoft.Build.Framework" />
@@ -53,7 +53,7 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" />
     <!-- See doc/technotes/roslyn.md: RoslynWorkspaceHelper hosts both C# and VB projects in one
-         Roslyn workspace, the same way UnoDevelop's CSharpVBLanguageService does. -->
+         Roslyn workspace. -->
     <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic.Workspaces" />
     <PackageReference Include="Microsoft.TemplateEngine.Abstractions" />
     <PackageReference Include="Microsoft.TemplateEngine.Edge" />
@@ -68,8 +68,9 @@
     <PackageReference Include="MessagePack" />
   </ItemGroup>
   <ItemGroup>
-    <!-- For Src\AddInManager\ (shared AddIn Manager gallery engine, moved from AddInManager2's
-         Model layer; see doc/technotes/addin-manager2.md). Same legacy NuGet.Core / SharpZipLib
+    <!-- For Src\AddInManager\ (AddIn Manager gallery engine, moved from AddInManager2's Model
+         layer; being replaced by the GitHub Release source, see
+         doc/technotes/addin-github-releases.md). Same legacy NuGet.Core / SharpZipLib
          binaries AddInManager2.csproj itself references, via HintPath since they are pre-built
          binaries in RequiredLibraries rather than NuGet packages. -->
     <Reference Include="NuGet.Core">

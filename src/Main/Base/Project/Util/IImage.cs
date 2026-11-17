@@ -17,15 +17,11 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-#if !HAS_UNO
 using System.Drawing;
-#endif
 using System.Windows.Media;
 
 using ICSharpCode.Core;
-#if !HAS_UNO
 using ICSharpCode.Core.Presentation;
-#endif
 
 namespace ICSharpCode.SharpDevelop
 {
@@ -42,17 +38,14 @@ namespace ICSharpCode.SharpDevelop
 		/// <summary>
 		/// Gets the image as System.Drawing.Bitmap.
 		/// </summary>
-#if !HAS_UNO
 		Bitmap Bitmap { get; }
 		
 		/// <summary>
 		/// Gets the image as System.Drawing.Icon.
 		/// </summary>
 		Icon Icon { get; }
-#endif
 	}
 	
-#if !HAS_UNO
 	/// <summary>
 	/// Represents an image that gets loaded from a ResourceService.
 	/// </summary>
@@ -116,5 +109,4 @@ namespace ICSharpCode.SharpDevelop
 			return string.Format("[ResourceServiceImage {0}]", resourceName);
 		}
 	}
-#endif
 }

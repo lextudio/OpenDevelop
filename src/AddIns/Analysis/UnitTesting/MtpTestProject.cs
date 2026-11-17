@@ -320,14 +320,8 @@ namespace ICSharpCode.UnitTesting
 
 		public override ITestRunner CreateTestRunner(TestExecutionOptions options)
 		{
-#if !HAS_UNO
 			if (options.UseDebugger)
 				return new MtpTestDebugger(this, options);
-#endif
-			// "Run under debugger" (MtpTestDebugger/TestDebuggerBase, ICSharpCode.SharpDevelop.
-			// Debugging-coupled) isn't linked under Uno - UnoDevelop's test panel never exposed
-			// that option even under the old flat contract, so falling back to the plain runner
-			// here isn't a regression.
 			return new MtpTestRunner(this, options);
 		}
 

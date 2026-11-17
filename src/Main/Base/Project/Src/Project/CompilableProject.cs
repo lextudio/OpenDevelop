@@ -380,12 +380,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 			
 			if (!project.IsFileInProject(appConfigFileName)) {
-#if !HAS_UNO
 				FileProjectItem fpi = new FileProjectItem(project, ItemType.None, "app.config");
 				ProjectService.AddProjectItem(project, fpi);
 				FileService.FireFileCreated(appConfigFileName, false);
 				ProjectBrowserPad.RefreshView();
-#endif
 			}
 			return appConfigFileName;
 		}

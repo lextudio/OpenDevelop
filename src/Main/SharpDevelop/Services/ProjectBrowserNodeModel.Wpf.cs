@@ -4,9 +4,7 @@ using ICSharpCode.Core.Presentation;
 
 namespace ICSharpCode.SharpDevelop.Services;
 
-// WPF-only rendering surface for ProjectBrowserNodeModel (see ProjectBrowserNodeModel.cs) - not
-// linked into UnoDevelop, which computes its own icons/overlays in its WinUI tree converter
-// instead of on the node model itself.
+// WPF-only rendering surface for ProjectBrowserNodeModel (see ProjectBrowserNodeModel.cs).
 internal sealed partial class ProjectBrowserNodeModel
 {
     public ImageSource Icon => ProjectBrowserIconService.GetIcon(this);

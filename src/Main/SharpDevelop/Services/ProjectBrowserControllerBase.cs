@@ -10,11 +10,6 @@ using System.Threading.Tasks;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Templates;
-// FileDialogService is per-host (OpenDevelop's own WPF one already lives in this namespace, so no
-// using is needed for it there; UnoDevelop's lives in UnoDevelop.Services instead).
-#if HAS_UNO
-using UnoDevelop.Services;
-#endif
 
 namespace ICSharpCode.SharpDevelop.Services;
 

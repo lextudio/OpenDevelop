@@ -503,7 +503,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             // Refuse what this service cannot compile. Loose documents all share ONE ad-hoc project
             // per language, so a single unparsable document poisons the compilation for every other
             // loose file in it - and the failure is invisible, because Roslyn still answers, just
-            // with nothing. Measured in the integration suite: the shared "UnoDevelop C#" project
+            // with nothing. Measured in the integration suite: the shared "OpenDevelop C#" project
             // had collected Calc.fs/CalcService.fs (F# parsed as C# -> CS1003) alongside the real
             // fixture, and OpenLens then rendered "0 references" for symbols with obvious callers.
             if (!CanHostLooseDocument(documentId.FileName))
@@ -1408,12 +1408,12 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 if (_projectsByLanguage.TryGetValue(projectKey, out var projectId))
                     return projectId;
 
-                projectId = RoslynProjectId.CreateNewId("UnoDevelop " + projectKey);
+                projectId = RoslynProjectId.CreateNewId("OpenDevelop " + projectKey);
                 var projectInfo = ProjectInfo.Create(
                     projectId,
                     VersionStamp.Create(),
-                    "UnoDevelop " + projectKey,
-                    "UnoDevelop." + projectKey.Replace(' ', '_').Replace('(', '_').Replace(')', '_'),
+                    "OpenDevelop " + projectKey,
+                    "OpenDevelop." + projectKey.Replace(' ', '_').Replace('(', '_').Replace(')', '_'),
                     language,
                     metadataReferences: CreateDefaultMetadataReferences(),
                     compilationOptions: CreateCompilationOptions(language),

@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\Main\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
-    <Description>Resource file parsers and models for OpenDevelop (ported from UnoDevelop's LeXtudio.OpenDevelop.ResourceFiles) - .resx/.resources entry reading and writing, and .ico/.cur directory parsing. No WinForms/System.Drawing dependency, for the ResourceEditor addin's WPF-only migration.</Description>
+    <Description>Resource file parsers and models for OpenDevelop - .resx/.resources entry reading and writing, and .ico/.cur directory parsing. No WinForms/System.Drawing dependency, for the ResourceEditor addin's WPF-only migration.</Description>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\Main\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />

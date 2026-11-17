@@ -54,8 +54,7 @@ namespace ICSharpCode.GitAddIn
 
 		// Only genuinely non-clean states get a badge - a clean tracked file shows nothing, matching
 		// VS/VS Code convention (the old GitStatusCache-backed version badged every tracked file with
-		// a green checkmark via a separate `git ls-files` pass; GitStatusService, shared with
-		// UnoDevelop, doesn't distinguish "clean and tracked" from "not in a git repo at all" - both
+		// a green checkmark via a separate `git ls-files` pass; GitStatusService doesn't distinguish "clean and tracked" from "not in a git repo at all" - both
 		// report GitFileStatus.None - so that checkmark-on-every-file behavior is intentionally
 		// dropped rather than reintroduced just for parity).
 		public static ImageSource GetImage(GitFileStatus status)

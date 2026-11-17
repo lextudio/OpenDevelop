@@ -35,9 +35,7 @@ namespace ResourceEditor.Views
 	/// no System.Drawing/System.Windows.Forms involved (see ResourceEditor.csproj's header
 	/// comment). Icon/Cursor preview only works for the modern PNG-encoded frames a
 	/// System.Drawing.Icon.Save()/System.Windows.Forms.Cursor would have written; classic DIB/BMP
-	/// frames are parsed (via IconCursorFileReader, for metadata) but not rendered, the same
-	/// limitation UnoDevelop's IconCursorViewerViewContent documents for standalone .ico/.cur
-	/// files.
+	/// frames are parsed (via IconCursorFileReader, for metadata) but not rendered.
 	/// </summary>
 	public partial class ImageViewBase : UserControl, IResourceItemView
 	{

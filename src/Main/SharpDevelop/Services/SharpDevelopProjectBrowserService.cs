@@ -1,11 +1,8 @@
 #nullable enable
 // IProjectBrowserService implementation for OpenDevelop, using SharpDevelop's own native
 // IProject/MSBuildBasedProject APIs (project.Items.Add/Remove + project.Save()) rather than raw
-// .csproj XML manipulation. UnoDevelop's UnoProjectService.cs implements the same interface by
-// directly parsing/rewriting XML, because UnoDevelop replaced SharpDevelop's IProjectService with
-// its own model (UnoSolutionModel/UnoProjectModel) - OpenDevelop kept the original SharpDevelop
-// IProjectService (SDProjectService) and its real MSBuildBasedProject, so it can just call that
-// API directly instead of re-deriving XML mutation from scratch. See doc/technotes/solution-explorer.md.
+// .csproj XML manipulation. It calls SharpDevelop's own IProjectService (SDProjectService) and
+// real MSBuildBasedProject directly. See doc/technotes/solution-explorer.md.
 
 using System;
 using System.Collections.Generic;

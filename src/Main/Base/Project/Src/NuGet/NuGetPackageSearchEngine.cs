@@ -17,12 +17,9 @@ namespace ICSharpCode.SharpDevelop.NuGet
     /// <c>dotnet package search</c>/VS use, not a hand-rolled HTTP client against the NuGet v3 API.
     ///
     /// Deliberately returns raw <see cref="IPackageSearchMetadata"/> rather than a
-    /// presentation-shaped type: the two hosts genuinely need different projections of the same
-    /// results - UnoDevelop maps to a plain <see cref="NuGetSearchResult"/> record, while
-    /// OpenDevelop's PackageManagement AddIn maps to a legacy <c>NuGet.Core</c> <c>IPackage</c>
-    /// adapter its (unported) `PackagesViewModel`/`PackageFromRepository` pipeline still expects.
-    /// An earlier attempt to share one method returning one projection type had to be reverted for
-    /// exactly that reason; sharing the engine and splitting only the projection is what works.
+    /// presentation-shaped type: OpenDevelop's PackageManagement AddIn maps it to a legacy
+    /// <c>NuGet.Core</c> <c>IPackage</c> adapter its (unported) `PackagesViewModel`/
+    /// `PackageFromRepository` pipeline still expects.
     /// </summary>
     public static class NuGetPackageSearchEngine
     {

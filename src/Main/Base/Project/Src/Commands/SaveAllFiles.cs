@@ -1,28 +1,9 @@
 using System.IO;
-#if !HAS_UNO
 using ICSharpCode.Core;
-#endif
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Commands;
 
-#if HAS_UNO
-public static class SaveAllFiles
-{
-	public static void SaveAll()
-	{
-		foreach (var content in SD.Workbench.ViewContentCollection) {
-			foreach (var file in content.Files) {
-				if (!file.IsDirty || file.FileName is null)
-					continue;
-				
-				using var stream = new FileStream(file.FileName.ToString(), FileMode.Create, FileAccess.Write);
-				content.Save(file, stream);
-			}
-		}
-	}
-}
-#else
 public class SaveAllFiles : AbstractMenuCommand
 {
 	public static void SaveAll()
@@ -45,4 +26,3 @@ public class SaveAllFiles : AbstractMenuCommand
 		SaveAll();
 	}
 }
-#endif

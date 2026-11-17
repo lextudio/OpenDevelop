@@ -5952,7 +5952,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         RunGit("add GitFixtureApp/Added.cs");
 
         // GitFixtureApp/Untracked.cs is left untouched: shared GitStatusService includes untracked
-        // files, so it should get the same added-style overlay as UnoDevelop.
+        // files, so it should get the same added-style overlay as an added file.
     }
 
     static void CopyDirectory(string sourceDir, string destDir)

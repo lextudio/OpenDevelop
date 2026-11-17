@@ -57,7 +57,6 @@ namespace ICSharpCode.SharpDevelop.Editor
 			editor.Select(editor.Document.GetOffset(editor.Caret.Location), 0);
 		}
 		
-#if !HAS_UNO
 		/// <summary>
 		/// Gets the word in front of the caret.
 		/// </summary>
@@ -72,7 +71,6 @@ namespace ICSharpCode.SharpDevelop.Editor
 			else
 				return editor.Document.GetText(startOffset, endOffset - startOffset);
 		}
-#endif
 
 
 		static readonly char[] whitespaceChars = {' ', '\t'};
@@ -118,7 +116,6 @@ namespace ICSharpCode.SharpDevelop.Editor
 			}
 		}
 		
-#if !HAS_UNO
 		/// <summary>
 		/// Finds the first word start in the document before offset.
 		/// </summary>
@@ -136,7 +133,6 @@ namespace ICSharpCode.SharpDevelop.Editor
 		{
 			return TextUtilities.GetNextCaretPosition(textSource, offset, LogicalDirection.Forward, CaretPositioningMode.WordStart);
 		}
-#endif
 
 		/// <summary>
 		/// Gets the word at the specified position.

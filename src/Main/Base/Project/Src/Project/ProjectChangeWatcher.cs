@@ -20,41 +20,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
-#if !HAS_UNO
 using System.Windows.Threading;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Project.Commands;
 using ICSharpCode.SharpDevelop.Workbench;
-#endif
 
 namespace ICSharpCode.SharpDevelop.Project
 {
-#if HAS_UNO
-	sealed class ProjectChangeWatcher : IProjectChangeWatcher
-	{
-		public static IDisposable DeferEnabling() => null;
-
-		public ProjectChangeWatcher(string fileName)
-		{
-		}
-		
-		public void Enable()
-		{
-		}
-		
-		public void Disable()
-		{
-		}
-		
-		public void Rename(string newFileName)
-		{
-		}
-		
-		public void Dispose()
-		{
-		}
-	}
-#else
 	public sealed class ProjectChangeWatcher : IProjectChangeWatcher
 	{
 		/// <summary>Watchers whose start is postponed by <see cref="DeferEnabling"/>; null when not deferring.</summary>
@@ -467,5 +439,4 @@ namespace ICSharpCode.SharpDevelop.Project
 			disposed = true;
 		}
 	}
-#endif
 }

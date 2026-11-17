@@ -29,8 +29,7 @@ namespace ResourceEditor.ViewModels
 	/// as distinct, typed kinds (matching the original WinForms-era model) but no longer backed
 	/// by System.Drawing.Bitmap/Icon or System.Windows.Forms.Cursor - ResourceValue holds the raw
 	/// image bytes instead (see ResourceEditor.csproj's header comment), and views decode them
-	/// with WPF's own imaging APIs, the same approach UnoDevelop's IconCursorViewerViewContent
-	/// uses for standalone .ico/.cur files.
+	/// with WPF's own imaging APIs.
 	/// </summary>
 	public enum ResourceItemEditorType
 	{

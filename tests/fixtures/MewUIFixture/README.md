@@ -22,7 +22,7 @@ Each window is an independently constructible `partial class : Window`:
 - The constructor calls `InitializeComponent()` exactly once.
 - Generated code uses standalone construction, property, event, relationship, and final
   `Content` assignments. It never uses `this.`, nested assignments, or nested object creation.
-- Open `WindowName.cs` in UnoDevelop to activate the visual designer. Generated
+- Open `WindowName.cs` in OpenDevelop to activate the visual designer. Generated
   changes are saved only to its adjacent `WindowName.Designer.cs` file.
 
 `MainWindow` exercises designer edits and event preservation. `SettingsWindow`

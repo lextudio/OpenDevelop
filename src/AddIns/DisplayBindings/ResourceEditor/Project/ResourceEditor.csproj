@@ -13,10 +13,9 @@
     <OutputPath>..\..\..\..\..\AddIns\DisplayBindings\ResourceEditor\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <!-- Migrated from legacy binary-typed (System.Drawing.Bitmap/Icon, System.Windows.Forms.Cursor)
-         resource previews to a text/value grid model (name/type/value/comment), matching the
-         precedent UnoDevelop's own ResourceViewerViewContent/IconCursorViewerViewContent already
-         established for this addin's Uno port - OpenDevelop is WPF-only (no WinForms/
-         LibreWinForms), so there is no cross-platform way to keep rendering those CLR types. -->
+         resource previews to a text/value grid model (name/type/value/comment) - OpenDevelop is
+         WPF-only (no WinForms/LibreWinForms), so there is no cross-platform way to keep rendering
+         those CLR types. -->
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />

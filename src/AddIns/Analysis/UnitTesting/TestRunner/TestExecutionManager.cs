@@ -62,9 +62,7 @@ namespace ICSharpCode.UnitTesting.Frameworks
 		CancellationToken cancellationToken;
 		ITestProject currentProjectBeingTested;
 		IProgressMonitor testProgressMonitor;
-#if !HAS_UNO
 		UnitTestsPad unitTestsPad;
-#endif
 		
 		public async Task RunTestsAsync(IEnumerable<ITest> selectedTests, TestExecutionOptions options, CancellationToken cancellationToken)
 		{
@@ -164,7 +162,6 @@ namespace ICSharpCode.UnitTesting.Frameworks
 		
 		void ShowUnitTestsPad()
 		{
-#if !HAS_UNO
 			var descriptor = workbench.GetPad(typeof(UnitTestsPad));
 			if (descriptor == null)
 				return;
@@ -178,16 +175,13 @@ namespace ICSharpCode.UnitTesting.Frameworks
 				unitTestsPad = pad;
 				pad.TreeView.SelectedTests = testsByProject.Values;
 			}
-#endif
 		}
 		
 		void StartUnitTestsPadStatus()
 		{
-#if !HAS_UNO
 			if (unitTestsPad != null) {
 				unitTestsPad.StartRunStatus(testsByProject.Values.Sum(CountLeafTests));
 			}
-#endif
 		}
 		
 		static int CountLeafTests(ITest test)
@@ -242,9 +236,7 @@ namespace ICSharpCode.UnitTesting.Frameworks
 		void MtpRunner_TestCountDiscovered(object sender, int count)
 		{
 			mainThread.InvokeAsyncAndForget(delegate {
-#if !HAS_UNO
 				unitTestsPad?.StartRunStatus(count);
-#endif
 			});
 		}
 		
@@ -255,9 +247,7 @@ namespace ICSharpCode.UnitTesting.Frameworks
 				UpdateProgressMonitorStatus(result);
 			}
 			UpdateTestResult(result);
-#if !HAS_UNO
 			unitTestsPad?.RecordRunResult(result);
-#endif
 		}
 		
 		bool IsTestResultFailureOrIsIgnored(TestResult result)
@@ -295,8 +285,7 @@ namespace ICSharpCode.UnitTesting.Frameworks
 		void ShowErrorList()
 		{
 			if (taskService.SomethingWentWrong && buildOptions.ShowErrorListAfterBuild) {
-				// Null when the host has its own ErrorListPad under a different type/namespace
-				// (e.g. UnoDevelop.Workbench.ErrorListPad) instead of this classic one.
+				// Null when the host has no ErrorListPad.
 				workbench.GetPad("ICSharpCode.SharpDevelop.Gui.ErrorListPad")?.BringPadToFront();
 			}
 		}

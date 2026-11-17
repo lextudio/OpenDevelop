@@ -308,8 +308,7 @@ namespace ResourceEditor.ViewModels
 		
 		/// <summary>
 		/// True for .resx (round-trip editable via ResourceFileReader.SaveResX); false for
-		/// .resources (binary format we can only preview - matches UnoDevelop's
-		/// ResourceViewerViewContent, which also only treats .resx as editable).
+		/// .resources (binary format we can only preview).
 		/// </summary>
 		public bool CanSave {
 			get;

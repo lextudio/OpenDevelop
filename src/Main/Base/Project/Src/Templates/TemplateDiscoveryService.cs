@@ -31,16 +31,11 @@ namespace ICSharpCode.SharpDevelop.Templates
 
         readonly Bootstrapper _bootstrapper;
 
-        // "unodevelop"/"opendevelop": purely informational (identifies the calling host to
-        // Microsoft.TemplateEngine, e.g. in its own logs) - previously two near-identical
-        // *TemplateEngineHost classes differing only in this string, now just an #if branch here.
+        // "opendevelop": purely informational (identifies the calling host to
+        // Microsoft.TemplateEngine, e.g. in its own logs).
         public TemplateDiscoveryService()
             : this(TemplateEngineHost.Create(
-#if HAS_UNO
-                "unodevelop"
-#else
                 "opendevelop"
-#endif
             ))
         {
         }

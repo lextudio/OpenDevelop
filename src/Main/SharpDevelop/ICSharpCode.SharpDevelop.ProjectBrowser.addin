@@ -1,8 +1,8 @@
 <AddIn name="OpenDevelop Project Browser"
        author="OpenDevelop"
-       description="AddInTree-backed WPF Project Browser commands (CPS-based), ported from UnoDevelop">
+       description="AddInTree-backed WPF Project Browser commands (CPS-based)">
   <!--
-    R6b (see doc/technotes/solution-explorer.md): wires ProjectBrowserController/Service and its
+    Wires ProjectBrowserController/Service and its
     commands into the AddInTree. Deliberately uses its own /SharpDevelop/Pads/ProjectBrowser/...
     path namespace instead of the legacy /SharpDevelop/Pads/ProjectBrowser/... paths already owned
     by the WinForms ExtTreeView-based ProjectBrowserPad (out of MVP scope, see

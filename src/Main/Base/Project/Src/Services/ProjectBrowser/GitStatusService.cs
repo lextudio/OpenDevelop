@@ -57,13 +57,10 @@ public static class GitStatusPresentationService
 /// the whole working tree, so querying it once and caching the result for every node beats
 /// re-running it per file.
 ///
-/// Shared by both hosts (see doc/technotes/solution-explorer.md): this used to be UnoDevelop-only
-/// (proper porcelain-v1 X/Y status parsing, cross-platform `git` discovery, Untracked/Ignored/
-/// Renamed/Conflicted states) while OpenDevelop's GitAddIn had an older, narrower engine
-/// (GitStatusCache - `git ls-files` + `status --porcelain --untracked-files=no`, only
-/// Added/Modified/Deleted/OK/None). This implementation has no host-specific dependency
-/// (ICSharpCode.Core.FileUtility is the only non-BCL type it touches), so it was the one worth
-/// keeping, not GitStatusCache.
+/// Proper porcelain-v1 X/Y status parsing, cross-platform `git` discovery, and the
+/// Untracked/Ignored/Renamed/Conflicted states (see doc/technotes/solution-explorer.md). It has no
+/// host-specific dependency (ICSharpCode.Core.FileUtility is the only non-BCL type it touches); it
+/// replaced the older, narrower GitStatusCache engine.
 /// </summary>
 public static class GitStatusService
 {

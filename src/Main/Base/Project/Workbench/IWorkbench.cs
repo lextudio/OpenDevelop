@@ -19,9 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-#if !HAS_UNO
 using System.Windows;
-#endif
 
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Gui;
@@ -37,11 +35,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		/// <summary>
 		/// The main window.
 		/// </summary>
-#if HAS_UNO
-		object MainWindow { get; }
-#else
 		Window MainWindow { get; }
-#endif
 		
 		/// <summary>
 		/// Gets/Sets whether the window is displayed in full-screen mode.

@@ -1,10 +1,6 @@
 #nullable enable
-// Extracted from UnoDevelop's UnoProjectService.cs (see doc/technotes/solution-explorer.md) -
-// only the bits SharpDevelopProjectTreeProvider actually needs: turning a SharpDevelop IProject's
-// evaluated MSBuild items into a flat, display-ready list. UnoProjectService itself is UnoDevelop's
-// own IProjectService/ISolution/IProject reimplementation (a different concern entirely - OpenDevelop
-// already has its own native SharpDevelop IProjectService/ISolution/IProject from the original
-// codebase), so it was not copied wholesale.
+// Turns a SharpDevelop IProject's evaluated MSBuild items into a flat, display-ready list - only
+// what SharpDevelopProjectTreeProvider actually needs (see doc/technotes/solution-explorer.md).
 
 using System;
 using System.Collections.Generic;
@@ -19,9 +15,8 @@ namespace ICSharpCode.SharpDevelop.Services
 	{
 		internal sealed record ProjectDisplayItem(string PhysicalPath, string DisplayPath, string? DependentUpon = null, bool IsLinked = false, bool Exists = true, ProjectItem? ProjectItem = null);
 
-		// UnoDevelop note kept for context: "UnoProjectModel.CreateProjectItem wraps *every*
-		// evaluated MSBuild item as a FileProjectItem, so references/packages also surface here."
-		// The same is true of SharpDevelop's own IProject.Items - references/packages are rendered
+		// SharpDevelop's own IProject.Items wraps *every* evaluated MSBuild item, so
+		// references/packages also surface here. They are rendered
 		// separately under the References and Packages folders, so exclude them from the file tree,
 		// otherwise a ProjectReference to an out-of-tree .csproj shows up as a linked file and a
 		// "<Reference Include='System.Xml'/>" (extension ".Xml") is mistaken for a missing .xml file.
@@ -222,8 +217,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			return false;
 		}
 
-		// Originally C#-only (ported from UnoDevelop's own C#-only UnoProjectService.cs, see this
-		// file's header comment) - .vb/.fs/.vbproj/.fsproj were simply never added, so SDK-style VB
+		// Originally C#-only: .vb/.fs/.vbproj/.fsproj were simply never added, so SDK-style VB
 		// and F# projects showed no source file nodes at all in Solution Explorer even though their
 		// Compile items were evaluated fine (see doc/technotes/roslyn.md session notes).
 		static readonly string[] SupportedExtensions = {

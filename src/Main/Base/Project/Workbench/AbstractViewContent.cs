@@ -23,10 +23,8 @@ using System.Collections.ObjectModel;
 using System.IO;
 
 using ICSharpCode.Core;
-#if !HAS_UNO
 using ICSharpCode.Core.Presentation;
 using ICSharpCode.ILSpy.Util;
-#endif
 
 namespace ICSharpCode.SharpDevelop.Workbench
 {
@@ -361,9 +359,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		}
 		
 		string titleName;
-#if !HAS_UNO
 		LanguageDependentExtension titleNameLocalizeExtension;
-#endif
 		
 		string IViewContent.TitleName {
 			get {
@@ -380,12 +376,10 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		public string TitleName {
 			get { return titleName; }
 			set {
-#if !HAS_UNO
 				if (titleNameLocalizeExtension != null) {
 					titleNameLocalizeExtension.PropertyChanged -= OnTitleNameLocalizationChanged;
 					titleNameLocalizeExtension = null;
 				}
-#endif
 				if (titleName != value) {
 					titleName = value;
 					OnTitleNameChanged(EventArgs.Empty);
@@ -393,7 +387,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 		}
 		
-#if !HAS_UNO
 		/// <summary>
 		/// Sets a localized title that will update automatically when the language changes.
 		/// </summary>
@@ -413,7 +406,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				OnTitleNameChanged(EventArgs.Empty);
 			}
 		}
-#endif
 		#endregion
 
 
@@ -429,9 +421,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		}
 
 		string infoTip;
-#if !HAS_UNO
 		LanguageDependentExtension infoTipLocalizeExtension;
-#endif
 
 		string IViewContent.InfoTip {
 			get {
@@ -449,13 +439,11 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			get { return infoTip; }
 			set
 			{
-#if !HAS_UNO
 				if (infoTipLocalizeExtension != null)
 				{
 					infoTipLocalizeExtension.PropertyChanged -= OnInfoTipLocalizationChanged;
 					infoTipLocalizeExtension = null;
 				}
-#endif
 				if (infoTip != value)
 				{
 					infoTip = value;
@@ -464,7 +452,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 		}
 
-#if !HAS_UNO
 		/// <summary>
 		/// Sets a localized info tip that will update automatically when the language changes.
 		/// </summary>
@@ -485,7 +472,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				OnInfoTipChanged();
 			}
 		}
-#endif
 		#endregion
 		
 		#region IDisposable
