@@ -25,12 +25,6 @@ namespace ICSharpCode.AddInManager2.Model
 	/// </summary>
 	public interface IAddInManagerSettings
 	{
-		string[] PackageRepositories
-		{
-			get;
-			set;
-		}
-		
 		/// <summary>The GitHub repositories (<c>owner/repo</c>) the user trusts as sources of add-ins.</summary>
 		string[] TrustedRepositories
 		{

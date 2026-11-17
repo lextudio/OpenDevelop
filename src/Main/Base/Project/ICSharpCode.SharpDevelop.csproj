@@ -68,19 +68,6 @@
     <PackageReference Include="MessagePack" />
   </ItemGroup>
   <ItemGroup>
-    <!-- For Src\AddInManager\ (AddIn Manager gallery engine, moved from AddInManager2's Model
-         layer; being replaced by the GitHub Release source, see
-         doc/technotes/addin-github-releases.md). Same legacy NuGet.Core / SharpZipLib
-         binaries AddInManager2.csproj itself references, via HintPath since they are pre-built
-         binaries in RequiredLibraries rather than NuGet packages. -->
-    <Reference Include="NuGet.Core">
-      <HintPath>..\..\..\AddIns\Misc\PackageManagement\RequiredLibraries\NuGet.Core.dll</HintPath>
-    </Reference>
-    <Reference Include="ICSharpCode.SharpZipLib">
-      <HintPath>..\..\..\AddIns\Misc\AddInManager2\RequiredLibraries\ICSharpCode.SharpZipLib.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-  <ItemGroup>
     <PackageReference Include="ICSharpCode.AvalonEdit.LibreWPF" />
     <ProjectReference Include="..\..\Core\Project\ICSharpCode.Core.csproj" />
     <ProjectReference Include="..\..\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" />

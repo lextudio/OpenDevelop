@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using NuGet;
 
 namespace ICSharpCode.AddInManager2.Model
 {

@@ -1,8 +1,9 @@
 # AddIn distribution through GitHub Releases (design)
 
-**Status (2026-11-16): `PackOdAddin` (the SDK packaging target) exists; everything else here, including
-the `.odaddin` support in `AddInSetup`, is design only.** Replaces the NuGet-based online gallery of
-AddIn Manager 2 as the way users discover, install and update add-ins.
+**Status (2026-11-17): implemented.** The AddIn Manager lists, installs and updates add-ins from the
+GitHub Releases of the repositories the user trusts; `PackOdAddin` in the Addin SDK builds the
+`.odaddin`; the NuGet gallery is gone from the AddIn Manager. What is still open is listed at the end
+("Open questions" and "Not covered yet").
 
 ## Why replace the NuGet gallery
 
@@ -231,23 +232,37 @@ New model, no NuGet types anywhere (in `src/Main/Base/Project/Src/AddInManager/`
   manifest loading, pending operations) and loses everything NuGet. Installed state is "the installed
   add-in's Identity and version"; *update available* compares it with the newest eligible release.
 
-Steps, each its own reviewed commit:
+What was built, in the order it was committed (each step reviewed on its own):
 
-0. **Done.** `PackOdAddin` in the Addin SDK, `.odaddin` replaces `.sdaddin` and `.zip`, filters,
-   renamed test packages.
-1. **Model.** `AddInRelease`, `IAddInSource`, `GitHubReleaseSource` (with a fake `HttpMessageHandler`
-   test set) and the tag/manifest/digest/host-range checks. Added beside the old code, unused.
-2. **Setup.** Strip NuGet from `AddInSetup` and its interface; install from a downloaded `.odaddin`.
-3. **UI.** New Available and Updates view models and the Options panel "Trusted add-in repositories";
-   `UpdateNotifier` on the new source.
-4. **Removal.** Delete `NuGetPackageManager`, `PackageRepositories`,
-   `UnavailableRemotePackageRepository`, `NuGetPackageViewModel` and friends, the `NuGet.Core` and
-   `SharpZipLib` references and the MyGet default.
+0. `PackOdAddin` in the Addin SDK; `.odaddin` replaces `.sdaddin` and `.zip`; filters.
+1. The model: `RepositoryReference`, `AddInRelease`, `GitHubReleaseParser`, `ReleaseCache`,
+   `GitHubReleaseSource` (listing with an on-disk cache, rate-limit and stale handling; download with
+   size and SHA-256 verification).
+2. The installer and the service: `OdAddinPackage` (safe unpacking, identity rules, source attributes),
+   `AddInSetup.InstallAddIn(file, release)`, `AddInCompatibility` (host range and dependencies, checked
+   at install time), `AddInReleaseService` (trusted repositories, entries, updates, one installation
+   per repository at a time).
+3. The UI: Available and Updates lists from the release service, a Refresh button, the Trusted
+   repositories options panel, `UpdateNotifier` on the new source.
+4. Removal: the NuGet view models, views, licence flow and paging in AddInManager2; in the shared Base
+   `NuGetPackageManager`, `PackageRepositories`, `UnavailableRemotePackageRepository`, the NuGet half
+   of `AddInSetup`, the NuGet events, the `NuGet.Core` and `SharpZipLib` references; the legacy
+   `AddInManager2.Tests` project (it tested only the removed classes).
 
-Steps 2-4 leave the online tab without function until step 3 lands, so they go on a branch and merge
-when the new tab works. Verification: Base tests where logic is UI-free; for step 3 one DevFlow
-journey against a local fake GitHub endpoint (add repository, list, install a fixture `.odaddin`,
-see it update), never the real API.
+Tests: the maintained suite is in `tests/OpenDevelop.Base.Tests` (`AddInReleaseSourceTests`,
+`OdAddinPackageTests`, `AddInReleaseServiceTests`, `AddInManagerViewModelTests`, and
+`AddInReleaseLoopbackTests`, which runs the whole chain over real HTTP against a local fake of GitHub).
+In the running application the add-in's DevFlow probes `od.addin-manager.show`, `.close` and
+`.options-panel` construct the real window and options panel and report what they bound.
+
+### Not covered yet
+
+- No journey clicks through the real window (Install, Update, Remove, the options panel's Add) against
+  a fake GitHub in the running IDE; the view-model tests and the loopback tests stand in for it.
+- The AddIn Manager still shows the NuGet package icon (`AddInManagerImages.Package`, see
+  `Resources/license.txt`) for entries from GitHub.
+- Strings added for the new UI exist in English only (other languages fall back to English).
+- Only the first 30 releases of a repository are read (one request per repository, by design).
 
 ## Open questions
 

@@ -38,10 +38,8 @@ public class AddInManagerSuspensionTests
 	sealed class FakeServices(IAddInManagerEvents events, IAddInSetup setup) : IAddInManagerServices
 	{
 		public IAddInManagerEvents Events => events;
-		public IPackageRepositories Repositories => throw new NotSupportedException();
 		public IAddInSetup Setup => setup;
 		public IAddInReleaseService Releases => throw new NotSupportedException();
-		public INuGetPackageManager NuGet => throw new NotSupportedException();
 		public IAddInManagerSettings Settings => throw new NotSupportedException();
 		public ISDAddInManagement SDAddInManagement => throw new NotSupportedException();
 	}
@@ -51,7 +49,7 @@ public class AddInManagerSuspensionTests
 		public readonly FakeSDAddInManagement Management = new FakeSDAddInManagement();
 		public readonly AddInManagerEvents Events = new AddInManagerEvents();
 		public readonly AddInSetup Setup;
-		public Harness() { Setup = new AddInSetup(Events, null!, Management); }
+		public Harness() { Setup = new AddInSetup(Events, Management); }
 
 		public AddIn Load(string identity, bool enabled = true)
 		{

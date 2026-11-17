@@ -18,7 +18,6 @@
 
 using System;
 using ICSharpCode.SharpDevelop;
-using NuGet;
 
 namespace ICSharpCode.AddInManager2.Model
 {
@@ -67,17 +66,6 @@ namespace ICSharpCode.AddInManager2.Model
 			}
 		}
 		
-		public event EventHandler<PackageListDownloadEndedEventArgs> PackageListDownloadEnded;
-		
-		public void OnPackageListDownloadEnded(object sender, PackageListDownloadEndedEventArgs e)
-		{
-			if (PackageListDownloadEnded != null)
-			{
-				SD.Log.DebugFormatted("[AddInManager2.Events] Package list download ended (success: {0}).", e.WasSuccessful);
-				PackageListDownloadEnded(sender, e);
-			}
-		}
-		
 		public event EventHandler<AddInInstallationEventArgs> AddInInstalled;
 		
 		public void OnAddInInstalled(AddInInstallationEventArgs e)
@@ -111,28 +99,6 @@ namespace ICSharpCode.AddInManager2.Model
 			}
 		}
 		
-		public event EventHandler<PackageOperationEventArgs> AddInPackageDownloaded;
-		
-		public void OnAddInPackageDownloaded(PackageOperationEventArgs e)
-		{
-			if (AddInPackageDownloaded != null)
-			{
-				SD.Log.DebugFormatted("[AddInManager2.Events] Package download finished: {0} {1}", e.Package.Id, e.Package.Version.ToString());
-				AddInPackageDownloaded(this, e);
-			}
-		}
-		
-		public event EventHandler<PackageOperationEventArgs> AddInPackageRemoved;
-		
-		public void OnAddInPackageRemoved(PackageOperationEventArgs e)
-		{
-			if (AddInPackageRemoved != null)
-			{
-				SD.Log.DebugFormatted("[AddInManager2.Events] Package removed: {0} {1}", e.Package.Id, e.Package.Version.ToString());
-				AddInPackageRemoved(this, e);
-			}
-		}
-		
 		public event EventHandler<AddInInstallationEventArgs> AddInStateChanged;
 		
 		public void OnAddInStateChanged(AddInInstallationEventArgs e)
@@ -144,36 +110,5 @@ namespace ICSharpCode.AddInManager2.Model
 			}
 		}
 		
-		public event EventHandler<PackageMessageLoggedEventArgs> PackageMessageLogged;
-		
-		public void OnPackageMessageLogged(PackageMessageLoggedEventArgs e)
-		{
-			if (PackageMessageLogged != null)
-			{
-				PackageMessageLogged(this, e);
-			}
-		}
-		
-		public event EventHandler<AcceptLicensesEventArgs> AcceptLicenses;
-		
-		public void OnAcceptLicenses(AcceptLicensesEventArgs e)
-		{
-			if (AcceptLicenses != null)
-			{
-				SD.Log.DebugFormatted("[AddInManager2.Events] Accept license.");
-				AcceptLicenses(this, e);
-			}
-		}
-		
-		public event EventHandler<EventArgs> PackageSourcesChanged;
-		
-		public void OnPackageSourcesChanged(EventArgs e)
-		{
-			if (PackageSourcesChanged != null)
-			{
-				SD.Log.DebugFormatted("[AddInManager2.Events] Package sources changed.");
-				PackageSourcesChanged(this, e);
-			}
-		}
 	}
 }

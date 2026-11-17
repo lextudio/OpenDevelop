@@ -117,7 +117,6 @@ static class AddInTestSupport
 
 	public sealed class FakeSettings : IAddInManagerSettings
 	{
-		public string[] PackageRepositories { get; set; } = Array.Empty<string>();
 		public string[] TrustedRepositories { get; set; } = Array.Empty<string>();
 		public bool ShowPreinstalledAddIns { get; set; }
 		public bool ShowPrereleases { get; set; }
@@ -178,7 +177,7 @@ static class AddInTestSupport
 			Management.Installed.Add(Host());
 			Events.AddInOperationError += (_, e) => Errors.Add(e.Message);
 			Events.OperationStarted += (_, _) => OperationsStarted++;
-			Setup = new AddInSetup(Events, null!, Management);
+			Setup = new AddInSetup(Events, Management);
 			Service = new AddInReleaseService(Source, Settings, Events, Setup, Management);
 		}
 
@@ -211,10 +210,8 @@ static class AddInTestSupport
 	public sealed class TestServices(ReleaseHarness harness) : IAddInManagerServices
 	{
 		public IAddInManagerEvents Events => harness.Events;
-		public IPackageRepositories Repositories => throw new NotSupportedException();
 		public IAddInSetup Setup => harness.Setup;
 		public IAddInReleaseService Releases => harness.Service;
-		public INuGetPackageManager NuGet => throw new NotSupportedException();
 		public IAddInManagerSettings Settings => harness.Settings;
 		public ISDAddInManagement SDAddInManagement => harness.Management;
 	}

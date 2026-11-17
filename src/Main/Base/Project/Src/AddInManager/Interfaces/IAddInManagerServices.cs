@@ -30,11 +30,6 @@ namespace ICSharpCode.AddInManager2.Model
 			get;
 		}
 
-		IPackageRepositories Repositories
-		{
-			get;
-		}
-
 		IAddInSetup Setup
 		{
 			get;
@@ -46,11 +41,6 @@ namespace ICSharpCode.AddInManager2.Model
 			get;
 		}
 
-		INuGetPackageManager NuGet
-		{
-			get;
-		}
-		
 		IAddInManagerSettings Settings
 		{
 			get;

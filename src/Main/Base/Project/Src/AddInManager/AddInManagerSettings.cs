@@ -26,18 +26,6 @@ namespace ICSharpCode.AddInManager2.Model
 	/// </summary>
 	public class AddInManagerSettings : IAddInManagerSettings
 	{
-		public string[] PackageRepositories
-		{
-			get
-			{
-				return SD.PropertyService.Get<string[]>("AddInManager2.PackageRepositories", null);
-			}
-			set
-			{
-				SD.PropertyService.Set<string[]>("AddInManager2.PackageRepositories", value ?? new string[0]);
-			}
-		}
-		
 		public string[] TrustedRepositories
 		{
 			get

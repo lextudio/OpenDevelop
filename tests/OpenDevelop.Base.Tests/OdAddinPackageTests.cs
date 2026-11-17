@@ -387,7 +387,7 @@ public class OdAddinPackageTests : IDisposable
 		var events = new AddInManagerEvents();
 		var errors = new List<string>();
 		events.AddInOperationError += (_, e) => errors.Add(e.Message);
-		return (new AddInSetup(events, null, management), management, events, errors);
+		return (new AddInSetup(events, management), management, events, errors);
 	}
 
 	[Fact]

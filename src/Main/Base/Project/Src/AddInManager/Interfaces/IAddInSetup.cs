@@ -21,7 +21,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using ICSharpCode.Core;
-using NuGet;
 
 namespace ICSharpCode.AddInManager2.Model
 {
@@ -35,7 +34,6 @@ namespace ICSharpCode.AddInManager2.Model
 
 		/// <summary>Installs a package downloaded from <paramref name="source"/>, recording where it came from (null for a local file).</summary>
 		AddIn InstallAddIn(string archiveFileName, AddInRelease source);
-		AddIn InstallAddIn(IPackage package, string packageDirectory);
 		void UninstallAddIn(AddIn addIn);
 		void CancelUpdate(AddIn addIn);
 		void CancelInstallation(AddIn addIn);
@@ -46,11 +44,6 @@ namespace ICSharpCode.AddInManager2.Model
 		AddIn GetInstalledAddInByIdentity(string identity);
 		bool IsAddInInstalled(AddIn addIn);
 		bool IsAddInPreinstalled(AddIn addin);
-		int CompareAddInToPackageVersion(AddIn addIn, IPackage nuGetPackage);
-		IPackage GetNuGetPackageForAddIn(AddIn addIn, bool getLatest);
-		AddIn GetAddInForNuGetPackage(IPackage package);
-		AddIn GetAddInForNuGetPackage(IPackage package, bool withAddInsMarkedForInstallation);
 		IEnumerable<ManagedAddIn> GetDependentAddIns(AddIn addIn);
-		void RemoveUnreferencedNuGetPackages();
 	}
 }

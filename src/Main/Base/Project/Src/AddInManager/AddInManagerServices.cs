@@ -34,12 +34,6 @@ namespace ICSharpCode.AddInManager2
 				set;
 			}
     		
-			public IPackageRepositories Repositories
-			{
-				get;
-				set;
-			}
-    		
 			public IAddInSetup Setup
 			{
 				get;
@@ -52,12 +46,6 @@ namespace ICSharpCode.AddInManager2
 				set;
 			}
 
-			public INuGetPackageManager NuGet
-			{
-				get;
-				set;
-			}
-    		
 			public IAddInManagerSettings Settings
 			{
 				get;
@@ -78,10 +66,8 @@ namespace ICSharpCode.AddInManager2
         	_container = new AddInManagerServiceContainer();
         	_container.Settings = new AddInManagerSettings();
 			_container.Events = new AddInManagerEvents();
-			_container.Repositories = new PackageRepositories(_container.Events, _container.Settings);
 			_container.SDAddInManagement = new SDAddInManagement();
-			_container.NuGet = new NuGetPackageManager(_container.Repositories, _container.Events, _container.SDAddInManagement);
-			_container.Setup = new AddInSetup(_container.Events, _container.NuGet, _container.SDAddInManagement);
+			_container.Setup = new AddInSetup(_container.Events, _container.SDAddInManagement);
 			_container.Releases = CreateReleaseService(_container);
 		}
 
@@ -131,13 +117,6 @@ namespace ICSharpCode.AddInManager2
             }
         }
 
-        public static IPackageRepositories Repositories
-        {
-            get
-            {
-                return _container.Repositories;
-            }
-        }
 
         public static IAddInSetup Setup
         {
@@ -147,13 +126,6 @@ namespace ICSharpCode.AddInManager2
             }
         }
 
-        public static INuGetPackageManager NuGet
-        {
-            get
-            {
-                return _container.NuGet;
-            }
-        }
         
         public static IAddInManagerSettings Settings
         {
