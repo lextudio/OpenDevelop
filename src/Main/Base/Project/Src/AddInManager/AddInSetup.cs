@@ -121,6 +121,15 @@ namespace ICSharpCode.AddInManager2.Model
 						break;
 						
 					case ".odaddin":
+						if (String.IsNullOrEmpty(_sdAddInManagement.TempInstallDirectory) || String.IsNullOrEmpty(_sdAddInManagement.UserInstallDirectory))
+						{
+							// A package is unpacked into the user add-in directories, which an instance started with
+							// -configdir: does not have. (A loose .addin only records a reference and needs neither.)
+							_events.OnAddInOperationError(
+								new AddInOperationErrorEventArgs(
+									SD.ResourceService.GetString("AddInManager2.UserAddInsDisabled")));
+							return null;
+						}
 						SD.Log.DebugFormatted("[AddInManager2] Trying to load {0} as local AddIn package.", fileName);
 						addIn = LoadAddInFromPackage(fileName);
 						if (addIn == null)

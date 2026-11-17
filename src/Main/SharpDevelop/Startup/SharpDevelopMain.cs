@@ -192,7 +192,8 @@ namespace ICSharpCode.SharpDevelop.Startup
 					if (parameter.StartsWith("configdir:", StringComparison.OrdinalIgnoreCase)) {
 						startup.ConfigDirectory = Path.GetFullPath(parameter.Substring("configdir:".Length));
 						startup.DomPersistencePath = Path.Combine(startup.ConfigDirectory, "dom");
-						startup.AllowUserAddIns = false;
+						// Test mode may keep them (the directory is the isolated one): an add-in journey installs into it.
+						startup.AllowUserAddIns = TestMode.IsActive && Environment.GetEnvironmentVariable("OD_TEST_USER_ADDINS") == "1";
 					}
 				}
 				

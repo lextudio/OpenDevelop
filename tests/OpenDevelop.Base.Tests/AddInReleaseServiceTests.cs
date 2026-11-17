@@ -29,6 +29,32 @@ public class AddInReleaseServiceTests : IDisposable
 
 	ReleaseHarness NewHarness(params string[] trusted) => new(directory, trusted);
 
+	[Fact]
+	public void InstallAddIn_WhenTheInstanceHasNoUserAddInDirectories_ReportsThatInsteadOfFailingOnANullPath()
+	{
+		var h = NewHarness();
+		h.Management.Temp = null!; // an instance started with -configdir: has no install directories
+		string package = Package(directory, "x.odaddin", ("Vendor.Sample.addin", Manifest()), ("Sample.dll", "dll"));
+
+		Assert.Null(h.Setup.InstallAddIn(package, Release()));
+
+		Assert.Equal(new[] { "AddInManager2.UserAddInsDisabled" }, h.Errors);
+	}
+
+	[Fact]
+	public void InstallAddIn_ALooseManifestStillInstallsAsExternal_WithoutUserAddInDirectories()
+	{
+		var h = NewHarness();
+		h.Management.Temp = null!;
+		string manifest = Path.Combine(directory, "Loose.addin");
+		File.WriteAllText(manifest, Manifest(identity: "Vendor.Loose"));
+
+		AddIn installed = h.Setup.InstallAddIn(manifest, null);
+
+		Assert.Empty(h.Errors);
+		Assert.NotNull(installed);
+	}
+
 	// ---- trusted repositories -----------------------------------------------------------------------------
 
 	[Fact]

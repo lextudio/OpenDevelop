@@ -336,6 +336,9 @@ They will stop working while this AddIn is suspended! Are you sure you want to c
 
 The application will try to download and install them, as well. Do you want to continue?</value>
   </data>
+  <data name="AddInManager2.UserAddInsDisabled" xml:space="preserve">
+    <value>This instance was started with -configdir: and does not support installing add-ins.</value>
+  </data>
   <data name="AddInManager2.InvalidPackage" xml:space="preserve">
     <value>Selected package doesn't contain a valid SharpDevelop AddIn.</value>
   </data>

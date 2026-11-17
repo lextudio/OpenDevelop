@@ -54,6 +54,74 @@ namespace ICSharpCode.AddInManager2
 			return JsonSerializer.Serialize(new { success = true, wasOpen });
 		}
 
+		static object Describe(AddInsViewModelBase list) => new {
+			type = list.GetType().Name,
+			title = list.TitleWithHighlight,
+			reading = list.IsReadingPackages,
+			hasError = list.HasError,
+			message = list.ErrorMessage,
+			entries = list.AddInPackages.Select(p => new {
+				name = p.Name,
+				id = p.Id,
+				version = p.Version?.ToString(),
+				oldVersion = p.OldVersion?.ToString(),
+				installable = p.IsInstallable,
+				installed = p.IsInstalled,
+				update = p.IsUpdate,
+			}).ToList(),
+		};
+
+		[DevFlowAction("od.addin-manager.state", Description = "Report every list of the window opened by od.addin-manager.show: reading flag, message and each entry's name, version, and installable/installed/update flags.")]
+		public static string State()
+		{
+			var viewModel = shown?.ViewModel;
+			return JsonSerializer.Serialize(new {
+				success = viewModel != null,
+				lists = viewModel?.ViewModels.Select(Describe).ToList(),
+			});
+		}
+
+		[DevFlowAction("od.addin-manager.trust", Description = "Trust a repository the way the options panel does: type owner/repo into the real Trusted repositories panel, press Add, then save.")]
+		public static string Trust(string repository)
+		{
+			var panel = new TrustedRepositoriesView();
+			panel.LoadOptions();
+			var viewModel = panel.DataContext as TrustedRepositoriesViewModel;
+			if (viewModel == null)
+				return JsonSerializer.Serialize(new { success = false });
+			viewModel.NewRepository = repository;
+			viewModel.AddCommand.Execute(null);
+			panel.SaveOptions();
+			return JsonSerializer.Serialize(new { success = viewModel.Repositories.Contains(repository), repositories = viewModel.Repositories.ToList(), message = viewModel.Message });
+		}
+
+		[DevFlowAction("od.addin-manager.refresh", Description = "Press Refresh on the Available list of the window opened by od.addin-manager.show (asks GitHub again); poll od.addin-manager.state until reading is false.")]
+		public static string Refresh()
+		{
+			var viewModel = shown?.ViewModel;
+			viewModel?.AvailableAddInsViewModel.RefreshCommand.Execute(null);
+			return JsonSerializer.Serialize(new { success = viewModel != null });
+		}
+
+		[DevFlowAction("od.addin-manager.install", Description = "Press Install (or Update) on the entry with this name in the named list (Installed, Available or Updated) of the window opened by od.addin-manager.show.")]
+		public static string Install(string list, string name)
+		{
+			var viewModel = shown?.ViewModel;
+			AddInsViewModelBase target = list switch {
+				"Available" => viewModel?.AvailableAddInsViewModel,
+				"Updated" => viewModel?.UpdatedAddInsViewModel,
+				_ => viewModel?.InstalledAddInsViewModel,
+			};
+			var entry = target?.AddInPackages.FirstOrDefault(p => p.Name == name);
+			if (entry == null)
+				return JsonSerializer.Serialize(new { success = false, reason = "no such entry" });
+			if (entry.IsUpdate)
+				entry.UpdatePackage();
+			else
+				entry.AddPackage();
+			return JsonSerializer.Serialize(new { success = true });
+		}
+
 		[DevFlowAction("od.addin-manager.options-panel", Description = "Construct the real Trusted repositories options panel exactly as the options dialog does, load it, and report the repositories it shows.")]
 		public static string OptionsPanel()
 		{
