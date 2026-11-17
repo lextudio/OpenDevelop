@@ -19,7 +19,6 @@
 using System;
 using System.Text;
 using ICSharpCode.Core;
-using NuGet;
 
 namespace ICSharpCode.AddInManager2.Model
 {
@@ -30,26 +29,6 @@ namespace ICSharpCode.AddInManager2.Model
 	{
 		public AddInDependency()
 		{
-		}
-		
-		public AddInDependency(PackageDependency packageDependency)
-		{
-			if (packageDependency != null)
-			{
-				IVersionSpec versionSpec = packageDependency.VersionSpec;
-				
-				Id = packageDependency.Id;
-				if (versionSpec.MinVersion != null)
-				{
-					MinimumVersion = versionSpec.MinVersion.Version;
-				}
-				if (versionSpec.MaxVersion != null)
-				{
-					MaximumVersion = versionSpec.MaxVersion.Version;
-				}
-				IncludeMinimumVersion = packageDependency.VersionSpec.IsMinInclusive;
-				IncludeMaximumVersion = packageDependency.VersionSpec.IsMaxInclusive;
-			}
 		}
 		
 		public AddInDependency(AddInReference reference)

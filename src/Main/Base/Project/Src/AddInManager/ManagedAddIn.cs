@@ -42,7 +42,9 @@ namespace ICSharpCode.AddInManager2.Model
 		public ManagedAddIn(AddIn addIn)
 		{
 			_addIn = addIn;
-			InstallationSource = AddInInstallationSource.Offline;
+			InstallationSource = (InstalledFromRepository != null)
+				? AddInInstallationSource.GitHubRelease
+				: AddInInstallationSource.Offline;
 		}
 		
 		public bool IsTemporary

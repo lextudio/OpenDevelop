@@ -17,26 +17,23 @@
 // DEALINGS IN THE SOFTWARE.
 
 using System;
-using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.ViewModels;
-using ICSharpCode.ILSpy.ViewModels;
 using ICSharpCode.AddInManager2.Model;
-using ICSharpCode.AddInManager2.ViewModel;
 using ICSharpCode.AddInManager2.View;
 
 namespace ICSharpCode.AddInManager2
 {
 	/// <summary>
-	/// Checks configured repositories for updates and shows a user notification.
+	/// Looks for updates of the add-ins installed from trusted GitHub repositories once at startup and,
+	/// when there are any, shows a notification that opens the AddIn Manager on the Updates list.
 	/// </summary>
 	public class UpdateNotifier
 	{
-		private IAddInManagerServices _services;
-		private UpdatedAddInsViewModel _updatedAddInViewModel;
-		private bool _isDetached;
+		private readonly IAddInManagerServices _services;
 		private bool _hasNotified;
-		private PackageRepository _firstRepositoryWithUpdates;
 		
 		public UpdateNotifier()
 			: this(AddInManagerServices.Services)
@@ -45,10 +42,40 @@ namespace ICSharpCode.AddInManager2
 
 		public UpdateNotifier(IAddInManagerServices services)
 		{
-			_isDetached = false;
 			_services = services;
-			_updatedAddInViewModel = new UpdatedAddInsViewModel(services);
-			_services.Events.PackageListDownloadEnded += Events_PackageListDownloadEnded;
+		}
+		
+		/// <summary>
+		/// Reads the release lists (from the cache when it is recent, so a normal start spends no quota) and
+		/// notifies when an update exists. Never throws: this is a convenience that must not harm startup.
+		/// </summary>
+		public async Task StartUpdateLookupAsync()
+		{
+			if (_hasNotified)
+			{
+				return;
+			}
+			try
+			{
+				await _services.Releases.RefreshAsync(false, CancellationToken.None);
+				if (_services.Releases.GetUpdates().Count == 0)
+				{
+					return;
+				}
+			}
+			catch (Exception ex)
+			{
+				ICSharpCode.Core.LoggingService.Warn("The add-in update lookup failed: " + ex.Message);
+				return;
+			}
+			_hasNotified = true;
+			SD.MainThread.InvokeAsyncAndForget(() => {
+				var notificationHost = SD.Services.GetService(typeof(INotificationHost)) as INotificationHost;
+				notificationHost?.Show(
+					SD.ResourceService.GetString("AddInManager2.UpdateNotifier.BubbleText"),
+					SD.ResourceService.GetString("AddInManager.Title"),
+					ShowUpdates);
+			});
 		}
 		
 		private void ShowUpdates()
@@ -58,74 +85,10 @@ namespace ICSharpCode.AddInManager2
 				var viewModel = view.ViewModel;
 				if (viewModel != null)
 				{
-					// Activate update view explicitly
 					viewModel.UpdatedAddInsViewModel.IsExpandedInView = true;
-					var firstRepositoryWithUpdates =
-						viewModel.UpdatedAddInsViewModel.PackageRepositories.FirstOrDefault(pr => pr.SourceUrl == _firstRepositoryWithUpdates.SourceUrl);
-					if (firstRepositoryWithUpdates != null)
-					{
-						// Directly go to first repository containing an update
-						viewModel.UpdatedAddInsViewModel.SelectedPackageSource = firstRepositoryWithUpdates;
-					}
 				}
 				view.ShowDialog();
 			}
-			_firstRepositoryWithUpdates = null;
-		}
-		
-		private void Detach()
-		{
-			if (!_isDetached)
-			{
-				_services.Events.PackageListDownloadEnded -= Events_PackageListDownloadEnded;
-				_isDetached = true;
-			}
-		}
-		
-		public void StartUpdateLookup()
-		{
-			if (!_isDetached && !_hasNotified)
-			{
-				// Start getting updates
-				_updatedAddInViewModel.ReadPackages();
-			}
-		}
-		
-		private void Events_PackageListDownloadEnded(object sender, PackageListDownloadEndedEventArgs e)
-		{
-			if (sender != _updatedAddInViewModel)
-			{
-				return;
-			}
-			
-			if (e.WasCancelled)
-			{
-				return;
-			}
-			
-			// Do we have any new updates? Collect this information from all configured repositories
-			if (e.WasSuccessful)
-			{
-				_firstRepositoryWithUpdates = _updatedAddInViewModel.PackageRepositories.FirstOrDefault(pr => pr.HasHighlightCount);
-				if (_firstRepositoryWithUpdates != null)
-				{
-					// There must be updates, show an update notification
-					_hasNotified = true;
-					Detach();
-					
-					SD.MainThread.InvokeAsyncAndForget(() => {
-						var notificationHost = SD.Services.GetService(typeof(INotificationHost)) as INotificationHost;
-						notificationHost?.Show(
-							SD.ResourceService.GetString("AddInManager2.UpdateNotifier.BubbleText"),
-							SD.ResourceService.GetString("AddInManager.Title"),
-							ShowUpdates);
-					});
-					
-					return;
-				}
-			}
-			
-			Detach();
 		}
 	}
 }

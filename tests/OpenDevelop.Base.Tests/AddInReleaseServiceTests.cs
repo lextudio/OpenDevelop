@@ -27,89 +27,7 @@ public class AddInReleaseServiceTests : IDisposable
 			Directory.Delete(directory, true);
 	}
 
-	// ---- fakes --------------------------------------------------------------------------------------------
-
-	sealed class FakeSettings : IAddInManagerSettings
-	{
-		public string[] PackageRepositories { get; set; } = Array.Empty<string>();
-		public string[] TrustedRepositories { get; set; } = Array.Empty<string>();
-		public bool ShowPreinstalledAddIns { get; set; }
-		public bool ShowPrereleases { get; set; }
-		public bool AutoSearchForUpdates { get; set; } = true;
-	}
-
-	sealed class FakeSource : IAddInReleaseSource
-	{
-		public Dictionary<RepositoryReference, ReleaseListResult> Lists { get; } = new();
-		public List<(string Repository, bool Force)> Requests { get; } = new();
-		public List<string> DownloadedTo { get; } = new();
-		public Func<AddInRelease, string, Task>? OnDownload { get; set; }
-
-		public Task<ReleaseListResult> GetReleasesAsync(RepositoryReference repository, bool forceRefresh, CancellationToken cancellationToken)
-		{
-			cancellationToken.ThrowIfCancellationRequested();
-			Requests.Add((repository.FullName, forceRefresh));
-			return Task.FromResult(Lists.TryGetValue(repository, out var list)
-				? list
-				: new ReleaseListResult(repository, ReleaseListStatus.Failed, null, null, "not found", null, null));
-		}
-
-		public async Task DownloadAsync(AddInRelease release, string destinationFile, CancellationToken cancellationToken)
-		{
-			DownloadedTo.Add(destinationFile);
-			if (OnDownload != null)
-				await OnDownload(release, destinationFile);
-		}
-	}
-
-	sealed class Harness
-	{
-		public FakeSettings Settings { get; } = new();
-		public FakeSource Source { get; } = new();
-		public FakeSdManagement Management { get; }
-		public AddInManagerEvents Events { get; } = new();
-		public AddInSetup Setup { get; }
-		public AddInReleaseService Service { get; }
-		public List<string> Errors { get; } = new();
-		public int OperationsStarted { get; private set; }
-
-		public Harness(string directory, params string[] trusted)
-		{
-			Settings.TrustedRepositories = trusted;
-			Management = new FakeSdManagement { Temp = Path.Combine(directory, "temp-install") };
-			Management.Installed.Add(Host());
-			Events.AddInOperationError += (_, e) => Errors.Add(e.Message);
-			Events.OperationStarted += (_, _) => OperationsStarted++;
-			Setup = new AddInSetup(Events, null!, Management);
-			Service = new AddInReleaseService(Source, Settings, Events, Setup, Management);
-		}
-
-		public void Offer(string repo, params AddInRelease[] releases)
-		{
-			var reference = RepositoryReference.Parse(repo);
-			Source.Lists[reference] = new ReleaseListResult(reference, ReleaseListStatus.Ok, releases, null, null, DateTimeOffset.UtcNow, null);
-		}
-
-		/// <summary>Makes a download deliver a real .odaddin with this manifest.</summary>
-		public void DeliverPackage(string directory, string manifest, string name = "delivered.odaddin")
-		{
-			string package = Package(directory, name, ("Vendor.Sample.addin", manifest), ("Sample.dll", "dll"));
-			Source.OnDownload = (_, destination) =>
-			{
-				File.Copy(package, destination);
-				return Task.CompletedTask;
-			};
-		}
-
-		public AddIn InstallLocally(string manifest)
-		{
-			var addIn = LoadAddIn(manifest);
-			Management.Installed.Add(addIn);
-			return addIn;
-		}
-	}
-
-	Harness NewHarness(params string[] trusted) => new(directory, trusted);
+	ReleaseHarness NewHarness(params string[] trusted) => new(directory, trusted);
 
 	// ---- trusted repositories -----------------------------------------------------------------------------
 
@@ -424,6 +342,82 @@ public class AddInReleaseServiceTests : IDisposable
 		Assert.Contains("SHA-256", Assert.Single(h.Errors));
 		Assert.Empty(h.Management.AddedToTree);
 		Assert.False(Directory.Exists(Path.GetDirectoryName(h.Source.DownloadedTo[0])));
+	}
+
+	[Fact]
+	public async Task InstallAsync_RefusesASecondInstallationOfTheSameRepositoryWhileOneRuns()
+	{
+		var h = NewHarness();
+		h.DeliverPackage(directory, Manifest(version: "1.2.3"));
+		var deliver = h.Source.OnDownload!;
+		var release = new TaskCompletionSource();
+		h.Source.OnDownload = async (r, destination) =>
+		{
+			await release.Task;
+			await deliver(r, destination);
+		};
+
+		Task<AddIn> first = h.Service.InstallAsync(Release("Owner/My-Addin", "v1.2.3"), default);
+		AddIn second = await h.Service.InstallAsync(Release("owner/my-addin", "v1.2.3"), default); // another list, same repository
+		AddIn otherTag = await h.Service.InstallAsync(Release("owner/my-addin", "v1.2.4"), default);
+
+		Assert.Null(second);
+		Assert.Null(otherTag);
+		Assert.Equal(2, h.Errors.Count);
+		Assert.All(h.Errors, e => Assert.Contains("already being installed", e));
+		Assert.Single(h.Source.DownloadedTo); // the refused ones never reached the network
+		Assert.Equal(1, h.OperationsStarted);
+
+		release.SetResult();
+		Assert.NotNull(await first);
+		Assert.Single(h.Management.AddedToTree);
+	}
+
+	[Fact]
+	public async Task InstallAsync_AllowsAnotherRepositoryAtTheSameTime_AndTheSameOneAgainAfterwards()
+	{
+		var h = NewHarness();
+		var gate = new TaskCompletionSource();
+		h.Source.OnDownload = async (_, _) =>
+		{
+			await gate.Task;
+			throw new InvalidDataException("stop here");
+		};
+
+		Task<AddIn> one = h.Service.InstallAsync(Release("owner/one", "v1.0.0"), default);
+		Task<AddIn> two = h.Service.InstallAsync(Release("owner/two", "v1.0.0"), default);
+		Assert.Equal(2, h.Source.DownloadedTo.Count);
+		gate.SetResult();
+		await Task.WhenAll(one, two);
+		Assert.Equal(2, h.Errors.Count); // both failed on their own, neither was refused as busy
+		Assert.DoesNotContain(h.Errors, e => e.Contains("already being installed"));
+
+		h.Source.OnDownload = (_, _) => throw new InvalidDataException("again");
+		await h.Service.InstallAsync(Release("owner/one", "v1.0.0"), default);
+		Assert.DoesNotContain(h.Errors.Skip(2), e => e.Contains("already being installed"));
+		Assert.Equal(3, h.Source.DownloadedTo.Count);
+	}
+
+	[Fact]
+	public async Task InstallAsync_ReleasesTheRepositoryEvenWhenTheInstallationFailsOrIsCancelled()
+	{
+		var h = NewHarness();
+		h.Source.OnDownload = (_, _) => throw new OperationCanceledException();
+		await Assert.ThrowsAnyAsync<OperationCanceledException>(() => h.Service.InstallAsync(Release(), default));
+
+		h.Source.OnDownload = (_, _) => throw new InvalidDataException("broken");
+		await h.Service.InstallAsync(Release(), default);
+
+		Assert.DoesNotContain(h.Errors, e => e.Contains("already being installed"));
+		Assert.Equal(2, h.Source.DownloadedTo.Count);
+	}
+
+	[Fact]
+	public void Neutralize_BreaksUpEveryPropertyReference()
+	{
+		Assert.Equal("a $ {res:X} b $ {env:HOME}", AddInMessage.Neutralize("a ${res:X} b ${env:HOME}"));
+		Assert.Equal("plain $ text {braces}", AddInMessage.Neutralize("plain $ text {braces}"));
+		Assert.Equal(string.Empty, AddInMessage.Neutralize(null!));
 	}
 
 	[Fact]

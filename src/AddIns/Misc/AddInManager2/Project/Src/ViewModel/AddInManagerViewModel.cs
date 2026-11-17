@@ -26,7 +26,6 @@ using ICSharpCode.Core;
 using ICSharpCode.AddInManager2.Model;
 using ICSharpCode.AddInManager2.View;
 using ICSharpCode.SharpDevelop;
-using NuGet;
 
 namespace ICSharpCode.AddInManager2.ViewModel
 {
@@ -57,14 +56,13 @@ namespace ICSharpCode.AddInManager2.ViewModel
 			// Add event handlers
 			AddInManager.Events.OperationStarted += AddInManager_Events_OperationStarted;
 			AddInManager.Events.AddInOperationError += AddInManager_Events_AddInOperationError;
-			AddInManager.Events.AcceptLicenses += AddInManager_Events_AcceptLicenses;
 			
 			_viewModels = new ObservableCollection<AddInsViewModelBase>();
 			
 			// Create and collect the models
-			InstalledAddInsViewModel = new InstalledAddInsViewModel();
-			AvailableAddInsViewModel = new AvailableAddInsViewModel();
-			UpdatedAddInsViewModel = new UpdatedAddInsViewModel();
+			InstalledAddInsViewModel = new InstalledAddInsViewModel(AddInManager);
+			AvailableAddInsViewModel = new AvailableAddInsViewModel(AddInManager);
+			UpdatedAddInsViewModel = new UpdatedAddInsViewModel(AddInManager);
 			
 			_viewModels.Add(InstalledAddInsViewModel);
 			_viewModels.Add(AvailableAddInsViewModel);
@@ -81,9 +79,11 @@ namespace ICSharpCode.AddInManager2.ViewModel
 			InstalledAddInsViewModel.IsExpandedInView = true;
 			
 			// Read the packages
-			AvailableAddInsViewModel.ReadPackages();
+			// What is known now is shown at once; GitHub is asked afterwards (from the cache when it is recent).
 			InstalledAddInsViewModel.ReadPackages();
+			AvailableAddInsViewModel.ReadPackages();
 			UpdatedAddInsViewModel.ReadPackages();
+			_ = AvailableAddInsViewModel.RefreshAsync(false);
 		}
 		
 		public AvailableAddInsViewModel AvailableAddInsViewModel
@@ -123,10 +123,10 @@ namespace ICSharpCode.AddInManager2.ViewModel
 		{
 			AddInManager.Events.OperationStarted -= AddInManager_Events_OperationStarted;
 			AddInManager.Events.AddInOperationError -= AddInManager_Events_AddInOperationError;
-			AddInManager.Events.AcceptLicenses -= AddInManager_Events_AcceptLicenses;
 			foreach (var viewModel in _viewModels)
 			{
 				viewModel.PropertyChanged -= ViewModel_PropertyChanged;
+				viewModel.Dispose();
 			}
 		}
 		
@@ -175,28 +175,6 @@ namespace ICSharpCode.AddInManager2.ViewModel
 		private void AddInManager_Events_AddInOperationError(object sender, AddInOperationErrorEventArgs e)
 		{
 			ShowErrorMessage(e.Message);
-		}
-		
-		private void AddInManager_Events_AcceptLicenses(object sender, AcceptLicensesEventArgs e)
-		{
-			// Show a license acceptance prompt to the user
-			e.IsAccepted = ShowLicenseAcceptancePrompt(e.Packages);
-		}
-		
-		private bool ShowLicenseAcceptancePrompt(IEnumerable<IPackage> packages)
-		{
-			if (packages == null)
-			{
-				// No package -> nothing to accept
-				return true;
-			}
-			
-			// Create a license acceptance view
-			var viewModel = new LicenseAcceptanceViewModel(packages);
-			var view = new LicenseAcceptanceView();
-			view.DataContext = viewModel;
-			view.Owner = SD.Workbench.MainWindow;
-			return view.ShowDialog() ?? false;
 		}
 		
 		private void ViewModel_PropertyChanged(object sender, PropertyChangedEventArgs e)

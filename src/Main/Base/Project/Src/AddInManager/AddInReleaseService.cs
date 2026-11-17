@@ -46,6 +46,19 @@ namespace ICSharpCode.AddInManager2.Model
 		}
 	}
 
+	/// <summary>Text that came from a server, a package or an exception, made safe to show through <c>StringParser</c>.</summary>
+	public static class AddInMessage
+	{
+		/// <summary>
+		/// The UI expands <c>${...}</c> in the messages of <see cref="IAddInManagerEvents.AddInOperationError"/>; text
+		/// that is not ours must not be able to name a property, resource or environment variable.
+		/// </summary>
+		public static string Neutralize(string text)
+		{
+			return (text ?? string.Empty).Replace("${", "$ {", StringComparison.Ordinal);
+		}
+	}
+
 	/// <summary>
 	/// The AddIn Manager's online side: the repositories the user trusts, what they offer, what has an
 	/// update, and downloading and installing a release. Replaces the NuGet gallery.
@@ -93,6 +106,7 @@ namespace ICSharpCode.AddInManager2.Model
 		readonly IAddInSetup setup;
 		readonly ISDAddInManagement management;
 		readonly object gate = new object();
+		readonly HashSet<RepositoryReference> installing = new HashSet<RepositoryReference>();
 		List<RepositoryReference> trusted;
 		IReadOnlyList<ReleaseListResult> lastResults = Array.Empty<ReleaseListResult>();
 
@@ -223,6 +237,14 @@ namespace ICSharpCode.AddInManager2.Model
 		{
 			if (release == null)
 				throw new ArgumentNullException(nameof(release));
+			// One installation per repository at a time, whichever list or window asked: two would unpack into
+			// the same add-in folder. The view models also grey out their button, but they are rebuilt freely.
+			lock (gate) {
+				if (!installing.Add(release.Repository)) {
+					Fail(release, release.Repository + " is already being installed.");
+					return null;
+				}
+			}
 			events.OnOperationStarted();
 			string workDirectory = Path.Combine(Path.GetTempPath(), "od-addin-" + Guid.NewGuid().ToString("N"));
 			try {
@@ -243,6 +265,8 @@ namespace ICSharpCode.AddInManager2.Model
 				Fail(release, "Downloading " + release.Repository + " " + release.Tag + " failed: " + ex.Message);
 				return null;
 			} finally {
+				lock (gate)
+					installing.Remove(release.Repository);
 				TryDeleteDirectory(workDirectory);
 			}
 		}
@@ -270,9 +294,7 @@ namespace ICSharpCode.AddInManager2.Model
 
 		void Fail(AddInRelease release, string message)
 		{
-			// The message is shown through StringParser, which expands ${...}; text that came from a server
-			// or a package must not be able to name a property or resource.
-			events.OnAddInOperationError(new AddInOperationErrorEventArgs(message.Replace("${", "$ {", StringComparison.Ordinal)));
+			events.OnAddInOperationError(new AddInOperationErrorEventArgs(AddInMessage.Neutralize(message)));
 		}
 
 		static void TryDeleteDirectory(string directory)

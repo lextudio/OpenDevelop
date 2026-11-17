@@ -241,6 +241,26 @@ Download an AddIn from the Internet, then click 'Install AddIn' and choose the d
   <data name="AddInManager2.AddInsView.InstallFromArchive" xml:space="preserve">
     <value>Install from archive...</value>
   </data>
+  <data name="AddInManager2.AddInsView.NoTrustedRepositories" xml:space="preserve">
+    <value>No GitHub repositories are trusted yet. Add one under Tools &gt; Options &gt; AddIns &gt; Trusted repositories.</value>
+  </data>
+  <data name="AddInManager2.AddInsView.Refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="AddInManager2.OptionPanel.Tree.TrustedRepositories" xml:space="preserve">
+    <value>Trusted repositories</value>
+  </data>
+  <data name="AddInManager2.TrustedRepositories.AlreadyListed" xml:space="preserve">
+    <value>{0} is already in the list.</value>
+  </data>
+  <data name="AddInManager2.TrustedRepositories.Description" xml:space="preserve">
+    <value>The AddIn Manager lists, installs and updates the add-ins released on GitHub by these repositories (owner/repo). An add-in runs inside OpenDevelop with all your rights: add only repositories whose owner you trust.</value>
+  </data>
+  <data name="AddInManager2.TrustedRepositories.TrustWarning" xml:space="preserve">
+    <value>Trust the GitHub repository {0}?
+
+Add-ins released there will be offered by the AddIn Manager. An add-in runs inside OpenDevelop with all your rights, so it can do anything you can. Add the repository only if you trust its owner.</value>
+  </data>
   <data name="AddInManager2.AddInsView.Repository" xml:space="preserve">
     <value>Repository:</value>
   </data>

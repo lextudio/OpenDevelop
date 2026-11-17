@@ -16,20 +16,6 @@
 		<aimvm:OpenHyperlinkCommand x:Key="OpenHyperlinkCommand"/>
 		<BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
 		
-		<DataTemplate x:Key="PackageSourceComboBoxItemTemplate">
-			<TextBlock Text="{Binding Path=NameWithHighlight}">
-				<TextBlock.Style>
-					<Style TargetType="TextBlock">
-						<Style.Triggers>
-							<DataTrigger Binding="{Binding HasHighlightCount}" Value="True">
-								<Setter Property="FontWeight" Value="Bold" />
-							</DataTrigger>
-						</Style.Triggers>
-					</Style>
-				</TextBlock.Style>
-			</TextBlock>
-		</DataTemplate>
-		
 		<Style x:Key="AddInImageStyle" TargetType="{x:Type Image}">
 			<Style.Triggers>
 				<DataTrigger Binding="{Binding IsOffline}" Value="False">
@@ -46,7 +32,7 @@
 		
 		<Style x:Key="AddInOnlineStateImageStyle" TargetType="{x:Type Image}">
 			<Setter Property="Source" Value="{x:Static aim:AddInManagerImages.Package}" />
-			<Setter Property="Visibility" Value="{Binding Path=HasNuGetConnection, Converter={StaticResource BoolToVisibility}}" />
+			<Setter Property="Visibility" Value="{Binding Path=HasOnlineSource, Converter={StaticResource BoolToVisibility}}" />
 			<Style.Triggers>
 				<DataTrigger Binding="{Binding IsEnabled}" Value="False">
 					<Setter Property="Opacity" Value="0.5" />
@@ -100,14 +86,6 @@
 					<Setter Property="Visibility" Value="Visible" />
 				</DataTrigger>
 			</Style.Triggers>
-		</Style>
-		
-		<Style x:Key="PackageSourceComboBoxStyle" TargetType="{x:Type ComboBox}">
-			<!--			<Style.Triggers>
-				<DataTrigger Binding="{Binding IsReadingPackages}" Value="True">
-					<Setter Property="IsEnabled" Value="False" />
-				</DataTrigger>
-			</Style.Triggers>-->
 		</Style>
 		
 		<Style x:Key="packageListBoxItemContainerStyle" TargetType="{x:Type ListBoxItem}">
@@ -554,8 +532,11 @@
 						Visibility="{Binding Path=HasError, Converter={StaticResource BoolToVisibility}}"
 						Text="{Binding Path=ErrorMessage}"
 						TextWrapping="Wrap"
-						HorizontalAlignment="Center"
-						VerticalAlignment="Center"/>
+						Padding="6,4"
+						Background="{x:Static SystemColors.InfoBrush}"
+						Foreground="{x:Static SystemColors.InfoTextBrush}"
+						HorizontalAlignment="Stretch"
+						VerticalAlignment="Bottom"/>
 					<ProgressBar
 						Grid.Row="0"
 						Height="20"
@@ -564,12 +545,6 @@
 						Visibility="{Binding Path=IsReadingPackages, Converter={StaticResource BoolToVisibility}}"
 						HorizontalAlignment="Center"
 						VerticalAlignment="Center"/>
-					<aimview:PagedResultsView
-						x:Name="pagedResultsView"
-						Grid.Row="1"
-						HorizontalAlignment="Center"
-						Visibility="{Binding Path=IsPaged, Converter={StaticResource BoolToVisibility}}"
-						DataContext="{Binding}"/>
 				</Grid>
 				
 				<Grid Grid.Row="2">
@@ -601,6 +576,13 @@
 					</StackPanel>
 					
 					<Grid Grid.Column="1">
+						<Button
+							x:Name="refreshButton"
+							Visibility="{Binding Path=AllowRefresh, Converter={StaticResource BoolToVisibility}}"
+							Content="{core:Localize AddInManager2.AddInsView.Refresh}"
+							Command="{Binding Path=RefreshCommand}"
+							Style="{StaticResource addInDetailsButtonStyle}"
+							Margin="4,4,4,4" />
 						<Button
 							x:Name="installFromFileButton"
 							Visibility="{Binding Path=AllowInstallFromArchive, Converter={StaticResource BoolToVisibility}}"

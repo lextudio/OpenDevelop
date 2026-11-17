@@ -9,7 +9,6 @@
 	
 	<Runtime>
 		<Import assembly="ICSharpCode.AddInManager2.dll"/>
-		<Import assembly="NuGet.Core.dll"/>
 	</Runtime>
 	
 	<Path name = "/SharpDevelop/Workbench/Tools">
@@ -27,14 +26,14 @@
 				id="AddInGeneralOptions"
 				label="${res:AddInManager2.OptionPanel.Tree.General}"
 				class="ICSharpCode.AddInManager2.View.PackageOptionsView"/>
+			<OptionPanel
+				id="AddInTrustedRepositories"
+				label="${res:AddInManager2.OptionPanel.Tree.TrustedRepositories}"
+				class="ICSharpCode.AddInManager2.View.TrustedRepositoriesView"/>
 		</OptionPanel>
 	</Path>
 	
-	<!-- Autostart commands for initialization -->
-	<Path name = "/SharpDevelop/Autostart">
-		<Class id    = "AddInManagerInitialization"
-		       class = "ICSharpCode.AddInManager2.AddInManagerInitializationCommand"/>
-	</Path>
+	<!-- Update lookup at startup, once the workbench exists -->
 	<Path name = "/SharpDevelop/Workbench/AutostartAfterWorkbenchInitialized">
 		<Class id    = "AddInManagerVisualInitialization"
 		       class = "ICSharpCode.AddInManager2.AddInManagerVisualInitializationCommand"/>

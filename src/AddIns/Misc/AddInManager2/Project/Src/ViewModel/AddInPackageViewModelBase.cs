@@ -274,7 +274,7 @@ namespace ICSharpCode.AddInManager2.ViewModel
 			get;
 		}
 		
-		public virtual bool HasNuGetConnection
+		public virtual bool HasOnlineSource
 		{
 			get
 			{
@@ -326,7 +326,7 @@ namespace ICSharpCode.AddInManager2.ViewModel
 			
 		}
 		
-		public void UpdateInstallationState()
+		public virtual void UpdateInstallationState()
 		{
 			OnPropertyChanged(m => m.IsAdded);
 			OnPropertyChanged(m => m.IsUpdate);

@@ -23,7 +23,6 @@ using System.Windows.Input;
 using ICSharpCode.AddInManager2.Model;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop;
-using NuGet;
 
 namespace ICSharpCode.AddInManager2.ViewModel
 {
@@ -85,16 +84,9 @@ namespace ICSharpCode.AddInManager2.ViewModel
 			
 			_id = _addIn.Manifest.PrimaryIdentity;
 			_name = _addIn.Name;
-			if (HasNuGetConnection && (_markedAddIn.LinkedNuGetPackageVersion != null))
+			if (_addIn.Version != null)
 			{
-				_version = new Version(_markedAddIn.LinkedNuGetPackageVersion);
-			}
-			else
-			{
-				if (_addIn.Version != null)
-				{
-					_version = _addIn.Version;
-				}
+				_version = _addIn.Version;
 			}
 			_description = _addIn.Properties["description"];
 			_summary = _addIn.Properties["description"];
@@ -491,13 +483,13 @@ namespace ICSharpCode.AddInManager2.ViewModel
 			}
 		}
 		
-		public override bool HasNuGetConnection
+		public override bool HasOnlineSource
 		{
 			get
 			{
 				if (_markedAddIn != null)
 				{
-					return (_markedAddIn.InstallationSource == AddInInstallationSource.NuGetRepository);
+					return (_markedAddIn.InstallationSource == AddInInstallationSource.GitHubRelease);
 				}
 				else
 				{
