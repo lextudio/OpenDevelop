@@ -78,7 +78,7 @@ public class LanguageServiceArchitectureTests
         Assert.Same(contracts, typeof(IRoslynLanguageProtocol).Assembly);
         foreach (var assembly in new[] { contracts, implementation })
         {
-            Assert.Equal(".NETCoreApp,Version=v10.0", assembly.GetCustomAttributes(false)
+            Assert.Equal(".NETCoreApp,Version=v11.0", assembly.GetCustomAttributes(false)
                 .OfType<System.Runtime.Versioning.TargetFrameworkAttribute>().Single().FrameworkName);
             Assert.DoesNotContain(assembly.GetReferencedAssemblies(), reference =>
                 reference.Name is "ICSharpCode.SharpDevelop" or "ICSharpCode.Core" or "PresentationFramework" or "WindowsBase"

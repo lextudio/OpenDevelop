@@ -38,7 +38,7 @@ public sealed class DotNetSdkAvailabilityReportTests
 
         Assert.Contains(lines, line => line.Contains(".NET SDK 10 or newer: NOT FOUND"));
         Assert.Contains(lines, line => line.Contains($"In-process SDK (must match this {Process} process): NONE"));
-        Assert.Contains(lines, line => line.Contains("winget install Microsoft.DotNet.SDK.10 --architecture"));
+        Assert.Contains(lines, line => line.Contains("winget install Microsoft.DotNet.SDK.11 --architecture"));
         // Nothing is installed, so there is no list to print - the shape issue #21's follow-up had.
         Assert.DoesNotContain(lines, line => line.Contains("Installed .NET SDK roots:"));
     }
