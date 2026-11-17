@@ -9,8 +9,10 @@
     <OpenDevelopHostManifest>$(OpenDevelopHostBin)OpenDevelop.host-assemblies.txt</OpenDevelopHostManifest>
     <OpenDevelopHostPublishManifest>$(TestRoot)OpenDevelop.host-publish-files.txt</OpenDevelopHostPublishManifest>
     <!-- The early shared-host filter is also used by ordinary development builds. -->
-    <OpenDevelopDistributionBuild>false</OpenDevelopDistributionBuild>
+    <OpenDevelopDistributionBuild Condition="'$(OpenDevelopDistributionBuild)' == ''">false</OpenDevelopDistributionBuild>
     <OpenDevelopDistributionRidFamily>osx</OpenDevelopDistributionRidFamily>
+    <OpenDevelopAddinReleaseVersion Condition="'$(OpenDevelopAddinReleaseVersion)' == ''">1.0</OpenDevelopAddinReleaseVersion>
+    <OpenDevelopAddinPackageDir>$(TestRoot)package/</OpenDevelopAddinPackageDir>
   </PropertyGroup>
   <ItemGroup>
     <OpenDevelopAddinManifest Include="$(MSBuildThisFileDirectory)Sample.addin" />
@@ -81,5 +83,26 @@
     <Error Condition="$(StartArguments.Contains('&quot;/&quot;')) or $(StartArguments.Contains('\&quot;'))" Text="A StartArguments directory value has a trailing separator before its closing quote, which SplashScreenForm mangles into a stray backslash ($(StartArguments))." />
 
     <Message Importance="high" Text="OpenDevelop Addin SDK deployment test passed." />
+  </Target>
+  <!-- PackOdAddin runs Build first (the test's Build above), then zips the trimmed output. -->
+  <Target Name="AssertPackage" AfterTargets="PackOdAddin">
+    <PropertyGroup>
+      <_PackagePath>$(OpenDevelopAddinPackageDir)$(MSBuildProjectName).odaddin</_PackagePath>
+      <_PackageUnpacked>$(TestRoot)unpacked/</_PackageUnpacked>
+    </PropertyGroup>
+    <Error Condition="!Exists('$(_PackagePath)')" Text="PackOdAddin did not produce the .odaddin." />
+    <RemoveDir Directories="$(_PackageUnpacked)" />
+    <Unzip SourceFiles="$(_PackagePath)" DestinationFolder="$(_PackageUnpacked)" />
+    <!-- The package is the trimmed, pruned output folder: manifest at the root, add-in-private files
+         kept, host-provided / reference / foreign-runtime files absent. -->
+    <Error Condition="!Exists('$(_PackageUnpacked)Sample.addin')" Text="The .odaddin has no Sample.addin at its root." />
+    <Error Condition="!Exists('$(_PackageUnpacked)Addin.Private.dll')" Text="The .odaddin lost the add-in-private DLL." />
+    <Error Condition="!Exists('$(_PackageUnpacked)Layout.xml')" Text="The .odaddin lost the runtime XML layout." />
+    <Error Condition="!Exists('$(_PackageUnpacked)runtimes/osx/native.dylib')" Text="The .odaddin lost the current-platform runtime asset." />
+    <Error Condition="Exists('$(_PackageUnpacked)Host.Shared.dll')" Text="The .odaddin contains a host-provided DLL." />
+    <Error Condition="Exists('$(_PackageUnpacked)Addin.Private.xml')" Text="The .odaddin contains assembly XML documentation." />
+    <Error Condition="Exists('$(_PackageUnpacked)ref/Reference.dll')" Text="The .odaddin contains a reference assembly." />
+    <Error Condition="Exists('$(_PackageUnpacked)runtimes/win-x64/native.dll')" Text="The .odaddin contains a foreign-platform runtime asset." />
+    <Message Importance="high" Text="OpenDevelop Addin SDK .odaddin packaging test passed." />
   </Target>
 </Project>

@@ -138,6 +138,38 @@
     <Delete Files="@(_OpenDevelopRedundantAssembly)" />
     <Message Importance="normal" Text="OpenDevelop Addin SDK: removed @(_OpenDevelopRedundantAssembly->Count()) host-provided assemblies from $(OutputPath)." Condition="@(_OpenDevelopRedundantAssembly->Count()) &gt; 0" />
   </Target>
+  <!-- Release packaging: dotnet build -t:PackOdAddin -p:OpenDevelopAddinReleaseVersion=1.2.3
+       Produces <name>.odaddin, a zip of the trimmed output folder (see doc/technotes/addin-github-releases.md).
+       The version is the release tag without its leading "v"; the package is refused unless the
+       manifest's literal Identity version equals it, so a tag and its package cannot disagree. -->
+  <PropertyGroup>
+    <OpenDevelopAddinPackageName Condition="'$(OpenDevelopAddinPackageName)' == ''">$(MSBuildProjectName)</OpenDevelopAddinPackageName>
+    <OpenDevelopAddinPackageDir Condition="'$(OpenDevelopAddinPackageDir)' == ''">$(MSBuildProjectDirectory)/bin/odaddin/</OpenDevelopAddinPackageDir>
+  </PropertyGroup>
+  <Target Name="PackOdAddin" DependsOnTargets="Build" Condition="'$(OpenDevelopAddin)' == 'true'">
+    <Error Condition="'$(OpenDevelopAddinKind)' != 'InProcess'" Text="PackOdAddin packages an InProcess add-in; OpenDevelopAddinKind is '$(OpenDevelopAddinKind)'." />
+    <Error Condition="'$(OpenDevelopDistributionBuild)' != 'true'" Text="A .odaddin must be built as a distribution so ref/ assemblies, XML documentation and foreign-platform runtimes are pruned: pass -p:OpenDevelopDistributionBuild=true (and -p:OpenDevelopDistributionRidFamily=osx|win, or OpenDevelopDistributionRuntimeIdentifier=linux-x64|linux-arm64, to choose the native runtimes to keep)." />
+    <Error Condition="'$(OpenDevelopAddinReleaseVersion)' == ''" Text="Set OpenDevelopAddinReleaseVersion to the release version (the tag without the leading 'v'), e.g. -p:OpenDevelopAddinReleaseVersion=1.2.3." />
+    <Error Condition="'$(RuntimeIdentifier)' != '' And '$(OpenDevelopAllowRidSpecificAddin)' != 'true'" Text="A .odaddin must be AnyCPU, but this build has RuntimeIdentifier '$(RuntimeIdentifier)'. See 'Architecture: addins are AnyCPU' in doc/technotes/addin-sdk.md." />
+    <ItemGroup>
+      <_OdAddinManifestInOutput Include="$(OutputPath)*.addin" />
+    </ItemGroup>
+    <Error Condition="'@(_OdAddinManifestInOutput->Count())' != '1'" Text="A .odaddin needs exactly one .addin manifest at the root of '$(OutputPath)', found @(_OdAddinManifestInOutput->Count())." />
+    <XmlPeek XmlInputPath="%(_OdAddinManifestInOutput.FullPath)" Query="/AddIn/Manifest/Identity/@version">
+      <Output TaskParameter="Result" PropertyName="_OdAddinIdentityVersion" />
+    </XmlPeek>
+    <Error Condition="'$(_OdAddinIdentityVersion)' == '' Or $(_OdAddinIdentityVersion.StartsWith('@'))"
+           Text="The manifest's Identity version must be a literal version in a .odaddin (found '$(_OdAddinIdentityVersion)'); '@Assembly.dll' is resolved at load time and cannot be compared with the release tag." />
+    <Error Condition="'$(_OdAddinIdentityVersion)' != '$(OpenDevelopAddinReleaseVersion)'"
+           Text="The manifest's Identity version '$(_OdAddinIdentityVersion)' does not equal the release version '$(OpenDevelopAddinReleaseVersion)'." />
+    <PropertyGroup>
+      <_OdAddinPackagePath>$(OpenDevelopAddinPackageDir)$(OpenDevelopAddinPackageName).odaddin</_OdAddinPackagePath>
+    </PropertyGroup>
+    <MakeDir Directories="$(OpenDevelopAddinPackageDir)" />
+    <Delete Files="$(_OdAddinPackagePath)" />
+    <ZipDirectory SourceDirectory="$(OutputPath)" DestinationFile="$(_OdAddinPackagePath)" />
+    <Message Importance="high" Text="OpenDevelop Addin SDK: packaged $(_OdAddinPackagePath)" />
+  </Target>
   <Target Name="OpenDevelopRestorePortableWpfHostRuntime"
           AfterTargets="Build"
           BeforeTargets="OpenDevelopPruneAddinDeploymentAssets;DeployToAddIns"
