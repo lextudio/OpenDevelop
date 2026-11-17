@@ -2,9 +2,7 @@
 
 > **Historical implementation record.** The canonical architecture is now
 > `language-services.md`; C#/VB ownership constraints are in `csharp-vb-binding.md`. This file
-> records the original VB enablement through `RoslynWorkspaceHelper`. Its earlier description of
-> `CSharpVBLanguageService` as a precedent did not mean that service was wired into the live app at
-> the time. Where this document conflicts with either canonical document, those documents win.
+> records the original VB enablement through `RoslynWorkspaceHelper`. Where this document conflicts with either canonical document, those documents win.
 
 > **Later migration update:** `IParserService` is now registered as
 > `LanguageServiceParserAdapter`, so statements below saying project-owned files still route through
@@ -26,33 +24,19 @@ This is good news for the plan: there is no legacy VB language-service code to m
 from — this is pure additive work, modeled directly on the C# Roslyn bridge that already exists and
 already works.
 
-## Precedent: UnoDevelop already did this, for both languages, in one implementation
+## Design: one language-parameterized implementation
 
-`/Users/lextm/uno-tools/UnoDevelop/src/Main/Base/Src/LanguageServices/Roslyn/CSharpVBLanguageService.cs`
-(see its `externals/OpenDevelop/doc/technotes/language-services.md`) backs **both** `.cs` and `.vb` through a single
-`AdhocWorkspace(MefHostServices.DefaultHost)`, branching purely on file extension:
-
-```csharp
-// language selection
-Path.GetExtension(fileName).Equals(".vb", StringComparison.OrdinalIgnoreCase)
-    ? LanguageNames.VisualBasic
-    : LanguageNames.CSharp;
-
-// per-language compilation/parse options
-if (language == LanguageNames.VisualBasic)
-    return new Microsoft.CodeAnalysis.VisualBasic.VisualBasicCompilationOptions(OutputKind.DynamicallyLinkedLibrary);
-...
-if (language == LanguageNames.VisualBasic)
-    return Microsoft.CodeAnalysis.VisualBasic.VisualBasicParseOptions.Default;
-```
+A single `AdhocWorkspace(MefHostServices.DefaultHost)` can back **both** `.cs` and `.vb`, branching
+purely on file extension (`LanguageNames.VisualBasic` vs `LanguageNames.CSharp`, with the matching
+`CompilationOptions`/`ParseOptions` per language).
 
 Every feature (completion, quick info, diagnostics, go-to-definition, find-references, format,
 rename, code actions) is implemented once, generically, against `Microsoft.CodeAnalysis` APIs
-(`CompletionService`, `QuickInfoService`, `SymbolFinder`, `Formatter`, `Renamer`) — none of it is
+(`CompletionService`, `QuickInfoService`, `SymbolFinder`, `Formatter`, `Renamer`) - none of it is
 C#-specific, so VB gets all of it "for free" through the same code paths, the same way real Visual
-Studio's Roslyn workspace hosts both languages side by side. This is the template to copy — not a
+Studio's Roslyn workspace hosts both languages side by side. This is the template to follow - not a
 symmetrical "build a VB analog of every C# file," but "generalize the existing C# infrastructure to
-be language-parameterized, the way UnoDevelop already proved works."
+be language-parameterized."
 
 ## What NOT to do
 
@@ -120,8 +104,7 @@ route through the legacy `CompilableProject`/`MSBuildBasedProject` machinery VB 
    `ProjectDisplayItems.IsSupportedProjectItemPath` (`Src/Services/ProjectDisplayItems.cs`) - the
    extension allowlist gating which evaluated MSBuild items become tree nodes for SDK-style projects
    - was a hardcoded C#-only list (`.cs`, `.xaml`, `.csproj`, `.props`, `.targets`, `.json`, `.md`,
-   `.txt`, `.resx`, `.xml`), verbatim from its stated origin (UnoDevelop's own C#-only
-   `UnoProjectService.cs`, see the file's header comment). `.vb`/`.fs`/`.vbproj`/`.fsproj` were
+   `.txt`, `.resx`, `.xml`), a C#-only list copied from an earlier project service. `.vb`/`.fs`/`.vbproj`/`.fsproj` were
    simply never added, so their `Compile` items always failed the extension check and got silently
    dropped, even though `GetEvaluatedProjectDisplayItems` itself was already fully language-neutral.
    **Fix**: added `.vb`/`.fs`/`.vbproj`/`.fsproj` to the list. Also fixed the `od.solution-tree`
@@ -177,7 +160,7 @@ equivalent — confirm exact call site before editing). Needs:
   `LanguageNames.CSharp`), used when constructing each project's `ProjectInfo` and when deciding
   which documents belong to which Roslyn project — **but note**: OpenDevelop's `IProject` is
   per-`.csproj`/`.vbproj`, one language per project already (unlike a hypothetical mixed-language
-  project), so this is actually simpler than UnoDevelop's per-file branching: the project's own file
+  project), so no per-file branching is needed: the project's own file
   extension/`.vbproj` vs `.csproj` type already tells you the language for the *whole* project. Only
   need to pick `VisualBasicCompilationOptions`/`VisualBasicParseOptions.Default` vs. the C#
   equivalents once per project, not per file.
@@ -243,8 +226,7 @@ actually broken before touching it):
   (per `csharp-roslyn.md` Phase 0's bug #2) — check what `VBProjectBinding`'s language binding
   currently returns for `FormattingStrategy` and whether it needs a VB-aware implementation or can
   reuse `Microsoft.CodeAnalysis.VisualBasic`'s own `Formatter` (already available once Phase 0/2 pull
-  in `VisualBasicCompilationOptions`/completion, since `Formatter.FormatAsync` is used elsewhere in
-  UnoDevelop's `CSharpVBLanguageService` generically).
+  in `VisualBasicCompilationOptions`/completion, since `Formatter.FormatAsync` is generic across languages).
 
 ### Non-goals (mirroring `csharp-roslyn.md`'s own non-goals, VB-specific notes)
 

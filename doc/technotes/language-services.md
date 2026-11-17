@@ -10,7 +10,7 @@ implementations of the same IDE contract; editor features must not select a back
 Language-specific documents may constrain registration and lifecycle, but may not introduce a
 parallel UI-facing feature API.
 
-OpenDevelop and UnoDevelop should share language-service capabilities through IDE-level contracts, not by letting UI code talk directly to Roslyn/LSP or by reviving the old SharpDevelop parser stack.
+OpenDevelop exposes language-service capabilities through IDE-level contracts, not by letting UI code talk directly to Roslyn/LSP or by reviving the old SharpDevelop parser stack.
 
 The important separation is:
 
@@ -22,7 +22,7 @@ The important separation is:
 
 ### 1. UI Host Layer
 
-The UI host is either WPF OpenDevelop or UnoDevelop. This layer owns editor controls, pads, commands, menus, tooltips, navigation UI, and host-specific threading or windowing behavior.
+The UI host is WPF OpenDevelop. This layer owns editor controls, pads, commands, menus, tooltips, navigation UI, and host-specific threading or windowing behavior.
 
 It should not directly depend on Roslyn or LSP objects. It also should not use old parser implementation details such as `IParser`, `ParserDescriptor`, `ParserServiceEntry`, or `AssemblyParserService`.
 
@@ -30,7 +30,7 @@ Host code should call shared IDE-level contracts and render the returned DTOs.
 
 ### 2. IDE Semantic Service Layer
 
-This is the shared compatibility and product contract layer. It lives in OpenDevelop Base and is linked by UnoDevelop.
+This is the shared compatibility and product contract layer. It lives in OpenDevelop Base.
 
 Canonical APIs include:
 
@@ -149,7 +149,7 @@ The old `SharpDevelop/Parser` stack depends on NRefactory-era concepts:
 - `CecilLoader`
 - serialized project-content caches
 
-That stack is not the desired common implementation for modern OpenDevelop/UnoDevelop. `AssemblyParserService` especially pulls toward old Cecil/NRefactory assembly loading, while the current codebase already has Roslyn and LSP language services.
+That stack is not the desired common implementation for modern OpenDevelop. `AssemblyParserService` especially pulls toward old Cecil/NRefactory assembly loading, while the current codebase already has Roslyn and LSP language services.
 
 When a legacy caller still requires `IParserService`, adapt it to the modern language-service layer instead of linking the old parser backend.
 
@@ -161,7 +161,6 @@ Prefer these moves:
 - Document text changes use `ILanguageService.UpsertDocumentAsync` or `OnTextChanged`.
 - New semantic operations are added to `ILanguageService` as DTO-based APIs.
 - Old `IParserService` calls are kept working through the adapter until the caller is migrated.
-- Shared files live in OpenDevelop and are linked by UnoDevelop.
 
 Avoid these moves:
 
@@ -234,10 +233,9 @@ The desired steady state is:
 - `ILanguageService` is the primary language feature API.
 - `LanguageServiceRegistry` selects Roslyn, LSP, or NoOp by file type.
 - `IParserService` is a compatibility adapter over `ILanguageService`.
-- `ProjectContentContainer` remains shared with OpenDevelop.
 - UI hosts remain thin and host-specific.
 
-This lets WPF OpenDevelop and UnoDevelop share IDE semantics while keeping backend implementation choices replaceable.
+This keeps IDE semantics in one layer while keeping backend implementation choices replaceable.
 
 ## Running the Roslyn Backend Out of Process
 

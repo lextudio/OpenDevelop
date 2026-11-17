@@ -1225,8 +1225,8 @@ Exact directories may differ, but AddIn ownership should remain visible in the p
   - `LanguageOpenLensAnchorProvider` now populates `OpenLensAnchor.SymbolKey` (was always `null`
     before) as `"Type.Member"` - not namespace-qualified, so this and the coverage lens both accept
     the same cross-file name-collision tradeoff doc §17.2 already accepts for reference counts.
-  - **Not done**: Debug variant of the click action (`TestExecutionOptions.UseDebugger = true`,
-    `#if !HAS_UNO`-gated) - only Run is wired up; no automated test (same "no modern test project to
+  - **Not done**: Debug variant of the click action (`TestExecutionOptions.UseDebugger = true`)
+    - only Run is wired up; no automated test (same "no modern test project to
     attach it to" situation as the coverage lens).
 - Git history lens: done. `GitOpenLensProvider`
   (`src/AddIns/VersionControl/GitAddIn/Src/GitOpenLensProvider.cs`) shows "Author, N days ago" /

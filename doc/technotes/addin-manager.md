@@ -1,6 +1,6 @@
 # AddIn Manager
 
-UnoDevelop uses SharpDevelop's `ICSharpCode.Core` AddIn system — a modular plugin architecture
+OpenDevelop uses SharpDevelop's `ICSharpCode.Core` AddIn system — a modular plugin architecture
 based on XML addin descriptors. UI elements, services, pads, menu items, toolbars, commands, and
 option panels are all declared declaratively in `.addin` files and composed at runtime via the
 `AddInTree`.
@@ -44,7 +44,7 @@ The `assembly` attribute in `<Import>` follows these conventions:
 
 | Syntax | Meaning |
 |---|---|
-| `:AssemblyName` | Load from any assembly named `AssemblyName` already in the app domain. Usually `:UnoDevelop` for all code in `SharpDevelop.csproj`. |
+| `:AssemblyName` | Load from any assembly named `AssemblyName` already in the app domain. Use `:ICSharpCode.SharpDevelop` for code in the Base project (`src/Main/Base`) and `:OpenDevelop` for code in the shell (`SharpDevelop.csproj`). |
 | `AssemblyName.dll` | Load from the file `AssemblyName.dll` in the addin directory. |
 
 ### The Path System
@@ -94,14 +94,6 @@ registered in `ICSharpCode.Core`:
 | `FileFilter` | `<FileFilter id="..." ... />` | File filter |
 | `OptionPanel` | `<OptionPanel id="..." label="..." class="..." />` | `IOptionPanelDescriptor` |
 
-UnoDevelop also registers several custom doozers in `ServiceBootstrapper.Initialize()`:
-
-| Doozer Name | Class | Purpose |
-|---|---|---|
-| `Pad` | `ICSharpCode.SharpDevelop.PadDoozer` | Wraps pad instances in `UnoPadContent` |
-| `PadMenu` | `ICSharpCode.SharpDevelop.PadMenuDoozer` | Creates `PadMenuDescriptor` for the View menu |
-| `OptionPanel` | `UnoDevelop.OptionPanels.OptionPanelDoozer` | Creates `DefaultOptionPanelDescriptor` for the Options dialog |
-
 ### Condition Evaluators
 
 Conditions gate whether items are shown, disabled, or excluded at runtime.
@@ -125,16 +117,6 @@ Built-in evaluators from `ICSharpCode.Core`:
 | `Compare` | `CompareConditionEvaluator` |
 | `Ownerstate` | `OwnerStateConditionEvaluator` |
 
-UnoDevelop-specific evaluators (declared in `.addin` `<Runtime>` blocks):
-
-| Name | Class | Checks |
-|---|---|---|
-| `SolutionOpen` | `UnoDevelop.Conditions.SolutionOpenConditionEvaluator` | A solution is loaded |
-| `ExecutionActive` | `UnoDevelop.Services.ExecutionActiveConditionEvaluator` | A process is running |
-| `Debugging` | `UnoDevelop.Services.DebuggingConditionEvaluator` | Debugger is attached |
-| `Paused` | `UnoDevelop.Services.PausedConditionEvaluator` | Debugger is in break mode |
-| `TestsRunning` | `UnoDevelop.Services.TestsRunningConditionEvaluator` | Test runner is active |
-
 SharpDevelop evaluators (from `ICSharpCode.SharpDevelop.addin`):
 
 | Name | Checks |
@@ -149,51 +131,19 @@ SharpDevelop evaluators (from `ICSharpCode.SharpDevelop.addin`):
 | `ProjectActive` | Specific project language is active |
 | `IsTextSelected` | Text is selected in editor |
 
-### `type` Attribute on MenuItem / ToolbarItem
-
-Controls the visual appearance:
-
-| `type` | MenuItem | ToolbarItem |
-|---|---|---|
-| (default) / `Command` / `Item` | Clickable `MenuFlyoutItem` | Clickable `Button` |
-| `Separator` | `MenuFlyoutSeparator` | Separator bar |
-| `Menu` | Submenu (`MenuFlyoutSubItem`) | — |
-| `CheckBox` | — | Toggle button |
-| `ComboBox` | — | Combo box |
-| `DropDownButton` | — | Drop-down button |
-| `Builder` | Handled by `IUnoAddInMenuBarBuilder` | Handled by `IUnoAddInToolbarBuilder` |
-
 ---
 
 ## Registration & Loading Flow
-
-### Order of Initialization
-
-```
-App..ctor()
-  └─ ServiceBootstrapper.Initialize()
-       ├─ Create SharpDevelopServiceContainer
-       ├─ Register core services (IPropertyService, ILoggingService, etc.)
-       ├─ Register Uno services (IProjectService, IStatusBarService, etc.)
-       ├─ Add custom doozers (Pad, PadMenu, OptionPanel)
-       ├─ Register IAddInTree service
-       ├─ Set ServiceSingleton.ServiceProvider = container
-       ├─ Register remaining services (IDisplayBindingService, IEditorControlService, etc.)
-       └─ LoadBuiltInAddIns()
-            ├─ Collect .addin files from output/ and source/ AddIns directories
-            ├─ addInTree.Load(files) — parse XML, register paths
-            └─ addInTree.BuildItems("/SharpDevelop/Services") — activate ServiceDoozer
-```
 
 ### How Path Items Are Built
 
 ```csharp
 // Static API facade
-AddInTree.BuildItems<MenuItemDescriptor>("/UnoDevelop/MainMenu/File", owner);
+AddInTree.BuildItems<MenuItemDescriptor>("/SharpDevelop/Workbench/MainMenu", owner);
 
 // Internal flow:
-addInTree.GetTreeNode("/UnoDevelop/MainMenu/File")
-  → walks rootNode.ChildNodes["UnoDevelop"]→["MainMenu"]→["File"]
+addInTree.GetTreeNode("/SharpDevelop/Workbench/MainMenu")
+  → walks rootNode.ChildNodes["SharpDevelop"]→["Workbench"]→["MainMenu"]
   → returns AddInTreeNode
 
 node.BuildChildItems<MenuItemDescriptor>(parameter)
@@ -210,8 +160,8 @@ node.BuildChildItems<MenuItemDescriptor>(parameter)
 
 ```xml
 <Path name="/SharpDevelop/Services">
-  <Service id="UnoDevelop.Services.IUnoSolutionExplorerController"
-           class="UnoDevelop.Services.UnoSolutionExplorerController" />
+  <Service id="Namespace.IMyService"
+           class="Namespace.MyService" />
 </Path>
 ```
 
@@ -223,44 +173,39 @@ This allows external addins to contribute services without modifying the bootstr
 
 ### Adding a Menu Item
 
-1. Open the relevant `.addin` file (e.g. `UnoDevelop.Shell.addin` for main menu items).
+1. Open the relevant `.addin` file (e.g. `ICSharpCode.SharpDevelop.addin` for main menu items).
 2. Add a `<MenuItem>` to the appropriate path:
 
    ```xml
-   <Path name="/UnoDevelop/MainMenu/File">
+   <Path name="/SharpDevelop/Workbench/MainMenu">
      <MenuItem id="MyCommand" label="My Command"
-               class="UnoDevelop.Commands.MyCommandShellCommand" />
+               class="Namespace.MyCommand" />
    </Path>
    ```
 
-3. Implement the command class in the `UnoDevelop.Commands` namespace implementing `ICommand`.
+3. Implement the command class implementing `ICommand`.
 
 ### Adding a Toolbar Button
 
 ```xml
-<Path name="/UnoDevelop/Workbench/ToolBar/Standard">
+<Path name="/SharpDevelop/Workbench/ToolBar/Standard">
   <ToolbarItem id="MyButton" tooltip="My Tooltip"
                icon="MyIcon_16x"
-               class="UnoDevelop.Commands.MyCommandShellCommand" />
+               class="Namespace.MyCommand" />
 </Path>
 ```
-
-Icons are resolved from `ms-appx:///Icons/{name}.svg`.
 
 ### Adding a Pad
 
 ```xml
 <Path name="/SharpDevelop/Workbench/Pads">
   <Pad id="MyPad"
-       class="UnoDevelop.Workbench.MyPad"
+       class="Namespace.MyPad"
        title="My Pad"
        category="Main"
        defaultPosition="Left" />
 </Path>
 ```
-
-The pad class must be a `Microsoft.UI.Xaml.FrameworkElement`. It's wrapped in `UnoPadContent`
-by `PadDoozer`.
 
 ### Adding an Option Panel
 
@@ -268,7 +213,7 @@ by `PadDoozer`.
 <Path name="/SharpDevelop/Dialogs/OptionsDialog">
   <OptionPanel id="MyCategory" label="My Category">
     <OptionPanel id="MyPanel" label="My Panel"
-                 class="UnoDevelop.OptionPanels.MyPanelOptions" />
+                 class="Namespace.MyPanelOptions" />
   </OptionPanel>
 </Path>
 ```
@@ -277,15 +222,6 @@ The panel class inherits from `OptionPanel` (which inherits `UserControl`) and i
 `IOptionPanel`.
 
 ### Adding a New Service
-
-**Via code** (preferred for core services):
-
-```csharp
-// In ServiceBootstrapper.Initialize():
-container.AddService(typeof(IMyService), new MyService());
-```
-
-**Via addin** (for addin-provided services):
 
 ```xml
 <Path name="/SharpDevelop/Services">
@@ -300,9 +236,9 @@ Register in the addin's `<Runtime>` block:
 
 ```xml
 <Runtime>
-  <Import assembly=":UnoDevelop">
+  <Import assembly=":AssemblyName">
     <ConditionEvaluator name="MyCondition"
-                        class="UnoDevelop.Services.MyConditionEvaluator" />
+                        class="Namespace.MyConditionEvaluator" />
   </Import>
 </Runtime>
 ```
@@ -334,9 +270,6 @@ Then use it in any `.addin` path:
 
 | File | Registers |
 |---|---|
-| `UnoDevelop.Shell.addin` | Main menu items (File, Edit, Build, Debug, Analysis, Tools, Window, Help), main toolbar, Options dialog paths |
-| `UnoDevelop.Pads.addin` | Pads (Solution Explorer, Properties, Locals, Call Stack, Watch, Immediate, Threads, Modules, Tests, Errors, Output), tests pad toolbar, View menu |
-| `UnoDevelop.Explorer.addin` | Solution Explorer controller service, display bindings, context menus (Solution/Project/Folder/File/Reference nodes), project browser toolbar, Explorer submenu, `/SharpDevelop/Workbench/MainMenu` |
 | `ICSharpCode.SharpDevelop.addin` (external) | ~30 services, ~30 condition evaluators, ~15 doozers, main menu structure, toolbars, property panels |
 
 ---
@@ -347,23 +280,13 @@ Then use it in any `.addin` path:
 
 | Path | Consumed By |
 |---|---|
-| `/UnoDevelop/MainMenu/File` | `MainPage.xaml.cs:PopulateAddInMenu(FileMenu, ...)` |
-| `/UnoDevelop/MainMenu/Edit` | `PopulateAddInMenu(EditMenu, ...)` |
-| `/UnoDevelop/MainMenu/Build` | `PopulateAddInMenu(BuildMenu, ...)` |
-| `/UnoDevelop/MainMenu/Debug` | `PopulateAddInMenu(DebugMenu, ...)` |
-| `/UnoDevelop/MainMenu/Search` | `PopulateAddInMenu(SearchMenu, ...)` |
-| `/UnoDevelop/MainMenu/Analysis` | `PopulateAddInMenu(AnalysisMenu, ...)` |
-| `/UnoDevelop/MainMenu/Tools` | `PopulateAddInMenu(ToolsMenu, ...)` |
-| `/UnoDevelop/MainMenu/Window` | `PopulateAddInMenu(WindowMenu, ...)` |
-| `/UnoDevelop/MainMenu/Help` | `PopulateAddInMenu(HelpMenu, ...)` |
-| `/SharpDevelop/Workbench/MainMenu` | `UnoAddInMenuBarBuilder.PopulateMenuBar()` (alternative full menu) |
+| `/SharpDevelop/Workbench/MainMenu` | Main menu bar builder |
 | `/SharpDevelop/Workbench/ViewMenu` | View menu builder (pad visibility toggles) |
 
 ### Toolbar Paths
 
 | Path | Consumed By |
 |---|---|
-| `/UnoDevelop/Workbench/ToolBar/Standard` | `UnoAddInToolbarBuilder.PopulateToolbar(MainToolbar, ...)` |
 | `/SharpDevelop/Pads/ProjectBrowser/ToolBar/Standard` | Solution explorer toolbar |
 | `/SharpDevelop/Pads/TestsPad/Toolbar/Standard` | Tests pad toolbar |
 
@@ -388,7 +311,7 @@ Then use it in any `.addin` path:
 |---|---|
 | `/SharpDevelop/Services` | `ServiceDozer` for lazy service registration |
 | `/SharpDevelop/Dialogs/OptionsDialog` | `OptionsDialog` flat panel tree |
-| `/SharpDevelop/Workbench/Pads` | Pad loading in `MainPage.xaml.cs` |
+| `/SharpDevelop/Workbench/Pads` | Pad loading |
 | `/SharpDevelop/Workbench/DisplayBindings` | `DisplayBindingService` |
 
 ---
@@ -424,6 +347,5 @@ The addin system is layered:
 - **`AddIn`** — parsed representation of an entire `.addin` file
 - **`IDoozer`** / **`IConditionEvaluator`** — extension points for custom factories and conditions
 - **`Condition`** — parsed `<Condition>` element with name, action, and properties
-- **`MenuItemDescriptor`** / **`ToolbarItemDescriptor`** — data objects produced by doozers, consumed by Uno bar builders
+- **`MenuItemDescriptor`** / **`ToolbarItemDescriptor`** — data objects produced by doozers, consumed by the bar builders
 - **`PadDescriptor`** — data object produced by `PadDoozer`, consumed by the workbench
-- **`DefaultOptionPanelDescriptor`** — produced by `OptionPanelDoozer`, consumed by `OptionsDialog`

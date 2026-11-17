@@ -1,34 +1,25 @@
 # NuGet Package Management — Status
 
 **Status update (2026-07-28): the feed search is now one shared engine; only the result projection
-is per-host.** `Src/NuGetPackageSearchService.cs` here and UnoDevelop's own
-`NuGetPackageSearchService.cs` both wrapped the same `Repository.Factory.GetCoreV3` +
-`PackageSearchResource.SearchAsync` call (this file's header comment even said "same approach as
-UnoDevelop's ... the precedent this was modeled on"), so that call - repository construction,
+stays in this AddIn.** `Src/NuGetPackageSearchService.cs` here wrapped a `Repository.Factory.GetCoreV3` +
+`PackageSearchResource.SearchAsync` call, and that call - repository construction,
 resource resolution, `SearchFilter`, multi-source iteration, dedup-by-id, per-source error
 tolerance - moved into the shared `ICSharpCode.SharpDevelop.NuGet.NuGetPackageSearchEngine`
 (`Main/Base/Project/Src/NuGet/`).
 
-What deliberately stayed split is the **projection**, because the two callers genuinely need
-different result shapes and that is not a cosmetic difference:
+What deliberately stayed in this AddIn is the **projection**:
 
 - This AddIn's `AvailablePackagesViewModel.GetAllPackages` needs each result adapted to the legacy
   `NuGet.Core` `IPackage` interface (it does `.Cast<IPackage>()` immediately after) so the rest of
   the un-ported pipeline (`PackagesViewModel`/`PackageViewModel`/`PackageFromRepository`) keeps
   working - hence `Src/NuGetSearchResultPackage.cs` and the `PackageDependencySet` conversion stay
   here, unchanged.
-- UnoDevelop's pad wants a plain, `IPackage`-free `NuGetSearchResult` record, and also surfaces
-  *which source* each hit came from - information `IPackageSearchMetadata` doesn't carry, so its
-  wrapper drives the engine one source at a time to keep provenance.
 
-So the engine returns raw `IPackageSearchMetadata` and each host projects it. Both wrappers keep
-their original public signatures, so no call site changed. The one behavioral knob that differed is
-now an explicit parameter rather than something smoothed over: `throwOnSourceError` defaults to
-false for the multi-source caller (one bad feed shouldn't blank out results from the others) and
-true for the single-source one (nothing left to fall back to, so the UI should show the reason).
+So the engine returns raw `IPackageSearchMetadata` and this AddIn projects it. The wrapper keeps
+its original public signature, so no call site changed.
 
 **First attempt at this was wrong, and the way it went wrong is worth recording.** The initial pass
-tried to make one method with one return type serve both callers, deleting this AddIn's files
+tried to make one method with one return type serve every caller, deleting this AddIn's files
 outright. That broke `GetAllPackages` (found only afterwards - it calls through a `var`, so a
 literal grep for the type name missed the call site). Worse, two `dotnet build` runs on
 `PackageManagement.csproj` reported "0 errors" and were taken as passing, when in fact neither run
@@ -47,8 +38,8 @@ built in this environment at all:
    `IPackage`), real `NuGet.Protocol`/`Packaging`/`Versioning` 6.13.2, and the net10.0 reference
    assemblies → **0 errors**. That is a real semantic check of these files, not an absence of
    output from a build that never ran.
-3. OpenDevelop's Base layer (`ICSharpCode.SharpDevelop.csproj`, which now contains the engine) and
-   UnoDevelop's full `UnoDevelop.slnx` both build clean, and UnoDevelop's test suites pass.
+3. OpenDevelop's Base layer (`ICSharpCode.SharpDevelop.csproj`, which now contains the engine)
+   builds clean.
 
 The gap that remains: no end-to-end run of `NuGetAddInTests.SearchAndInstallPackage_UpdatesProjectFile`
 is possible here until `WpfDesign.AddIn`'s missing references are resolved, so this AddIn's search is
@@ -110,8 +101,7 @@ Verified live nuget.org search was actually broken in three layered ways, each m
    (confirmed: not on nuget.org, not vendored in `RequiredLibraries/`). **Fix**: search no longer
    goes through legacy `IPackageRepository.Search(...)` at all. New
    `Src/NuGetPackageSearchService.cs` calls real, current `NuGet.Protocol`
-   (`Repository.Factory.GetCoreV3(source)` → `PackageSearchResource.SearchAsync(...)`, same approach
-   as UnoDevelop's own `NuGetPackageSearchService.cs`), and new `Src/NuGetSearchResultPackage.cs`
+   (`Repository.Factory.GetCoreV3(source)` → `PackageSearchResource.SearchAsync(...)`), and new `Src/NuGetSearchResultPackage.cs`
    adapts each `IPackageSearchMetadata` result back into the legacy `IPackage` shape the rest of the
    pipeline (`PackagesViewModel`/`PackageViewModel`/`PackageFromRepository`) still expects — so only
    `AvailablePackagesViewModel.GetAllPackages` changed, not the whole 124-file legacy-`IPackage`

@@ -232,7 +232,7 @@ subsystems), out of scope for this pass.
 Session update: two of the three items below turned out to be tractable within the existing
 `RoslynWorkspaceHelper` scope and are now done; the third is a genuine architectural limitation
 of OpenDevelop's project model, not something the Roslyn bridge itself can fix. Looked at
-UnoDevelop's vendored MonoDevelop `MonoDevelopWorkspace` for how a full IDE does this - its
+MonoDevelop's `MonoDevelopWorkspace` for how a full IDE does this - its
 incremental-update and P2P-reference handling are the same shape as what's below, just built on
 richer project-system events (`SolutionItemModifiedEventArgs`) than SD's `IProject` exposes.
 

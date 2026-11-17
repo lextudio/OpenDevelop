@@ -189,8 +189,7 @@ the whole manager, not only the source layer, so an adapter would be written and
 - Eleven AddInManager2 ViewModels use NuGet types; `NuGetPackageViewModel` and
   `NuGetAddInsViewModelBase` are built around `IPackage` and package operations.
 
-New model, no NuGet types anywhere (in `src/Main/Base/Project/Src/AddInManager/`, shared with
-UnoDevelop as today):
+New model, no NuGet types anywhere (in `src/Main/Base/Project/Src/AddInManager/`):
 
 - `AddInRelease`: identity, version, tag, asset name and URL, digest, notes, prerelease flag.
 - `IAddInSource` and `GitHubReleaseSource`: list releases of a trusted repository (ETag, cache,
@@ -207,7 +206,7 @@ Steps, each its own reviewed commit:
    test set) and the tag/manifest/digest/host-range checks. Added beside the old code, unused.
 2. **Setup.** Strip NuGet from `AddInSetup` and its interface; install from a downloaded `.odaddin`.
 3. **UI.** New Available and Updates view models and the Options panel "Trusted add-in repositories";
-   `UpdateNotifier` on the new source; same for UnoDevelop's `AddInManagerDialog`.
+   `UpdateNotifier` on the new source.
 4. **Removal.** Delete `NuGetPackageManager`, `PackageRepositories`,
    `UnavailableRemotePackageRepository`, `NuGetPackageViewModel` and friends, the `NuGet.Core` and
    `SharpZipLib` references and the MyGet default.

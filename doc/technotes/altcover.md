@@ -25,8 +25,7 @@ IDE-session-scoped `vstest.console` process** (`VsTestAdapter`/`VsTestRunAdapter
 one-shot process reliably hits that hook on exit; a long-lived host talked to across many requests
 does not, by design.
 
-Fix, following the same architecture already proven in the user's sibling project **UnoDevelop**
-(`/Users/lextm/uno-tools/UnoDevelop/src/Main/UnitTesting/Mtp/`) and in this repo's own
+Fix, following the architecture of this repo's own
 `tests/OpenDevelop.IntegrationTests/AltCover.Mtp.targets`:
 
 1. **Removed** the entire classic-VSTest stack: `VsTest/` folder (`VsTestAdapter`,
@@ -34,7 +33,7 @@ Fix, following the same architecture already proven in the user's sibling projec
    `DiscoveredTests`, `VsTestMethod`, `VsTestClass`, `IVsTestTestProvider`), plus root-level
    `VsTestFramework`/`VsTestProject`/`VsTestRunner`/`VsTestDebugger`, plus the
    `Microsoft.TestPlatform.TranslationLayer`/`Microsoft.TestPlatform.ObjectModel` package refs.
-2. **Added** an MTP server-mode JSON-RPC client ported from UnoDevelop
+2. **Added** an MTP server-mode JSON-RPC client
    (`src/AddIns/Analysis/UnitTesting/Mtp/MtpServerProcess.cs`, `MtpTestNode.cs`,
    `MtpServerCapabilities.cs` - depends only on `StreamJsonRpc` + BCL) plus
    `MtpTestFramework`/`MtpTestProject`/`MtpTestRunner`/`MtpTestDebugger`/`MtpTestTreeBuilder`/
@@ -47,8 +46,7 @@ Fix, following the same architecture already proven in the user's sibling projec
    goes through `ITestService`/`MtpTestRunner` at all for the actual test execution. It now: builds
    the project, runs AltCover `Prepare`, launches the built test apphost **directly as a plain
    one-shot child process** (`Process.Start` + `WaitForExitAsync`, no JSON-RPC, no server mode -
-   mirroring `AltCover.Mtp.targets`'s `<Exec>` step and UnoDevelop's own `CoverletCoverageRunner`,
-   which independently bypasses its own MTP JSON-RPC client for exactly this reason), then runs
+   mirroring `AltCover.Mtp.targets`'s `<Exec>` step), then runs
    `Collect` and promotes the results.
 4. **Migrated the fixture** `tests/fixtures/SampleTestProject/SampleTestProject.csproj` off classic
    VSTest (`Microsoft.NET.Test.Sdk` + `xunit` 2.9 + `xunit.runner.visualstudio`) to `xunit.v3` +

@@ -3,8 +3,7 @@
 How packages are managed in OpenDevelop and what is still missing. The code is the add-in
 `src/AddIns/Misc/PackageManagement` (inherited from SharpDevelop and extended), plus the light-bulb
 pieces in `src/Main/Base/Project/Src/LanguageServices/LanguageServiceContextActions.cs` and
-`src/AddIns/DisplayBindings/AvalonEdit.AddIn/Src/ContextActions/`. Earlier versions of this note
-planned a WinUI port for UnoDevelop; that project is retired and the plan was dropped (see git history).
+`src/AddIns/DisplayBindings/AvalonEdit.AddIn/Src/ContextActions/`.
 
 ## Remaining work
 

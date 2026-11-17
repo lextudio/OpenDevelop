@@ -55,8 +55,7 @@ and MTP host. Result matching uses both TFM and display name, so the same fully-
 `net8.0` and `net10.0` represents two independent executions and cannot update the other slice's
 tree node. Debugging tests is restricted to one TFM per debugger launch.
 
-This follows the multi-TFM experiment in UnoDevelop's `TestService` and `DotNetTestRunner`, adapted
-to OpenDevelop's existing `MtpTestProject`, `TestCollection`, and MTP server model.
+This builds on OpenDevelop's existing `MtpTestProject`, `TestCollection`, and MTP server model.
 
 ## Main implementation points
 

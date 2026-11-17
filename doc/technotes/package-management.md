@@ -1,7 +1,7 @@
 # PackageManagement unification: conflict resolution, license acceptance, package console
 
-Follow-up to `nuget.md` and `nuget-manager.md`: closes the three gaps that doc/opendevelop-sync.md's
-`AddIns/Misc/PackageManagement` entry had flagged as still needing parity work.
+Follow-up to `nuget.md` and `nuget-manager.md`: closes three remaining gaps in
+`AddIns/Misc/PackageManagement`.
 
 ## Current Package Manager Console direction (2026-10-28)
 
@@ -38,8 +38,7 @@ same project working directory and `OPENDEVELOP_PACKAGE_PROJECT`; projects with 
 one package/version — no transitive walk, and no check against what's already installed.
 
 New: `NuGetPackageConflictResolutionService`
-(`src/Main/Base/Project/Src/NuGet/NuGetPackageConflictResolutionService.cs`, shared, linked into
-UnoDevelop's `ICSharpCode.SharpDevelop.csproj` under `Upstream\NuGet\`).
+(`src/Main/Base/Project/Src/NuGet/NuGetPackageConflictResolutionService.cs`, shared).
 
 - Roots = the project's current direct `PackageReference`s (read via
   `SdkStylePackageReferenceEditor.GetPackageReferences()`) plus the package being installed/updated.
@@ -81,16 +80,6 @@ Accept/Decline buttons, default button = Decline — awaited before `InstallAsyn
 proceed. Declining aborts the operation with a status message; nothing is installed/updated without
 an explicit Accept click. `InstalledPackageRow` was extended to carry the update path's license
 flag/URL alongside `LatestVersion` so the update button's gate has the data to show.
-
-**Reuse vs `addin-manager2.md`'s license flow:** not reused directly. That flow (AddInManagerDialog,
-gallery installs) pre-computes which packages in a *batch* need license acceptance and awaits one
-dialog before invoking a synchronous engine event — a shape forced by WinUI not being able to
-`await` a `ContentDialog` from inside a synchronous callback. `ManagePackagesDialog` installs one
-package per user click from an `async void`-free click handler, so there is no synchronous-engine
-constraint to work around: the dialog is awaited directly, inline, before the operation call. Same
-underlying WinUI `ContentDialog` mechanics, independent call site — as the task anticipated, this
-surface needed its own implementation, not a shared helper, because the two flows have genuinely
-different control-flow shapes (batch-precompute vs. one-shot inline).
 
 ## 3. Package-console workflows
 
@@ -155,18 +144,3 @@ when a full port isn't feasible.
 - `dotnet build src/AddIns/Misc/PackageManagement/Project/PackageManagement.csproj -c Debug` →
   **0 errors** (confirms `ManagePackagesDialog.cs`'s license-dialog and console-tab additions
   compile against the WinUI/Uno.Sdk toolchain).
-- `dotnet build src/UnoDevelop.slnx -c Debug` → **0 errors** (full solution reaches the changed
-  files; only pre-existing warnings).
-- `dotnet test src/Tests/UnoDevelop.Core.Tests -c Debug` → 216 passed, 3 failed (219 total).
-  Two of the three failures are the documented pre-existing LSP-tooling failures
-  (`LspLanguageServiceTests.CreateDefault_MapsPythonToPylsp`,
-  `CreateDefault_MapsTypeScriptAndJavaScriptExtensionsToSameCommand`). The third
-  (`UnitTestingCodeCoveragePadIntegrationTests.TestService_DiscoversFixtureTests`) is also
-  pre-existing and unrelated to this work: `git diff` shows that test file already had uncommitted
-  local changes (MTP fixture-name qualification) from earlier, unrelated session work, before this
-  session touched anything — confirmed via `git diff --stat` against a file this session never
-  edited. `UnoNuGetProjectTests` (the existing NuGet test suite) passed unchanged.
-- `UnoDevelop.IntegrationTests` was **not** run this session (time-boxed out — this task's three
-  gaps touch project-level NuGet services and a WinUI dialog, not the DevFlow-agent-driven
-  integration surface those tests exercise; the standalone + solution builds and the Core test
-  suite are the relevant signal here).

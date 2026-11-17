@@ -288,13 +288,10 @@ There are **two supported runtime profiles** (a third, ProGPU, existed until 202
 
 ## Architecture
 
-### Reuse Boundary with UnoDevelop and the retired XAML Studio renderer
+### Reuse Boundary with the retired XAML Studio renderer
 
-UnoDevelop's `src/AddIns/DisplayBindings/XamlDesigner/` is the reference for the IDE wiring:
-native `Microsoft.UI.Xaml` Source/Design secondary views, a Toolbox provider, an Outline provider,
-Properties Pad wiring and integration tests. OpenDevelop reuses that *shell* approach. It does not
-reuse UnoDevelop's renderer: the current Uno and Microsoft WinUI children are OpenDevelop's own
-`DesignHost`/`DesignRpc`, compiled against the project's runtime.
+The current Uno and Microsoft WinUI children are OpenDevelop's own `DesignHost`/`DesignRpc`,
+compiled against the project's runtime.
 
 The renderer that *was* reused is historical: XAML Studio's `XamlRenderService` powered the
 in-process ProGPU profile from 2026-08-13 until 2026-11-09, when `76f51cc6e7` deleted the ProGPU
@@ -302,8 +299,8 @@ host and `XamlStudio.Toolkit.ProGPU` (2,040 lines). The `externals/xamlstudio` s
 on 2026-11-14. Its source, if it is ever needed for reference, is the upstream
 `https://github.com/lextudio/xamlstudio` repository at `d711d64`; nothing in this checkout links it.
 
-UnoDevelop/XAML Studio's UI files could not directly become OpenDevelop WPF visuals: the former's
-control types are `Microsoft.UI.Xaml.*`, while the latter's shell and document views are
+XAML Studio's UI files could not directly become OpenDevelop WPF visuals: their
+control types are `Microsoft.UI.Xaml.*`, while OpenDevelop's shell and document views are
 `System.Windows.*`. The two visual trees must be isolated by an explicit host, similar to how the
 WinForms designer embeds WPF through `WindowsFormsHost` rather than loading WinForms controls as WPF
 controls. That isolation boundary is the part that survives; the XAML Studio code does not.
@@ -628,7 +625,7 @@ be undone.
 
 | Layer | Responsibility | Reusable Source |
 |---|---|---|
-| Document model | XML/XAML nodes, stable IDs, source spans, diagnostics, text edits | AXSG/wxsg and UnoDevelop's UI-free logic |
+| Document model | XML/XAML nodes, stable IDs, source spans, diagnostics, text edits | AXSG/wxsg |
 | Render protocol | Load/Update, viewport, theme, diagnostics, visual-tree snapshot, selection | New; compatible with both in-process and out-of-process implementations |
 | Renderer | Runtime-specific materialization: Uno `XamlReader` + `RenderTargetBitmap`, or the Microsoft WinUI adapter | project runtime for the out-of-process adapters (the ProGPU/XAML Studio renderer was removed) |
 | Runtime host | Explicitly selected ProGPU in-process surface, Uno child, or future Windows App SDK child | `IWinUIXamlRuntimeHost` and optional capability interfaces |

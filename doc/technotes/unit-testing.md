@@ -8,9 +8,7 @@ There is exactly one unit-testing backend in this repo, under
 `MtpTestProject.cs`/`MtpTestRunner.cs`). `ITestFramework.IsTestProject`/`CreateTestProject` are
 registered per-framework through the AddInTree path `/SharpDevelop/UnitTesting/TestFrameworks`, and
 the model is a tree: `ITestSolution` → `ITestProject` → `ITest` (target framework / class / method).
-Both hosts consume it — OpenDevelop's WPF `UnitTestsPad`/`TestTreeView` and UnoDevelop's native
-`TestResultsPad` — and UnoDevelop links the source in via `$(SharpDevelopSourceRoot)` rather than
-keeping a port of its own.
+OpenDevelop's WPF `UnitTestsPad`/`TestTreeView` consume it.
 
 ## Visual Studio-compatible result states
 
@@ -56,8 +54,7 @@ The status meanings and precedence above are defined by Microsoft's
 
 There used to be a second, flat, MTP-only contract (`ICSharpCode.UnitTesting.Simple`:
 `ITestService.GetTests()` returning `IReadOnlyList<TestInfo>`, `RunTestsAsync` keyed by
-fully-qualified name). It began as a UnoDevelop-local fork and was briefly hosted here so both
-hosts could share it. Keeping two `ITestService`-shaped abstractions alive was the wrong end state:
+fully-qualified name). It was a short-lived second contract. Keeping two `ITestService`-shaped abstractions alive was the wrong end state:
 it left the discover→filter→run MTP sequence and the "where is the built test assembly" problem
 implemented twice, in two places that drifted independently.
 
@@ -70,8 +67,8 @@ The classic tree was kept as the single backend because it is a strict superset,
   hard-assumed MTP.
 - `TestCollection` gives composite result roll-up (a failing method colours its class, project and
   the "All Tests" root) for free; a flat list has nowhere to roll up to.
-- Both pads are trees anyway. UnoDevelop's `TestResultsPad` renders a `TreeView`, so the flat
-  contract was being re-expanded into a tree at the UI layer regardless.
+- The pad is a tree anyway, so the flat contract was being re-expanded into a tree at the UI
+  layer regardless.
 
 `Simple/RoslynTestScanner.cs` is the one piece of that namespace that survived, because it isn't an
 alternative backend — it's the fast-discovery mechanism described below, now consumed by
@@ -147,7 +144,7 @@ candidates the line above had just added.
 
 ### Measured benefit
 
-`RoslynTestScannerTests.cs` (`UnoDevelop.Core.Tests`) scans the real xunit/NUnit/MSTest fixture
+`RoslynTestScannerTests.cs` scans the real xunit/NUnit/MSTest fixture
 projects (`Tests/Fixtures/Sample{Xunit,NUnit,}MtpTests`) and asserts both correctness (finds exactly
 the `[Fact]`/`[Test]`/`[TestMethod]`-decorated methods, none of `Calculator.cs`'s un-annotated ones)
 and speed (a 2-file fixture scans in low single-digit milliseconds, asserted under a generous 5s

@@ -704,8 +704,7 @@ Build the replacement in this order:
    the *existing* file-based restore mechanism actually run instead of silently no-op.
 
    **Bug found and fixed while verifying this:** the app's actual `LayoutConfiguration.ConfigDirectory`
-   differs across runs on this machine (`~/Library/Application Support/UnoDevelop/config/...` vs
-   `~/Library/Application Support/ICSharpCode/SharpDevelop5/...` seen in earlier sessions) - a
+   differs across runs on this machine (different folders under `~/Library/Application Support/` seen in earlier sessions) - a
    pre-existing environment quirk, not something this pass changed or needed to fix, but worth
    noting for whoever next debugs "why didn't my saved layout load."
 

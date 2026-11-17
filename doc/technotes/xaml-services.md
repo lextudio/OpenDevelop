@@ -1,6 +1,6 @@
 # XAML Services and Unified Designer Roadmap
 
-This document records OpenDevelop's XAML language services and the current state, target architecture, and implementation order of the three designer backends: WinForms, WPF, and WinUI. UnoDevelop's XAML Designer is an important reference implementation for the WinUI route, but it is not functionality OpenDevelop currently owns.
+This document records OpenDevelop's XAML language services and the current state, target architecture, and implementation order of the three designer backends: WinForms, WPF, and WinUI.
 
 ## End Goal
 
@@ -30,7 +30,7 @@ OpenDevelop should select the correct designer for the same editor workflow base
 
 Moved to [`winforms-designer.md`](winforms-designer.md) (the WinForms designer's dedicated technote).
 
-### Reuse Boundary with UnoDevelop and XAML Studio
+### Reuse Boundary with XAML Studio
 
 Moved to [`winui-designer.md`](winui-designer.md) (the WinUI/Uno designer's dedicated technote).
 
@@ -66,7 +66,7 @@ Moved to [`winui-designer.md`](winui-designer.md).
  model/services    and designer   (Uno or WinUI), isolated
 ```
 
-The framework-neutral contracts should be extracted from the provider patterns UnoDevelop has already validated and placed in the shell/base layer:
+The framework-neutral contracts should be extracted from the designer provider patterns and placed in the shell/base layer:
 
 - `IDesignerProvider`: CanDesign, creating the secondary view, lifecycle, and saving;
 - `IDesignerToolboxProvider`: categories, tool items, and framework-specific insertion payloads;
@@ -97,7 +97,7 @@ Moved to [`winui-designer.md`](winui-designer.md).
 
 | Phase | Content | Completion Criteria | Status |
 |---|---|---|---|
-| 0 | Fix the docs and inventory the three backends | Clear OpenDevelop/UnoDevelop boundaries and known gaps | done |
+| 0 | Fix the docs and inventory the three backends | Clear boundaries and known gaps | done |
 | 1 | WinUI/Uno host spike | Both the WPF compatibility renderer and Uno runtime routes are abandoned; the ProGPU-in-WPF host renders standard controls through the XAML Studio + ProGPU pipeline. Verified end-to-end against `tests/fixtures/WinUIDesignerFixture/Uno/MainPage.xaml` on macOS: detected as Uno, compiled by ProGPU, materialized into a WinUI `FrameworkElement`, rendered offscreen, and presented into the WPF document tab | done (ProGPU path removed 2026-11-09) |
 | 2 | Unified framework detection | `XamlFrameworkDetector` routes in Uno→WinUI→WPF order; unit tests for WPF/WinUI/Uno/Unknown added; the XAML language server is routed from the same result (`XamlDialectRegistry.ResolveLanguageServerFramework`, see [xaml-language-servers.md](xaml-language-servers.md)) | done |
 | 3 | Extract common provider/selection/sync contracts | WPF and WinForms backends wire in through adapters with no feature regression | todo |
@@ -106,7 +106,7 @@ Moved to [`winui-designer.md`](winui-designer.md).
 | 6 | Complete all three designers | Required WinForms out-of-process host, WinForms VB backend with modern Roslyn codegen, and a consistent base experience for WPF/WinUI/Uno | todo |
 | 7 | Advanced WinUI/Uno | Project resources, custom controls, and isolated loading for both profiles; evaluate `x:Bind`/code-behind | backlog |
 
-Phase 3 must not block the Phase 1 spike; but the production WinUI addin must not directly copy the UnoDevelop view without framework detection and document-synchronization contracts.
+Phase 3 must not block the Phase 1 spike; but the production WinUI addin must not skip framework detection and document-synchronization contracts.
 
 ## Test Matrix
 
@@ -123,7 +123,7 @@ Each backend must cover at least:
   [`winforms-designer.md`](winforms-designer.md#out-of-process-host-decision-2026-08-15));
 - Smoke tests on Windows and on each non-Windows platform ProGPU claims to support.
 
-WinUI integration tests may reuse the intent of the UnoDevelop fixture, but the tests must run OpenDevelop's own app and backends; passing UnoDevelop's tests cannot substitute for OpenDevelop acceptance.
+WinUI integration tests must run OpenDevelop's own app and backends.
 
 ## Definition of Done
 

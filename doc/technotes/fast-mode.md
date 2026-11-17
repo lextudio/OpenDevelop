@@ -434,7 +434,7 @@ Designer.Remote edit: 96 s against 86 s; the no-op build stays at 3 s).
 the IDE: every project re-evaluated and re-pushed to the language service, and every document
 closed - with a save prompt for each modified one (`CloseAllSolutionViews(force: false)`), which
 `OD_TEST_MODE` answers by discarding the edits. Now `IProjectService.ReloadProject` re-reads that
-project in place (`MSBuildBasedProject.ReloadFromDisk`, previously compiled only under `HAS_UNO`),
+project in place (`MSBuildBasedProject.ReloadFromDisk`),
 rebuilds its items, refreshes Solution Explorer, and publishes `ProjectReloadedMessageEventArgs`; the
 C# language service pushes just that project, chained behind any solution push. The solution
 reload stays as the fallback: solution files, legacy projects, a failed reload - and an edit that
