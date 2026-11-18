@@ -23,7 +23,7 @@
   ],
   "platformNotes": {
     "macos-arm64": "dist.macos.sh ships an osx-arm64-only payload, so this platform builds for itself and its archive drops the Windows RID trees the package never contains. It splits into 'fast' and 'designer' jobs like Windows and Linux, plus the standalone mobile-ios job. The merged single 'macos' job (commit 66e0c934ed) timed out, so it was split back.",
-    "windows-x64": "Every unit and integration entry is required here since 2026-10-27 (base-tests and xamldom-tests-microsoftwpf were the last unit entries promoted), so a focus run executes only its observe entries here: a few in the fast job and the integration-winui job, whose entries are all observe. Its build also supplies windows-arm64.",
+    "windows-x64": "Every unit and integration entry is required here since 2026-10-27 (base-tests and xamldom-tests-microsoftwpf were the last unit entries promoted), so a focus run executes only its observe entries here: a few in the fast job and the integration-winui and integration-winui-microsoft jobs, whose entries are all observe. Its build also supplies windows-arm64.",
     "windows-arm64": "Runs the native Windows ARM64 Terminal journey against the same unified Windows payload the x64 lane tests: dist.windows.bat ships one package with runtimes/ plus per-RID win-x64/win-arm64 folders and both launchers, so 'buildFrom': 'windows-x64' keeps a single compile for both lanes.",
     "linux-x64": "Enabled on 2026-11-02 with the unit suites (Profiler among them, which profiler.yml once ran on ubuntu-latest) and the workbench and DevFlow journeys, all 'observe'. The IDE entries run under xvfb-run with Mesa's software Vulkan driver (install-linux-prerequisites.sh); promote per the usual two green runs.",
     "linux-arm64": "Same entries and rules as linux-x64, on the native ubuntu-24.04-arm runner: dist.linux.sh ships one archive per Linux architecture, so each builds for itself."
@@ -108,15 +108,23 @@
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "allowAllFailures": true,
-      "note": "Entries with known hosted failures or under investigation: macOS Terminal pointer input and debugger-journeys on Windows ARM64 (one flaky stop, fixed in c7497292df, awaiting a second green run). base-tests-arm, add-reference-journey and debugger-feature-journeys are required on every platform since 2026-10-28 but stay here for now: moving them into integration-stable would lengthen a lane with a 55-minute timeout that nobody has re-measured, and a full run is not due yet. Plan order runs the required entries first, then Hot Reload; keep any entry that can hang for tens of minutes after the required ones. The WinUI observe entries moved to the integration-winui lane. It is the last lane of the shared fast job, so its pointer journeys run after the other lanes of that job: a leftover IDE window from an observe entry must not sit in front of a designer drag."
+      "note": "Entries with known hosted failures or under investigation: macOS Terminal pointer input and debugger-journeys on Windows ARM64 (one flaky stop, fixed in c7497292df, awaiting a second green run). base-tests-arm, add-reference-journey and debugger-feature-journeys are required on every platform since 2026-10-28 but stay here for now: moving them into integration-stable would lengthen a lane with a 55-minute timeout that nobody has re-measured, and a full run is not due yet. Plan order runs the required entries first, then Hot Reload; keep any entry that can hang for tens of minutes after the required ones. The WinUI observe entries moved to the integration-winui and integration-winui-microsoft lanes. It is the last lane of the shared fast job, so its pointer journeys run after the other lanes of that job: a leftover IDE window from an observe entry must not sit in front of a designer drag."
     },
     "integration-winui": {
       "job": "winui",
+      "timeoutMinutes": 120,
+      "entryTimeoutMinutes": 5,
+      "needsNuGetCache": true,
+      "allowAllFailures": true,
+      "note": "Surface, host selection and Uno (entries winui-surface-designer-journeys, winui-host-selection, winui-uno-cell), split out of the former single winui job (the rest is integration-winui-microsoft) so the two jobs run in parallel with about equal length (measured run 44308680459: 427+191+778 s here against 299+393+225+121+663 s there, each plus about 12 minutes of preparation). Surface runs first: a leftover IDE window must not sit in front of its real-pointer drag. The job timeout is the lane budget plus 30 minutes of headroom, and that headroom also has to hold about 12 minutes of preparation and the best-effort Visual Studio MSBuild host build (bounded to 25 minutes); the entries measured about 23 minutes in total. The entry budgets sum to 105 minutes, so the lane budget of 120 is never the limit; the risk is the job timeout of 150: up to 21 minutes of preparation plus the 25-minute host build plus 105 minutes of entries is 151, which would cancel the job and lose its summary. Reaching it needs every entry to run to its own budget, which is far from the measured 23 minutes (accepted risk). Windows x64 only; observe, allowAllFailures because the runner may lack the Windows App Runtime or the interactive desktop; promote after two green runner runs."
+    },
+    "integration-winui-microsoft": {
+      "job": "winui-microsoft",
       "timeoutMinutes": 320,
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "allowAllFailures": true,
-      "note": "The WinUI designer cells and journeys (Surface, Microsoft, Uno, host selection, the real WinUI-Gallery corpus) and the real WPF-Gallery corpus in a job of their own, so their long first renders and Windows App SDK prerequisites cannot stretch the fast job. ci.yml clones the Gallery for this job. Windows x64 only; every entry starts as observe. allowAllFailures because the runner may lack Visual Studio MSBuild or the Windows App SDK, which fails every entry at once; promote entries, and drop this flag, after two green runner runs. The job also runs a best-effort Visual Studio MSBuild step that builds the Microsoft design hosts before the lane (bounded to 25 minutes, not yet measured); the job timeout is the lane budget plus 30 minutes of preparation headroom, so if that build plus the usual 11-15 minutes of archive preparation exceeds the headroom, raise the lane timeoutMinutes after the first runner run."
+      "note": "The Microsoft WinUI cell and the real WinUI-Gallery and WPF-Gallery corpora (the other half of the former single winui job; see integration-winui) in a job of their own, so their long first renders and Windows App SDK prerequisites cannot stretch the fast job. ci.yml clones the Gallery for this job. Windows x64 only; every entry starts as observe. allowAllFailures because the runner may lack Visual Studio MSBuild or the Windows App SDK, which fails every entry at once; promote entries, and drop this flag, after two green runner runs. The job also runs a best-effort Visual Studio MSBuild step that builds the Microsoft design hosts before the lane (bounded to 25 minutes, not yet measured); the job timeout is the lane budget plus 30 minutes of preparation headroom, so if that build plus the usual 11-15 minutes of archive preparation exceeds the headroom, raise the lane timeoutMinutes after the first runner run."
     }
   },
   "buildFirst": [
@@ -869,7 +877,7 @@
     {
       "id": "winui-microsoft-cell",
       "batch": 4,
-      "lane": "integration-winui",
+      "lane": "integration-winui-microsoft",
       "timeoutMinutes": 40,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -898,7 +906,7 @@
     },    {
       "id": "wpf-gallery-corpus",
       "batch": 4,
-      "lane": "integration-winui",
+      "lane": "integration-winui-microsoft",
       "timeoutMinutes": 20,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -908,11 +916,11 @@
       "env": { "OD_WPF_GALLERY_BUILD": "1" },
       "platforms": { "windows-x64": "observe" },
       "reason": "The Microsoft WPF design host is Windows-only.",
-      "note": "The real WPFGallery application of microsoft/WPF-Samples against the Microsoft WPF design host (WpfGalleryDesignerTests, the WPF counterpart of the WinUI Gallery corpus; its opt-in full sweep stays off). ci.yml sparse-clones Sample Applications/WPFGallery of WPF-Samples into the runner temp folder and exports OD_WPF_GALLERY_ROOT; OD_WPF_GALLERY_BUILD=1 makes the class build the Gallery through DevFlow before the first page opens (an unbuilt checkout renders pages without their sample controls). Needs the Microsoft WPF design host (MicrosoftWpfDesign.SurfaceHost), which the plan's build job does not produce: the winui job's best-effort step Build the Microsoft designer hosts runs the integration project's BuildMicrosoftDesignerHostsForIntegrationTests target (build.ps1 with Visual Studio MSBuild for the WPF, WinUI and WinForms hosts and the WinUI sample), and without that host every case fails at first render (WPF designer never finished loading). It sits in integration-winui only to share that job's archive preparation. READ THE ENTRY'S ROW: the clone step is best-effort, so a failed clone skips every case, which run-test-plan.ps1 records as failed (every test skipped). Starts as observe; promote after two green runner runs."
+      "note": "The real WPFGallery application of microsoft/WPF-Samples against the Microsoft WPF design host (WpfGalleryDesignerTests, the WPF counterpart of the WinUI Gallery corpus; its opt-in full sweep stays off). ci.yml sparse-clones Sample Applications/WPFGallery of WPF-Samples into the runner temp folder and exports OD_WPF_GALLERY_ROOT; OD_WPF_GALLERY_BUILD=1 makes the class build the Gallery through DevFlow before the first page opens (an unbuilt checkout renders pages without their sample controls). Needs the Microsoft WPF design host (MicrosoftWpfDesign.SurfaceHost), which the plan's build job does not produce: the best-effort step Build the Microsoft designer hosts of the winui and winui-microsoft jobs runs the integration project's BuildMicrosoftDesignerHostsForIntegrationTests target (build.ps1 with Visual Studio MSBuild for the WPF, WinUI and WinForms hosts and the WinUI sample), and without that host every case fails at first render (WPF designer never finished loading). It sits in integration-winui-microsoft only to share that job's archive preparation. READ THE ENTRY'S ROW: the clone step is best-effort, so a failed clone skips every case, which run-test-plan.ps1 records as failed (every test skipped). Starts as observe; promote after two green runner runs."
     },    {
       "id": "winui-gallery-basics",
       "batch": 4,
-      "lane": "integration-winui",
+      "lane": "integration-winui-microsoft",
       "timeoutMinutes": 25,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -927,7 +935,7 @@
     {
       "id": "winui-gallery-abstract-root",
       "batch": 4,
-      "lane": "integration-winui",
+      "lane": "integration-winui-microsoft",
       "timeoutMinutes": 15,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
@@ -942,7 +950,7 @@
     {
       "id": "winui-gallery-render",
       "batch": 4,
-      "lane": "integration-winui",
+      "lane": "integration-winui-microsoft",
       "timeoutMinutes": 90,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",

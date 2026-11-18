@@ -297,7 +297,7 @@ verification targets. Run the full integration suite only when asked and do not 
 ## CI (GitHub Actions)
 
 One workflow, `.github/workflows/ci.yml`, driven by `.github/ci/test-plan.json`; the scripts that read it are in
-`.github/ci/`. `doc/technotes/ci-test-plan.md` explains the shape. Job names: `Plan`, `Build (<platform>)`, `winui (windows-x64)` (the observe-only WinUI cells and the WinUI and WPF Gallery corpora),
+`.github/ci/`. `doc/technotes/ci-test-plan.md` explains the shape. Job names: `Plan`, `Build (<platform>)`, `winui (windows-x64)` (the Surface and Uno cells and host selection) and `winui-microsoft (windows-x64)` (the Microsoft cell and the WinUI and WPF Gallery corpora),
 `Release grade`, and per platform the test jobs its lanes are grouped into: `fast (<platform>)` and
 `designer (<platform>)` on Windows, Linux and macOS, `mobile-android (linux-x64)`, and `mobile-ios (macos-arm64)` on its
 own. macOS once ran every lane in one `singleJob` job, which timed out, so it is split like the others. The Simulator lane is
@@ -337,7 +337,7 @@ means filling its whole row or column, not one cell:
 - One entry per suite in `test-plan.json`, with a status for every platform. A new platform's entries start `observe` and
   are promoted after two green runs; an entry that cannot run on an OS says `"excluded"` with a `reason` (for example
   `xamldom-tests-microsoftwpf` needs Microsoft WPF). Never copy an entry per platform (the old `*-arm` entries were merged).
-- No lane compiles for itself (the one exception is the `winui` job's best-effort Visual Studio MSBuild step that builds the Microsoft design hosts, which the build job cannot produce; do not move it there or duplicate it): a second compile of the same tree is waste and lets the unit suites test a build no lane
+- No lane compiles for itself (the one exception is the best-effort Visual Studio MSBuild step of the `winui` and `winui-microsoft` jobs that builds the Microsoft design hosts, which the build job cannot produce; each job unpacks its own archive, so it still compiles once per output folder; do not move it elsewhere): a second compile of the same tree is waste and lets the unit suites test a build no lane
   ships. A `buildFrom` platform's lanes unpack the provider's archive, which is the build that platform ships.
 - Linux runner setup is `.github/ci/install-linux-prerequisites.sh` in both workflows; `run-test-plan.ps1` starts each
   entry under `xvfb-run` when there is no display.
@@ -357,7 +357,7 @@ Layout, so a change goes in the right place:
   the folder ends up without `PresentationFramework.dll`. Measured on the runner: 193 DLLs present after the first build,
   173 and missing after a rebuild.
 - A lane can declare `allowAllFailures` in its plan definition: every entry still reports (warnings, summary table) but an
-  all-failed lane stays green. `integration-unstable`, `integration-winui`, `mobile-ios` and `mobile-android` use it; `integration-stable` dropped it when its entries became
+  all-failed lane stays green. `integration-unstable`, `integration-winui`, `integration-winui-microsoft`, `mobile-ios` and `mobile-android` use it; `integration-stable` dropped it when its entries became
   `required` on all three platforms. Do not add it back as a permanent escape hatch. While many entries still fail, the
   plan's `"focus": true` skips every `required` entry (`.github/ci/run-statuses.ps1`; dispatch with `full=true` for one
   full run, set `"focus": false` to go back). Lane jobs

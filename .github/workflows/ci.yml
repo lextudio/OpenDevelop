@@ -339,7 +339,7 @@ jobs:
       # The WinUI Gallery corpus (entries winui-gallery-basics, winui-gallery-abstract-root and winui-gallery-render) opens the real microsoft/WinUI-Gallery checkout; the
       # tests skip without one (run-test-plan.ps1 fails an entry whose every test skipped; the lane itself stays green through allowAllFailures, so read the entry row). A shallow clone into the runner temp folder, found through OD_WINUI_GALLERY_ROOT.
       - name: Clone the WinUI Gallery for the designer corpus
-        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
+        if: matrix.platform == 'windows-x64' && matrix.job == 'winui-microsoft'
         # Best effort: without the checkout the Gallery tests skip.
         continue-on-error: true
         shell: pwsh
@@ -385,7 +385,7 @@ jobs:
       # The WPF Gallery corpus (entry wpf-gallery-corpus) opens the real WPFGallery of microsoft/WPF-Samples; the tests skip without
       # one (and run-test-plan.ps1 then fails the entry, every test skipped). A sparse shallow clone of just that sample.
       - name: Clone the WPF Gallery for the designer corpus
-        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
+        if: matrix.platform == 'windows-x64' && matrix.job == 'winui-microsoft'
         # Best effort: without the checkout the WPF Gallery tests skip.
         continue-on-error: true
         shell: pwsh
@@ -441,12 +441,12 @@ jobs:
         if: matrix.needs_nuget_cache
         shell: pwsh
         run: ./.github/ci/package-workspace.ps1 -Extract -Kind NuGetCache -Directory '${{ runner.temp }}/nuget-archive'
-      # The Microsoft-backend designer entries of the winui job (Microsoft cell, host selection, both Gallery corpora) need the
+      # The Microsoft-backend designer entries of the winui and winui-microsoft jobs (Microsoft cell, host selection, both Gallery corpora) need the
       # Microsoft WPF, WinUI and WinForms design hosts and the WinUI sample, which only Visual Studio MSBuild can build; the
       # plan's build job does not produce them. The integration project's own target runs build.ps1 for each, with -SkipFeedSync
       # (CI restores from GitHub Packages with its token). After the NuGet cache unpack so the restore is warm.
       - name: Build the Microsoft designer hosts
-        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
+        if: matrix.platform == 'windows-x64' && (matrix.job == 'winui' || matrix.job == 'winui-microsoft')
         # Best effort: without the hosts those entries fail at first render and the lane stays green (allowAllFailures).
         continue-on-error: true
         # Bounded so a slow VS MSBuild build cannot eat the job's timeout headroom (the lane budget starts after this step).
@@ -456,7 +456,7 @@ jobs:
       # The Microsoft WinUI design host is an unpackaged Windows App SDK app: without the framework packages it cannot start ("design
       # host failed to start: the operation has timed out"). The runtime package that the NuGet cache just unpacked carries the MSIX files.
       - name: Install the Windows App Runtime
-        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
+        if: matrix.platform == 'windows-x64' && (matrix.job == 'winui' || matrix.job == 'winui-microsoft')
         # Best effort: without it the Microsoft-host entries fail (observe) and the lane stays green.
         continue-on-error: true
         shell: pwsh
@@ -477,7 +477,7 @@ jobs:
       # The WinUI Gallery targets Windows SDK 10.0.22621; the runner image has the folder without its Platform.xml, and the Gallery build
       # (run 43987453504) stopped with "Could not read the Windows SDK's Platform.xml" and then CsWinRT exit code 1.
       - name: Install the Windows 11 22H2 SDK
-        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
+        if: matrix.platform == 'windows-x64' && matrix.job == 'winui-microsoft'
         # Best effort: without it the winui-gallery-* entries fail their build (observe) and the lane stays green. Bounded at 10 minutes: the job has
         # lane timeout + 30 minutes (the lane is 320 so the job stays under GitHub's 360-minute ceiling) and this runs inside that preparation window.
         continue-on-error: true

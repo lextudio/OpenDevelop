@@ -14,7 +14,7 @@ not individual test cases. They describe the complete plan, not what a focus-mod
 
 | Platform | Required | Observe | Default focus run |
 | --- | ---: | ---: | --- |
-| Windows x64 | 32 | 13 | Only the 13 observed entries run (five in the fast job, the eight WinUI and WPF Gallery entries in the `winui` job); its build also supplies Windows ARM64. |
+| Windows x64 | 32 | 13 | Only the 13 observed entries run (five in the fast job, the three Surface, host-selection and Uno entries in the `winui` job, the five Microsoft-cell and Gallery entries in the `winui-microsoft` job); its build also supplies Windows ARM64. |
 | Windows ARM64 | 25 | 10 | Only the 10 observed entries run. |
 | macOS ARM64 | 26 | 11 | Only the 11 observed entries run. |
 | Linux x64 | 0 | 11 | All 11 entries are observed (unit suites, workbench/DevFlow under Xvfb, the Android debugging journey), so all run. |
@@ -338,8 +338,8 @@ plan  ->  build (per platform)  ->  test (per platform x job, in parallel; a job
   an enabled archive lane needs it; a (platform, job) pair gets a test job when one of its lanes has an enabled entry (and a
   platform that names `singleJob` plans one job for its non-`standalone` lanes). Focus and platform filters apply before
   the matrices are created. Entries can normally be enabled in the plan; new system prerequisites can require workflow changes.
-* **build** (`build-binaries.ps1`, `package-workspace.ps1`) is the only job that restores and compiles, with one exception: the `winui` job
-  builds the Microsoft design hosts itself (a best-effort step running the integration project's
+* **build** (`build-binaries.ps1`, `package-workspace.ps1`) is the only job that restores and compiles, with one exception: the `winui` and `winui-microsoft` jobs
+  build the Microsoft design hosts themselves (a best-effort step running the integration project's
   `BuildMicrosoftDesignerHostsForIntegrationTests` target), because only Visual Studio MSBuild can build them and the build job does not. It builds every
   distinct `project` of an enabled entry, prints per-project durations and output sizes in the job summary, then packs
   the whole workspace (sources and all build outputs, no `.git`, no `node_modules`) and uploads it as one archive
@@ -351,7 +351,7 @@ plan  ->  build (per platform)  ->  test (per platform x job, in parallel; a job
   `continue-on-error` so a fork PR's read-only token cannot fail a lane) and uploads them as an artifact: `xunit-exe`
   runs the compiled xUnit v3 assembly directly (`dotnet <dll> [args]`, so the integration classes are
   `-class <name> -parallel none`), `msbuild` runs the AddIn SDK assertion projects with `-t:Build`. Nothing is restored
-  or built there by the runner (the `winui` job's Microsoft host build is the one exception). Some integration journeys restore temporary fixture projects using the populated package
+  or built there by the runner (the Microsoft host build of the `winui` and `winui-microsoft` jobs is the one exception). Some integration journeys restore temporary fixture projects using the populated package
   cache; those restores can consult configured feeds. The workflow does not write credentials into the workspace archive.
   Windows ARM64 maps the original x64 build workspace path to its own checkout for paths embedded in build outputs and PDBs.
 * There is no in-place lane any more (until 2026-11-02 `unit` compiled in its own job with `buildsInLane`). It reported a
@@ -512,10 +512,8 @@ have been, and a lane is split only for a real environment need or a timeout.
 
 Since 2026-11-02 that is made explicit by the lane's `job` in the plan: lanes of one platform with the same `job` run in one
 CI job, one after another, on the one unpacked archive. `unit`, `integration-stable` and `integration-unstable` are job
-`fast` (unit first, so its result arrives within minutes); `integration-designer` is job `designer` (which also needs the GTK runtimes); `integration-winui` is job `winui` (Windows x64 only, 320 minutes, `allowAllFailures`: the WinUI
-Surface, Microsoft and Uno cells, host selection and the real WinUI-Gallery corpus, plus the real WPF-Gallery corpus, with both Galleries cloned by ci.yml; all
-`observe`). Run 41395236804 spent 70 minutes of its lane jobs on downloading and unpacking against 30 minutes
-of tests, Windows ARM64 alone paying 11-15 minutes three times for 16 minutes of tests; each platform with a designer lane now pays it twice (`fast` and `designer`), and Windows x64 pays it a third time for `winui` in a full run (twice in a focus run, where its `designer` lane has no observed entry).
+`fast` (unit first, so its result arrives within minutes); `integration-designer` is job `designer` (which also needs the GTK runtimes); `integration-winui` is job `winui` (Surface, host selection and Uno, 120 minutes) and `integration-winui-microsoft` is job `winui-microsoft` (the Microsoft cell and both Gallery corpora; Windows x64 only, 320 minutes; both lanes are `allowAllFailures` and all their entries `observe`; the Microsoft lane's two Galleries are cloned by ci.yml). Run 41395236804 spent 70 minutes of its lane jobs on downloading and unpacking against 30 minutes
+of tests, Windows ARM64 alone paying 11-15 minutes three times for 16 minutes of tests; each platform with a designer lane now pays it twice (`fast` and `designer`), and Windows x64 pays it a third and a fourth time for `winui` and `winui-microsoft` in a full run (three times in a focus run, where its `designer` lane has no observed entry).
 A job's timeout is the sum of its lanes' timeouts plus 30 minutes of headroom for the
 preparation that sits outside every lane budget.
 Each lane still keeps its own budget: `run-test-plan.ps1` starts no further entry once the lane's `timeoutMinutes` are spent
@@ -582,9 +580,8 @@ failures are under control. Focus mode does not gate anything: the `required` en
   `doc/technotes/addin-sdk.md` says; `dotnet build` of the same file fails because its restore changes what the asserted
   targets see). They need no IDE process.
 * Lanes `integration-stable`, `integration-unstable` and `integration-designer`: the integration entries, grouped as
-  described under "Lanes". Lane `integration-winui` (Windows x64 only, job `winui`): the WinUI Surface, Microsoft and Uno
-  cells (selected by `-trait Runtime=<cell>`, so the `AddInTests` WinUI journeys run there), host selection and the real
-  WinUI-Gallery corpus and the real WPF-Gallery corpus, all `observe`. Its Microsoft-backend entries need the Microsoft design hosts, so the job runs a best-effort step that builds them with Visual Studio MSBuild.
+  described under "Lanes". Lane `integration-winui` (Windows x64 only, job `winui`): the WinUI Surface, host-selection and Uno entries; lane `integration-winui-microsoft` (job `winui-microsoft`): the Microsoft
+  cell and the real WinUI-Gallery and WPF-Gallery corpora, all `observe` (the cells are selected by `-trait Runtime=<cell>`, so the `AddInTests` WinUI journeys run there). Host selection and the Microsoft entries need the Microsoft design hosts, so both jobs run a best-effort step that builds them with Visual Studio MSBuild.
 * Lanes `mobile-ios` and `mobile-android`: the iOS Simulator and Android emulator debugging journeys. Each needs the one
   runner image family that hosts its device (see "Device journeys"); either way the lane is its own job (`mobile-ios` is
   its own `standalone` job on macOS, `mobile-android` is the linux-x64 job). Both run `observe` and are the reason
@@ -596,7 +593,7 @@ The Profiler tests and the Terminal journey are plan entries now; `profiler.yml`
 deleted with that fold. The Profiler shares the `unit` lane (its data layer attaches to a real process and needs no IDE
 host), and the Terminal journey runs in the integration lanes and gets its `win-x64` add-in from `buildLast`, the way its own
 workflow built it. Every platform still has observed entries (Windows x64 has thirteen, among them the eight entries of
-`integration-winui`); Linux runs observed entries only.
+`integration-winui` and `integration-winui-microsoft`); Linux runs observed entries only.
 The `platformNotes` in the plan record each decision.
 
 ## The archives

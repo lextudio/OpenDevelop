@@ -158,6 +158,35 @@ try {
     } finally {
         $env:OD_CI_FULL = $previousFull
     }
+    # The real plan and workflow must agree on the WinUI jobs. A lane's "job" is only a name to the planner, and ci.yml gates its Gallery
+    # clones, SDK install and Microsoft host build on matrix.job strings: a renamed job would still run, skip every such step, and stay
+    # green (both lanes are observe + allowAllFailures). So plan the real test-plan.json and hold the job names, their lanes, the entry
+    # split (Surface, host selection, Uno | Microsoft cell, WPF Gallery, three WinUI Gallery entries) and every job name ci.yml mentions.
+    # A full plan: the plan's focus mode drops jobs whose entries are all required, and promoting an entry (the plan's documented next step)
+    # must not make this contract check fail.
+    $repoPlan = Join-Path $PSScriptRoot '../test-plan.json'
+    $previousFullForRealPlan = $env:OD_CI_FULL
+    $env:OD_CI_FULL = 'true'
+    try { $realOutput = (& pwsh -NoProfile -File $planner -PlanPath $repoPlan) -join "`n" } finally { $env:OD_CI_FULL = $previousFullForRealPlan }
+    if ($LASTEXITCODE -ne 0) { throw 'Planning the repository test-plan.json failed.' }
+    $realJobs = @([regex]::Match($realOutput, '(?m)^lane_matrix=(\{.*\})$').Groups[1].Value | ConvertFrom-Json | ForEach-Object { $_.include })
+    $winui = @($realJobs | Where-Object { $_.platform -eq 'windows-x64' -and $_.job -like 'winui*' } | Sort-Object job)
+    if (($winui | ForEach-Object { $_.job }) -join ',' -ne 'winui,winui-microsoft') { throw "windows-x64 must plan the jobs winui and winui-microsoft, got: $(($winui | ForEach-Object { $_.job }) -join ',')" }
+    $expectedLane = @{ 'winui' = 'integration-winui'; 'winui-microsoft' = 'integration-winui-microsoft' }
+    $expectedEntries = @{ 'winui' = 3; 'winui-microsoft' = 5 }
+    foreach ($job in $winui) {
+        if (($job.lanes -join ',') -ne $expectedLane[$job.job]) { throw "Job $($job.job) must run lane $($expectedLane[$job.job]), got: $($job.lanes -join ',')" }
+        if ($job.entries -ne $expectedEntries[$job.job]) { throw "Job $($job.job) must plan $($expectedEntries[$job.job]) entries, got $($job.entries)" }
+        if (-not $job.needs_nuget_cache) { throw "Job $($job.job) needs the NuGet package folder (needsNuGetCache)." }
+    }
+    $realPlan = Get-Content -LiteralPath $repoPlan -Raw | ConvertFrom-Json
+    $firstWinui = @($realPlan.entries | Where-Object { $_.lane -eq 'integration-winui' })[0]
+    if ($firstWinui.id -ne 'winui-surface-designer-journeys') { throw "Surface must run first in the winui job (its real-pointer drag must not sit behind a leftover IDE window), got $($firstWinui.id)." }
+    $workflow = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../workflows/ci.yml') -Raw
+    $plannedJobs = @($realJobs | ForEach-Object { $_.job } | Sort-Object -Unique)
+    foreach ($name in @([regex]::Matches($workflow, "matrix\.job\s*[!=]=\s*'([^']+)'") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)) {
+        if ($name -notin $plannedJobs) { throw "ci.yml tests matrix.job against '$name', which no lane of the plan names (planned jobs: $($plannedJobs -join ', '))." }
+    }
     Write-Host 'Build selection checks passed.'
 } finally {
     Remove-Item -LiteralPath $directory -Recurse -Force
