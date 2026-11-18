@@ -357,8 +357,17 @@ jobs:
         shell: pwsh
         run: |
           $gallery = Join-Path $env:RUNNER_TEMP 'WinUI-Gallery'
-          git clone --depth 1 https://github.com/microsoft/WinUI-Gallery.git $gallery
-          if ($LASTEXITCODE -ne 0) { throw "git clone of WinUI-Gallery failed ($LASTEXITCODE)" }
+          # Pinned, not main: the corpus runs the Gallery's pages inside our Microsoft design host, which carries Windows App SDK
+          # 2.4.0 (Directory.Packages.props). The Gallery's main moved on to experimental SDK builds (2.5.4, 2.6.6) whose assemblies the
+          # 2.4.0 host cannot load: every page then killed the host with exit code C000027B right after the Gallery's resources loaded
+          # (run of 2026-11-17). This commit is the last one whose standalone.props says WindowsAppSdkPackageVersion 2.4.0; move it with the host.
+          $galleryCommit = '32a2503480ec3cba15413e813fd8b98f2e11fcc8'
+          git init $gallery
+          git -C $gallery remote add origin https://github.com/microsoft/WinUI-Gallery.git
+          git -C $gallery fetch --depth 1 origin $galleryCommit
+          if ($LASTEXITCODE -ne 0) { throw "git fetch of WinUI-Gallery $galleryCommit failed ($LASTEXITCODE)" }
+          git -C $gallery checkout --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "git checkout of WinUI-Gallery $galleryCommit failed ($LASTEXITCODE)" }
           if (-not (Test-Path (Join-Path $gallery 'WinUIGallery.slnx'))) { throw 'The clone has no WinUIGallery.slnx.' }
           # The Gallery's own NuGet.config lists a private Azure DevOps feed that answers 401 to an anonymous runner (restore then fails,
           # NETSDK1004 on every project). This is a throwaway clone, so restore from nuget.org alone.
