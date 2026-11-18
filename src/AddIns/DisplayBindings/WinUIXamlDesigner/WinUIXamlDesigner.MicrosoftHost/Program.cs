@@ -26,8 +26,21 @@ static class Program
 		// timing. The client launches this child inside the designed app's dependency graph, so
 		// the host's own assemblies have to resolve from its own directory.
 		HostBootstrap.InstallOwnDependencyResolver();
-		return Run(args);
+
+		// The UI thread (the one that stays inside Application.Start and parses every page) runs on a thread of our own with a
+		// large stack instead of the process's main thread. That thread has the launcher's default reserve (1 MB for dotnet.exe),
+		// and XamlReader.Load recurses natively per nested element: the real WinUI Gallery's SemanticZoomPage died with
+		// "Stack overflow" / exit code C00000FD inside XamlReader.Load on a CI runner while 20 other pages rendered.
+		// Application.Start owns whichever STA thread calls it, so nothing needs the main thread.
+		var exitCode = 0;
+		var uiThread = new Thread(() => exitCode = Run(args), UiThreadStackBytes) { Name = "WinUI design host UI thread" };
+		uiThread.SetApartmentState(ApartmentState.STA);
+		uiThread.Start();
+		uiThread.Join();
+		return exitCode;
 	}
+
+	const int UiThreadStackBytes = 64 * 1024 * 1024;
 
 	static int Run(string[] args)
 	{
