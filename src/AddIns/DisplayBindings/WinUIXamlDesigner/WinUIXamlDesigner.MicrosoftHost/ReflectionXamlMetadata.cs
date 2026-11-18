@@ -133,6 +133,11 @@ sealed class ReflectionXamlMetadataProvider : IXamlMetadataProvider
 
 	IXamlMetadataProvider? GetGeneratedProvider(Assembly assembly)
 	{
+		// This host's own assembly "contains" an IXamlMetadataProvider: this very class. Creating it as
+		// the assembly's generated provider builds a fresh instance whose Resolve asks for yet another,
+		// without end, for any type the host itself defines (the substitute panel for ControlExample):
+		// the real WinUI Gallery's SemanticZoomPage looped on it until the host was killed.
+		if (assembly == typeof(ReflectionXamlMetadataProvider).Assembly) return null;
 		lock (generatedProviders)
 		{
 			if (generatedProviders.TryGetValue(assembly, out var cached)) return cached;
