@@ -133,7 +133,6 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
     // not a fixture this repository vendors.
     public string? WpfGalleryRoot => TryLocateWpfGalleryRoot();
     public string AspNetCoreSampleSolutionPath => LocateAspNetCoreSampleSolution();
-    public string GitFixtureTemplatePath => LocateGitFixtureTemplate();
     public string FSharpFixtureSolutionPath => LocateFSharpFixture();
     public string VBFixtureSolutionPath => LocateVBFixture();
     public string VbWinFormsSampleSolutionPath => LocateVbWinFormsSample();
@@ -1270,18 +1269,6 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
             "Could not locate tests/fixtures/RuntimeUpgradeApp/RuntimeUpgradeApp.csproj by walking up from " + AppContext.BaseDirectory);
     }
 
-    static string LocateGitFixtureTemplate()
-    {
-        var dir = AppContext.BaseDirectory;
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir, "tests", "fixtures", "GitFixture");
-            if (File.Exists(Path.Combine(candidate, "GitFixture.sln"))) return candidate;
-            dir = Path.GetDirectoryName(dir);
-        }
-        throw new FileNotFoundException(
-            "Could not locate tests/fixtures/GitFixture/GitFixture.sln by walking up from " + AppContext.BaseDirectory);
-    }
 
     static string LocateNuGetFixtureTemplate()
     {

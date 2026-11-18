@@ -36,8 +36,9 @@ The long-term fixture set is organized by project shape rather than feature name
 - `FSharpFixture` and `VBFixture`: language-specific project systems; these cannot be represented
   by the C# fixture.
 - WPF and WinForms samples: designer-specific project systems and generated-code behavior.
-- `RuntimeUpgradeApp`, `GitFixture`, and `NuGetFixture`: mutable templates copied to temporary
-  directories. They exist to protect tracked files and provide isolated external state.
+- `RuntimeUpgradeApp` and `NuGetFixture`: mutable templates copied to temporary
+  directories. They exist to protect tracked files and provide isolated external state. The Git add-in
+  tests' repository is written from code (`GitFixtureTemplate.cs`), not copied, so no checked-in file can be missing.
 
 `SlnxFixture` should only cover multi-project `.slnx` parsing that the general fixture cannot cover.
 Before adding a fixture, document the project-shape difference that prevents extending one above.

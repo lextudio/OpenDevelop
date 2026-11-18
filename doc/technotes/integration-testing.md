@@ -46,7 +46,7 @@ The fixture exposes:
 - `GetUITreeAsync()` - `GET /api/v1/ui/tree`, the full WPF visual tree as JSON (see below).
 - `GetStatusAsync()` - `GET /api/v1/agent/status`.
 - `OpenDevelopProjectPath`, `SolutionExplorerFixturePath`, `DebugTestProjectPath`,
-  `SlnxFixturePath`, `WpfSampleSolutionPath`, `GitFixtureTemplatePath`, etc. - paths to
+  `SlnxFixturePath`, `WpfSampleSolutionPath`, etc. - paths to
   `tests/fixtures/*` resolved by walking up from `AppContext.BaseDirectory`. Add one of these
   `LocateXxx()` static methods + property when a new test needs its own fixture project.
 

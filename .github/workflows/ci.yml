@@ -191,12 +191,6 @@ jobs:
         if: runner.os != 'Linux'
         shell: pwsh
         run: ./.github/ci/verify-bitness.ps1 -Platform '${{ matrix.name }}' -PayloadOnly
-      # Temporary diagnostic (remove with the GitFixture one): which side of the workspace archive loses a GitFixture file.
-      - name: List the GitFixture template before packing
-        if: matrix.name == 'windows-x64'
-        continue-on-error: true
-        shell: pwsh
-        run: Get-ChildItem tests/fixtures/GitFixture -Recurse -File -Force | ForEach-Object { '{0} {1}' -f $_.FullName, $_.Length }
       - name: Pack the workspace
         shell: pwsh
         run: ./.github/ci/package-workspace.ps1 -Platform '${{ matrix.name }}' -Directory '${{ runner.temp }}/archive'
@@ -244,12 +238,6 @@ jobs:
       - name: Unpack the workspace built by the build job
         shell: pwsh
         run: ./.github/ci/package-workspace.ps1 -Extract -Directory '${{ runner.temp }}/archive'
-      # Temporary diagnostic (remove with the GitFixture one): which side of the workspace archive loses a GitFixture file.
-      - name: List the GitFixture template after unpacking
-        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
-        continue-on-error: true
-        shell: pwsh
-        run: Get-ChildItem tests/fixtures/GitFixture -Recurse -File -Force | ForEach-Object { '{0} {1}' -f $_.FullName, $_.Length }
       - uses: actions/setup-dotnet@v6
         with:
           # Match the build job: net10 is a fixture compatibility contract, not the SDK
@@ -486,17 +474,6 @@ jobs:
             }
           }
           Get-AppxPackage -Name Microsoft.WindowsAppRuntime* | ForEach-Object { $_.PackageFullName }
-      # Temporary diagnostic (remove in the next commit): AddInTests copies tests/fixtures/GitFixture and its git add failed on the runner for
-      # GitFixtureApp/GitFixtureApp.csproj although the file is tracked.
-      - name: Diagnose the GitFixture template
-        if: matrix.platform == 'windows-x64' && matrix.job == 'winui'
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          Get-ChildItem tests/fixtures/GitFixture -Recurse -Force | ForEach-Object { $_.FullName }
-          # Run 43987453504 showed no GitFixtureApp.csproj at all: count the project files that did arrive per fixture folder.
-          Get-ChildItem tests/fixtures -Directory | ForEach-Object { '{0}: {1} csproj' -f $_.Name, @(Get-ChildItem $_.FullName -Recurse -File -Filter *.csproj -ErrorAction SilentlyContinue).Count }
-          Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Platforms\UAP' -ErrorAction SilentlyContinue | ForEach-Object { '{0}: Platform.xml {1}' -f $_.Name, (Test-Path (Join-Path $_.FullName 'Platform.xml')) }
       # The WinUI Gallery targets Windows SDK 10.0.22621; the runner image has the folder without its Platform.xml, and the Gallery build
       # (run 43987453504) stopped with "Could not read the Windows SDK's Platform.xml" and then CsWinRT exit code 1.
       - name: Install the Windows 11 22H2 SDK

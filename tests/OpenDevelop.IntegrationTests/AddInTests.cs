@@ -5939,7 +5939,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
 
     void SetUpGitRepo()
     {
-        CopyDirectory(_app.GitFixtureTemplatePath, _repoDir);
+        GitFixtureTemplate.Write(_repoDir);
 
         RunGit("init -q");
         RunGit("add GitFixture.sln GitFixtureApp/GitFixtureApp.csproj GitFixtureApp/Clean.cs GitFixtureApp/Modified.cs");
