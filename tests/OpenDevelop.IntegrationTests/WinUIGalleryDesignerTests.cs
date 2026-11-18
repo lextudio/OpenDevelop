@@ -360,6 +360,8 @@ public sealed class WinUIGalleryDesignerTests
         return result;
     }
 
+    static bool s_galleryBuilt;
+
     async Task EnsureGalleryOpenAsync()
     {
         await _app.EnsureSolutionOpenAsync(Path.Combine(_galleryRoot!, SolutionFileName));
@@ -369,12 +371,16 @@ public sealed class WinUIGalleryDesignerTests
         var configured = await _app.InvokeAsync("od.solution.set-configuration", _configuration, _platform);
         Assert.True(configured.TryGetProperty("success", out var ok) && ok.GetBoolean(), configured.ToString());
 
-        if (string.Equals(Environment.GetEnvironmentVariable("OD_WINUI_GALLERY_BUILD"), "1", StringComparison.Ordinal))
+        // Build once per IDE process. Every test used to rebuild, and from the second test on the design host opened by the
+        // previous one still had WinUIGallery.dll loaded, so MSBuild's copy to bin failed with MSB3027 ("locked by .NET Host")
+        // and the build was reported as an error (CI run 44205973692: three of four winui-gallery-basics tests).
+        if (!s_galleryBuilt && string.Equals(Environment.GetEnvironmentVariable("OD_WINUI_GALLERY_BUILD"), "1", StringComparison.Ordinal))
         {
             var build = await _app.InvokeAsync("od.build-solution");
             Assert.True(
                 string.Equals(build.GetProperty("result").GetString(), "Success", StringComparison.Ordinal),
                 await _app.DescribeBuildAsync(build));
+            s_galleryBuilt = true;
         }
     }
 
