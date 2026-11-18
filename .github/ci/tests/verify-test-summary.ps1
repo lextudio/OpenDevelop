@@ -7,7 +7,7 @@
 $ErrorActionPreference = 'Stop'
 $script = Join-Path $PSScriptRoot '../run-test-plan.ps1'
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$null, [ref]$null)
-foreach ($name in 'Get-TestTotal', 'Get-TestSkipped') {
+foreach ($name in 'Get-TestTotal', 'Get-TestSkipped', 'Test-SkipsForbidden') {
     $function = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
     if (-not $function) { throw "$name not found in run-test-plan.ps1" }
     . ([scriptblock]::Create($function.Extent.Text))
@@ -26,4 +26,9 @@ foreach ($case in $cases) {
 $all = 'Total: 17; Errors: 0; Failed: 0; Skipped: 17; Not Run: 0' -split "`n"
 if ((Get-TestSkipped $entry $all) -ne (Get-TestTotal $entry $all)) { throw 'An all-skipped summary no longer has Skipped == Total, so the gate cannot fire.' }
 if ((Get-TestSkipped $entry @('no summary here')) -ne -1) { throw 'A missing summary must read -1.' }
+$strict = [pscustomobject]@{ kind = 'xunit-exe'; noSkips = $true }
+if (-not (Test-SkipsForbidden $strict 1)) { throw 'A noSkips entry with a skipped case must be flagged.' }
+if (Test-SkipsForbidden $strict 0) { throw 'A noSkips entry with no skipped case must pass.' }
+if (Test-SkipsForbidden $entry 5) { throw 'An entry without noSkips must tolerate skips.' }
+if (Test-SkipsForbidden $strict -1) { throw 'A missing summary (-1) is the no-total rule, not a skip.' }
 Write-Host "The test summary parsing matches xUnit's real format ($($cases.Count) summaries checked)."

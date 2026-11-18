@@ -182,6 +182,11 @@ try {
     $realPlan = Get-Content -LiteralPath $repoPlan -Raw | ConvertFrom-Json
     $firstWinui = @($realPlan.entries | Where-Object { $_.lane -eq 'integration-winui' })[0]
     if ($firstWinui.id -ne 'winui-surface-designer-journeys') { throw "Surface must run first in the winui job (its real-pointer drag must not sit behind a leftover IDE window), got $($firstWinui.id)." }
+    # The Gallery entries must run every case they select (noSkips): a failed clone or an unbuilt host would otherwise leave a green row
+    # that exercised part of the corpus. Pin the exact set, so a typo of the key or a flag on an entry that skips by design is caught.
+    $noSkipsIds = @($realPlan.entries | Where-Object { $_.PSObject.Properties['noSkips'] -and $_.noSkips -eq $true } | ForEach-Object { $_.id } | Sort-Object)
+    $expectedNoSkips = @('winui-gallery-abstract-root', 'winui-gallery-basics', 'winui-gallery-render')
+    if (($noSkipsIds -join ',') -ne ($expectedNoSkips -join ',')) { throw "noSkips must be set on exactly $($expectedNoSkips -join ', '), got: $($noSkipsIds -join ', ')" }
     $workflow = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../workflows/ci.yml') -Raw
     $plannedJobs = @($realJobs | ForEach-Object { $_.job } | Sort-Object -Unique)
     foreach ($name in @([regex]::Matches($workflow, "matrix\.job\s*[!=]=\s*'([^']+)'") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)) {

@@ -919,6 +919,7 @@
       "note": "The real WPFGallery application of microsoft/WPF-Samples against the Microsoft WPF design host (WpfGalleryDesignerTests, the WPF counterpart of the WinUI Gallery corpus; its opt-in full sweep stays off). ci.yml sparse-clones Sample Applications/WPFGallery of WPF-Samples into the runner temp folder and exports OD_WPF_GALLERY_ROOT; OD_WPF_GALLERY_BUILD=1 makes the class build the Gallery through DevFlow before the first page opens (an unbuilt checkout renders pages without their sample controls). Needs the Microsoft WPF design host (MicrosoftWpfDesign.SurfaceHost), which the plan's build job does not produce: the best-effort step Build the Microsoft designer hosts of the winui and winui-microsoft jobs runs the integration project's BuildMicrosoftDesignerHostsForIntegrationTests target (build.ps1 with Visual Studio MSBuild for the WPF, WinUI and WinForms hosts and the WinUI sample), and without that host every case fails at first render (WPF designer never finished loading). It sits in integration-winui-microsoft only to share that job's archive preparation. READ THE ENTRY'S ROW: the clone step is best-effort, so a failed clone skips every case, which run-test-plan.ps1 records as failed (every test skipped). Starts as observe; promote after two green runner runs."
     },    {
       "id": "winui-gallery-basics",
+      "noSkips": true,
       "batch": 4,
       "lane": "integration-winui-microsoft",
       "timeoutMinutes": 25,
@@ -934,6 +935,7 @@
     },
     {
       "id": "winui-gallery-abstract-root",
+      "noSkips": true,
       "batch": 4,
       "lane": "integration-winui-microsoft",
       "timeoutMinutes": 15,
@@ -949,6 +951,7 @@
     },
     {
       "id": "winui-gallery-render",
+      "noSkips": true,
       "batch": 4,
       "lane": "integration-winui-microsoft",
       "timeoutMinutes": 90,

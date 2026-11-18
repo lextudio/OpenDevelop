@@ -7,12 +7,14 @@
 # annotation and a row in the job summary). Nothing is restored or built here: the build job compiled everything once and
 # the test job unpacked that workspace.
 #
-# Four rules keep a green lane meaningful:
+# Five rules keep a green lane meaningful:
 #   * an 'xunit-exe' entry that exits 0 but reports no test total, or a total of 0, is a failure - a filter that matches
 #     nothing, or a test assembly that never ran, is not a pass;
 #   * a lane in which every entry failed fails the lane even when every entry is only 'observe' - the job would otherwise
 #     be green while it exercised nothing;
 #   * an entry whose test assembly was never produced fails, so a missing build step shows up as itself;
+#   * an 'xunit-exe' entry that sets "noSkips": true fails on any skipped case (the WinUI Gallery entries: a failed clone or an
+#     unbuilt host must not leave a green row that ran only part of the corpus);
 #   * an 'xunit-exe' entry that exits 0 with every test skipped is a failure - xUnit counts a skip in the total, so a missing
 #     checkout, host or payload would otherwise read as a pass (Get-TestSkipped; .github/ci/tests/verify-test-summary.ps1).
 # Every entry's duration and test count land in the job summary so the plan's measuredSeconds can be kept honest.
@@ -64,6 +66,13 @@ function Get-TestSkipped($entry, [string[]]$output) {
     $found = [regex]::Matches($text, 'Total:\s*\d+[^\r\n]*?Skipped:\s*(\d+)')
     if ($found.Count -eq 0) { return -1 }
     return [int]$found[$found.Count - 1].Groups[1].Value
+}
+
+# An entry that sets "noSkips": true must run every case it selects: a skip in it (a Gallery checkout that failed to clone, a
+# host that was not built) means part of the corpus was never exercised, which the all-skipped rule alone misses when only some
+# cases skip. True when such an entry's summary reports at least one skipped case.
+function Test-SkipsForbidden($entry, [int]$skipped) {
+    return $entry.PSObject.Properties['noSkips'] -and [bool]$entry.noSkips -and $skipped -gt 0
 }
 
 # An entry's budget: its own timeoutMinutes, else the lane's entryTimeoutMinutes, else none (0).
@@ -232,6 +241,12 @@ foreach ($entry in $selected) {
         $note = 'every test skipped'
         $level = if ($status -eq 'required') { 'error' } else { 'warning' }
         Write-Host "::$($level) title=$($entry.id) (${status})::The run exited 0 but all $tests tests were skipped, so it exercised nothing (a missing checkout, host or payload)."
+    }
+    elseif ($exit -eq 0 -and $entry.kind -eq 'xunit-exe' -and (Test-SkipsForbidden $entry $skipped)) {
+        $outcome = 'failed'
+        $note = "$skipped skipped (noSkips)"
+        $level = if ($status -eq 'required') { 'error' } else { 'warning' }
+        Write-Host "::$($level) title=$($entry.id) (${status})::The run exited 0 but $skipped of $tests tests were skipped, and this entry must run every case it selects (a missing checkout, host or payload)."
     }
     elseif ($exit -ne 0 -and $status -eq 'observe') {
         Write-Host "::warning title=$($entry.id) (observe)::exit code $exit after ${seconds}s; not failing the job because the entry is only observed on $Platform."

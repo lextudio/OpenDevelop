@@ -375,7 +375,7 @@ the gain is that nothing depends on the 10 GB budget or on how long a lane waits
 
 ## What makes a green lane mean something
 
-`run-test-plan.ps1` refuses four shapes that used to pass silently:
+`run-test-plan.ps1` refuses five shapes that used to pass silently:
 
 * an `xunit-exe` entry that exits 0 but prints no test total, or a total of 0 - a filter that matches nothing, or an
   assembly that never ran, is a failure (a `::warning` while the entry is only `observe`, a `::error` once `required`);
@@ -385,7 +385,13 @@ the gain is that nothing depends on the 10 GB budget or on how long a lane waits
 * an entry whose test assembly was never produced - the build step is named in the error;
 * an `xunit-exe` entry that exits 0 with every test skipped (xUnit counts a skip in the total, so a missing checkout, host or
   payload would otherwise pass): `Get-TestSkipped` reads the summary's `Skipped` count, and
-  `.github/ci/tests/verify-test-summary.ps1` checks it against the real summary format.
+  `.github/ci/tests/verify-test-summary.ps1` checks it against the real summary format;
+* an `xunit-exe` entry that sets `"noSkips": true` and exits 0 with any case skipped. The all-skipped rule misses a corpus that
+  runs only in part (a partial checkout, a host that was not built), so an entry that must exercise every case it selects opts
+  in to this stricter rule (`Test-SkipsForbidden`). The three WinUI Gallery entries (`winui-gallery-basics`,
+  `winui-gallery-abstract-root`, `winui-gallery-render`) set it; `wpf-gallery-corpus` (an opt-in full-sweep case skips by
+  design), `winui-microsoft-cell` (its Gallery cases skip by design: it pins `OD_WINUI_GALLERY_ROOT` to a missing path) and
+  `winui-uno-cell` (two device journeys skip off their OS) do not. `build-selection.ps1` pins exactly which entries carry it.
 
 Every entry also has a time budget: its own `timeoutMinutes`, else its lane's `entryTimeoutMinutes` (5 minutes in the
 integration lanes). Past it, `run-test-plan.ps1` kills the entry's process tree (the IDE the fixture started included),
