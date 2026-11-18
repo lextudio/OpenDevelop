@@ -35,7 +35,7 @@ public sealed record DesignSizePreset(string Key, string Label);
 /// Viewport model: the design (pixelWidth x pixelHeight logical units) is shown at
 /// eff = the fitted scale in Fit mode, otherwise the absolute zoom (1.0 = 100%), as in the WPF
 /// and Forms canvases. Its on-screen (viewport-local) origin is
-/// (originX + panX, originY + panY) where origin is the centered-fit offset, pan is
+/// (originX + panX, originY + panY) where origin is always (0, 0) - the design is anchored top-left (see <see cref="DesignViewport"/>) - and pan is
 /// the user pan PLUS <see cref="CanvasMargin"/> (the empty-canvas margin is folded into
 /// the pan by <see cref="CurrentViewport"/> so every conversion through the shared
 /// viewport automatically accounts for it - <see cref="ApplyViewport"/> then places the
@@ -1424,6 +1424,7 @@ public class DesignSurface : DesignerCanvas
 	DesignViewport CurrentViewport()
 	{
 		var title = DesktopTitleHeight;
+		// Placement (top-left anchored, never centred) is DesignViewport's one policy; only the scale is decided here.
 		DesignViewport viewport;
 		if (fitMode && title > 0) {
 			var width = FitInnerExtent(FitBasisWidth);
@@ -1435,9 +1436,8 @@ public class DesignSurface : DesignerCanvas
 				? DesignViewport.Fit(pixelWidth, pixelHeight, FitInnerExtent(FitBasisWidth), FitInnerExtent(FitBasisHeight), 1.0, panX + ChromeMargin, panY + ChromeMargin)
 				: DesignViewport.Zoom(pixelWidth, pixelHeight, FitBasisWidth, FitBasisHeight, zoomScale, panX + ChromeMargin, panY + ChromeMargin);
 		}
-		// The body is shifted down by the title height; half the shift keeps the entire desktop
-		// window centred in Fit mode while the full scaled title remains inside scroll extent.
-		return title > 0 ? viewport.Offset(0, title * viewport.Scale / 2) : viewport;
+		// The body is shifted down by the whole scaled title height so the desktop window's title bar sits at the top margin.
+		return title > 0 ? viewport.Offset(0, title * viewport.Scale) : viewport;
 	}
 
 	// Fit must leave room for the CanvasMargin that the frame is offset by on every side.
@@ -1585,15 +1585,23 @@ public class DesignSurface : DesignerCanvas
 		var viewport = CurrentViewport();
 		var scale = viewport.Scale;
 		var origin = viewport.BaseOrigin;
-		// Content spans the design at the current zoom; at fit the design is centered inside
-		// the viewport-sized content (no scroll range), when zoomed in it is top-left
-		// anchored so the scroll range covers the whole design. The design rect is placed at
+		// Content spans the design at the current zoom, top-left anchored (in Fit and zoomed alike) so the scroll range
+		// covers the whole design; when the design fits there is no scroll range. The design rect is placed at
 		// a FIXED content position - the ScrollViewer moves it on screen as the scroll
 		// offsets change, which is what makes the scrollbars actually scroll the canvas.
 		// A fixed margin keeps the design bitmap off the edges, surrounded by the dotted
 		// empty-canvas EdgePattern (see DesignerCanvas).
 		contentCanvas.Width = Math.Max(scroller.ViewportWidth, pixelWidth * scale + ChromeMargin * 2);
 		contentCanvas.Height = Math.Max(scroller.ViewportHeight, (pixelHeight + DesktopTitleHeight) * scale + ChromeMargin * 2);
+		// A scrollbar that is shown only when the content overflows decides, once it appears, to shrink the viewport by its own
+		// width, which moves the centred frame and re-runs this method; with a design far smaller than the pane the scrollbars
+		// kept toggling (measured: viewport 2451x518 <-> 2434x501 and the frame x 633 <-> 625, a 2434-wide pane for a 1280-wide
+		// design). Decide per axis from the scroller's OWN size, which a scrollbar cannot change, like CurrentViewport does:
+		// when the design plus its margins fits, that axis has no scrollbar at all.
+		var needsHorizontal = DesignViewport.NeedsScrollBar(pixelWidth * scale, ChromeMargin * 2, FitBasisWidth);
+		var needsVertical = DesignViewport.NeedsScrollBar((pixelHeight + DesktopTitleHeight) * scale, ChromeMargin * 2, FitBasisHeight);
+		scroller.HorizontalScrollBarVisibility = needsHorizontal ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
+		scroller.VerticalScrollBarVisibility = needsVertical ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
 		// BaseOrigin already has CanvasMargin folded in through viewport.PanX/PanY (see
 		// CurrentViewport) - reading the raw panX/panY fields here instead (as a previous pass did) placed the rendered
 		// frame CanvasMargin short of where every other conversion (ToDesignPoint,
@@ -2318,9 +2326,9 @@ public class DesignSurface : DesignerCanvas
 		var foldedPan = viewport2.PanForDesignPointAtSurface(designX, designY, contentX, contentY);
 		zoomScale = previousZoom;
 		fitMode = previousFitMode;
-		// CurrentViewport folds CanvasMargin into its pan; store the raw field so it is added
-		// exactly once when the next viewport is made.
-		SetViewport(nextZoom, foldedPan.X - CanvasMargin, foldedPan.Y - CanvasMargin);
+		// CurrentViewport folds ChromeMargin (and, for a desktop window, the whole scaled title bar) into its pan; store the raw
+		// field so each is added exactly once when the next viewport is made.
+		SetViewport(nextZoom, foldedPan.X - ChromeMargin, foldedPan.Y - ChromeMargin - DesktopTitleHeight * nextZoom);
 	}
 
 	#endregion

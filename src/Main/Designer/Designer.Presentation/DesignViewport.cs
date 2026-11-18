@@ -15,8 +15,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 	///
 	/// WinForms' backend never scales or pans - it is the <see cref="Identity"/> case of the
 	/// exact same shape (Scale=1, Origin=(0,0), Pan=(0,0), so DesignToSurface/SurfaceToDesign
-	/// are the identity function). WinUI/Uno's backend uses <see cref="Fit"/>, which centers the
-	/// design at "fit" scale inside a viewport and layers a user zoom/pan on top - see
+	/// are the identity function). WinUI/Uno's backend uses <see cref="Fit"/>, which anchors the
+	/// design at the top-left at "fit" scale inside a viewport and layers a user zoom/pan on top - see
 	/// UnoDesignSurfaceControl's own "Viewport model" doc comment for the full picture.
 	/// </summary>
 	public readonly struct DesignViewport
@@ -51,8 +51,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 			=> new(designWidth, designHeight, 1.0, 0.0, 0.0, 0.0, 0.0);
 
 		/// <summary>
-		/// Centers a <paramref name="designWidth"/> x <paramref name="designHeight"/> design
-		/// inside a <paramref name="viewportWidth"/> x <paramref name="viewportHeight"/> surface
+		/// THE placement policy of every UI designer (WinUI, Uno, WPF, WinForms, GTK, MewUI all draw through the shared design surface):
+		/// the design is anchored at the TOP-LEFT of the surface, never centred, and the caller's pan (which carries the canvas margin)
+		/// is the only offset - exactly like a document editor. Centring left a 1280-wide design 618 px from the left of a 2451-px pane.
+		/// Fits a <paramref name="designWidth"/> x <paramref name="designHeight"/> design
+		/// into a <paramref name="viewportWidth"/> x <paramref name="viewportHeight"/> surface
 		/// at "fit" scale, times the caller's own <paramref name="zoomFactor"/>, offset by the
 		/// caller's own <paramref name="panX"/>/<paramref name="panY"/>. Matches
 		/// UnoDesignSurfaceControl's EffectiveScale()/ViewportParams() formulas exactly - this
@@ -61,18 +64,21 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 		public static DesignViewport Fit(double designWidth, double designHeight,
 			double viewportWidth, double viewportHeight, double zoomFactor, double panX, double panY)
 		{
-			// Matches EffectiveScale()/ViewportParams() exactly, including their degenerate-input
-			// behavior: only Scale falls back to 1.0 when a dimension is zero - OriginX/OriginY
-			// are still computed from the raw (possibly zero) inputs at that fallback scale, not
-			// zeroed out, since some callers (e.g. LayoutSelection) invoke this before the
-			// viewport has been sized and rely on that exact fallback shape.
+			// Only Scale has a degenerate-input rule: it falls back to 1.0 when a dimension is zero, because some callers
+			// (e.g. LayoutSelection) invoke this before the viewport has been sized. The origin is always (0, 0).
 			var scale = (designWidth == 0 || designHeight == 0 || viewportWidth == 0 || viewportHeight == 0)
 				? 1.0
 				: Math.Min(viewportWidth / designWidth, viewportHeight / designHeight) * zoomFactor;
-			var originX = (viewportWidth - designWidth * scale) / 2;
-			var originY = (viewportHeight - designHeight * scale) / 2;
-			return new DesignViewport(designWidth, designHeight, scale, originX, originY, panX, panY);
+			return new DesignViewport(designWidth, designHeight, scale, 0.0, 0.0, panX, panY);
 		}
+
+		/// <summary>
+		/// Whether the design needs a scrollbar on one axis: its scaled extent plus the margins around it is larger than the
+		/// PANE's own extent. Decided from the pane size, never from a viewport a scrollbar has already shrunk: letting the
+		/// scrollbar's presence decide whether it is needed made the scrollbars (and the frame) toggle endlessly.
+		/// </summary>
+		public static bool NeedsScrollBar(double scaledDesignExtent, double margins, double paneExtent)
+			=> scaledDesignExtent + margins > paneExtent;
 
 		/// <summary>Scale-only viewport for elements that live inside the design frame's own
 		/// coordinate space (selection adorners, snap guides, grid guides): design units mapped
@@ -82,7 +88,8 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 			=> new(designWidth, designHeight, scale, 0.0, 0.0, 0.0, 0.0);
 
 		/// <summary>
-		/// Centers a design at a fixed zoom <paramref name="scale"/> (1.0 = 100%, 1:1), for
+		/// Places a design at a fixed zoom <paramref name="scale"/> (1.0 = 100%, 1:1) anchored at the top-left (see <see cref="Fit"/>;
+		/// the viewport size is not used for placement), for
 		/// backends whose zoom is an absolute scale rather than a multiple of fit - e.g. the
 		/// WinForms designer's shared toolbar zoom.
 		/// </summary>
@@ -90,9 +97,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Presentation
 			double viewportWidth, double viewportHeight, double scale,
 			double panX = 0.0, double panY = 0.0)
 		{
-			var originX = (viewportWidth - designWidth * scale) / 2;
-			var originY = (viewportHeight - designHeight * scale) / 2;
-			return new DesignViewport(designWidth, designHeight, scale, originX, originY, panX, panY);
+			return new DesignViewport(designWidth, designHeight, scale, 0.0, 0.0, panX, panY);
 		}
 
 		/// <summary>Design-space point to surface-local coordinates (no toolbar/scroll offsets -
