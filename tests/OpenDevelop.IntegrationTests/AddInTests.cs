@@ -2292,6 +2292,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
         // synthetic pointer below is real OS-level input that only routes correctly when this
         // window is actually frontmost - the WPF designer's drag tests do the same thing.
         await _app.InvokeAsync("od.activate");
+        await HideToolPanesAsync();
 
         var bounds = await _app.InvokeAsync("od.winui-designer.query-element-screen-bounds", "PrimaryButton");
         Assert.True(bounds.GetProperty("success").GetBoolean(), bounds.ToString());
@@ -2341,6 +2342,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
                 && status.GetProperty("selectedName").GetString() == "PrimaryButton";
         }, TimeSpan.FromSeconds(20), initialDelayMs: 100, maxDelayMs: 500);
         Assert.True(selected, "Clicking the design surface should select PrimaryButton: " + status);
+        await RestoreToolPanesAsync();
 
         // The click must land in the same place an Outline pick would: the shared Properties pad,
         // backed by the XAML source element.
@@ -5325,6 +5327,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
 		}
 
         await _app.InvokeAsync("od.winui-designer.activate-design");
+        await HideToolPanesAsync();
         await _app.InvokeAsync("od.winui-designer.select", "PrimaryButton");
 
         // The press must land on the handle, so the handle has to be inside the viewport, and the 8 handles
@@ -9351,8 +9354,46 @@ EndGlobal
         // get_Name is a compiler-generated accessor — may or may not be found
     }
 
+    // The tool panes a viewport-dependent designer journey hid (see HideToolPanesAsync); DisposeAsync puts them back so a later fact in the shared IDE
+    // process finds its pads.
+    string _hiddenToolPanes = "";
+
+    /// <summary>
+    /// Gives the design canvas the whole editor area. On the CI runner's 1024x768 display the docked pads left the designer viewport
+    /// 435x99 (run 44242536189): the selection and its resize handle were clipped outside it, so the press landed on the ScrollViewer and the
+    /// Uno canvas reported "handle outside the visible canvas". Maximizes the window, hides every docked tool pane and lets layout settle.
+    /// </summary>
+    async Task HideToolPanesAsync()
+    {
+        var maximized = await _app.InvokeAsync("od.window.maximize");
+        Assert.True(maximized.GetProperty("success").GetBoolean(), maximized.ToString());
+        var hidden = await _app.InvokeAsync("od.layout.hide-tool-panes");
+        Assert.True(hidden.GetProperty("success").GetBoolean(), hidden.ToString());
+        var ids = hidden.GetProperty("hidden").EnumerateArray().Select(e => e.GetString()!).ToArray();
+        // Remember them first, so DisposeAsync can still restore them when an assertion below fails.
+        _hiddenToolPanes = string.Join(",", ids);
+        // The action reports success even when it skipped every pane (an anchorable without a ContentId), which would leave the
+        // viewport as small as before and this helper silently useless. A default layout always has visible tool panes.
+        Assert.True(ids.Length > 0, "No visible tool pane was hidden, so the design viewport was not enlarged: " + hidden);
+        await Task.Delay(500);
+    }
+
+    async Task RestoreToolPanesAsync()
+    {
+        if (_hiddenToolPanes.Length == 0) return;
+        var ids = _hiddenToolPanes;
+        var restored = await _app.InvokeAsync("od.layout.show-tool-panes", ids);
+        Assert.True(restored.GetProperty("success").GetBoolean(), restored.ToString());
+        var shown = restored.GetProperty("shown").EnumerateArray().Select(e => e.GetString()).ToHashSet();
+        var missing = ids.Split(',').Where(id => !shown.Contains(id)).ToArray();
+        Assert.True(missing.Length == 0, "These tool panes could not be shown again: " + string.Join(", ", missing));
+        // Clear only after a verified restore, so a failed one is retried by DisposeAsync instead of leaving the panes hidden.
+        _hiddenToolPanes = "";
+    }
+
     public async ValueTask DisposeAsync()
     {
+                try { await RestoreToolPanesAsync(); } catch { }
                 await _app.HideIlSpyPanesAsync();
                 try { Directory.Delete(_repoDir, recursive: true); } catch { }
                 try { Directory.Delete(_projectDir, recursive: true); } catch { }

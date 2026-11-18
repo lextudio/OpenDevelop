@@ -3672,6 +3672,37 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { count = items.Length, items });
 		}
 
+		[DevFlowAction("od.layout.hide-tool-panes", Description = "Hide every tool pane that is currently visible and return their ContentIds, so a viewport-dependent designer journey gets the whole editor area on a small display (a CI runner is 1024x768 and left the design canvas 435x99); pass the returned ids to od.layout.show-tool-panes to put them back")]
+		public static string HideToolPanes()
+		{
+			return System.Windows.Application.Current.Dispatcher.Invoke(() => {
+				var hidden = new List<string>();
+				foreach (var anchorable in DockWorkspace.Current.Layout.Descendents().OfType<LayoutAnchorable>().Where(a => a.IsVisible && !a.IsFloating).ToList())
+				{
+					if (string.IsNullOrEmpty(anchorable.ContentId)) continue;
+					anchorable.Hide();
+					hidden.Add(anchorable.ContentId);
+				}
+				System.Windows.Application.Current.MainWindow?.UpdateLayout();
+				return JsonSerializer.Serialize(new { success = true, hidden });
+			});
+		}
+
+		[DevFlowAction("od.layout.show-tool-panes", Description = "Show the tool panes named by a comma-separated ContentId list (the result of od.layout.hide-tool-panes) again")]
+		public static string ShowToolPanes(string contentIds)
+		{
+			return System.Windows.Application.Current.Dispatcher.Invoke(() => {
+				var wanted = new HashSet<string>((contentIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+				var shown = new List<string>();
+				foreach (var anchorable in DockWorkspace.Current.Layout.Descendents().OfType<LayoutAnchorable>().Where(a => a.ContentId != null && wanted.Contains(a.ContentId)).ToList())
+				{
+					anchorable.Show();
+					shown.Add(anchorable.ContentId);
+				}
+				System.Windows.Application.Current.MainWindow?.UpdateLayout();
+				return JsonSerializer.Serialize(new { success = true, shown });
+			});
+		}
 		[DevFlowAction("od.layout.pane-position", Description = "Report where an anchorable (by ContentId) actually sits in the live AvalonDock layout right now (named LayoutAnchorablePane, side, tab index, floating/hidden) - the generic, non-ILSpy-specific version of ILSpyAddIn's od.ilspy.pane-position, used to verify LayoutSnapshotConverter's round-trip")]
 		public static string GetPanePosition(string contentId)
 		{
