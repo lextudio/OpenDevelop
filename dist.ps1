@@ -976,6 +976,20 @@ function Copy-AddinSdkIntoPayload {
     [System.IO.File]::WriteAllText(
         (Join-Path $resolverTarget 'OpenDevelop.Addin.SdkResolver.xml'),
         "<SdkResolver><Path>OpenDevelop.Addin.SdkResolver.dll</Path></SdkResolver>`n")
+    Write-HostAssemblyManifest -PayloadRoot $PayloadRoot
+}
+
+function Write-HostAssemblyManifest {
+    <#
+      OpenDevelop.host-assemblies.txt at the application root: the file names of the host's own
+      assemblies, which is what the dev build writes from SharpDevelop's TargetDir *.dll. The Addin SDK
+      (Sdk.targets) finds it next to Sdks/ in an installed IDE and drops exactly those names from an
+      add-in's output, so a package built against the installed IDE carries no second copy of the host.
+    #>
+    param([Parameter(Mandatory)][string]$PayloadRoot)
+    $names = @(Get-ChildItem -LiteralPath $PayloadRoot -File -Filter '*.dll' | ForEach-Object { $_.Name } | Sort-Object -Unique)
+    if ($names.Count -eq 0) { throw "dist.ps1: no host assemblies at the root of $PayloadRoot to list." }
+    [System.IO.File]::WriteAllText((Join-Path $PayloadRoot 'OpenDevelop.host-assemblies.txt'), (($names -join "`n") + "`n"))
 }
 
 function Test-AddinSdkInPayload {
@@ -984,7 +998,8 @@ function Test-AddinSdkInPayload {
         'Sdks/OpenDevelop.Addin.Sdk/Sdk/Sdk.props',
         'Sdks/OpenDevelop.Addin.Sdk/Sdk/Sdk.targets',
         'SdkResolvers/OpenDevelop.Addin.SdkResolver/OpenDevelop.Addin.SdkResolver.dll',
-        'SdkResolvers/OpenDevelop.Addin.SdkResolver/OpenDevelop.Addin.SdkResolver.xml')) {
+        'SdkResolvers/OpenDevelop.Addin.SdkResolver/OpenDevelop.Addin.SdkResolver.xml',
+        'OpenDevelop.host-assemblies.txt')) {
         if (-not (Test-Path -LiteralPath (Join-Path $PayloadRoot $required))) {
             throw "Distribution payload is missing the Addin SDK file '$required' (add-in projects could not use Sdk=""OpenDevelop.Addin.Sdk""): $PayloadRoot"
         }
@@ -1074,6 +1089,14 @@ function Test-LinuxDistributionPayload {
     $app = Join-Path $PayloadRoot 'OpenDevelop.dll'
     if (-not (Test-Path -LiteralPath $app)) { throw "Linux distribution payload has no OpenDevelop.dll: $PayloadRoot" }
     Test-DistributionLegalFiles -Destination $PayloadRoot
+
+    # The Addin SDK and the host assembly list it trims against (build-application-payload.sh).
+    foreach ($required in 'Sdks/OpenDevelop.Addin.Sdk/Sdk/Sdk.targets', 'SdkResolvers/OpenDevelop.Addin.SdkResolver/OpenDevelop.Addin.SdkResolver.dll', 'OpenDevelop.host-assemblies.txt') {
+        if (-not (Test-Path -LiteralPath (Join-Path $PayloadRoot $required))) { throw "Linux distribution payload is missing the Addin SDK file '$required': $PayloadRoot" }
+    }
+    if (-not (Select-String -LiteralPath (Join-Path $PayloadRoot 'OpenDevelop.host-assemblies.txt') -Pattern '^ICSharpCode\.SharpDevelop\.dll$' -Quiet)) {
+        throw "Linux distribution payload's OpenDevelop.host-assemblies.txt does not list ICSharpCode.SharpDevelop.dll: $PayloadRoot"
+    }
 
     $addIns = Join-Path $PayloadRoot 'AddIns'
     if (-not (Test-Path -LiteralPath $addIns)) { throw "Linux distribution payload has no AddIns directory: $PayloadRoot" }

@@ -86,6 +86,24 @@
 
     <Message Importance="high" Text="OpenDevelop Addin SDK deployment test passed." />
   </Target>
+  <!-- An installed IDE has the SDK at <root>/Sdks/OpenDevelop.Addin.Sdk/Sdk/ and the host assembly list at <root>: copy
+       the real SDK files into such a layout and let a nested project that names no host property prove that the SDK
+       finds the list and trims by it. -->
+  <Target Name="AssertInstalledLayout" AfterTargets="Assert">
+    <PropertyGroup>
+      <_Installed>$(TestRoot)installed/</_Installed>
+      <_InstalledSdk>$(_Installed)Sdks/OpenDevelop.Addin.Sdk/Sdk/</_InstalledSdk>
+    </PropertyGroup>
+    <RemoveDir Directories="$(_Installed)" />
+    <ItemGroup>
+      <_SdkFile Include="$(MSBuildThisFileDirectory)../../src/SDK/OpenDevelop.Addin.Sdk/Sdk/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_SdkFile)" DestinationFiles="@(_SdkFile->'$(_InstalledSdk)%(RecursiveDir)%(Filename)%(Extension)')" />
+    <WriteLinesToFile File="$(_Installed)OpenDevelop.host-assemblies.txt" Lines="Host.Shared.dll" Overwrite="true" />
+    <!-- A Windows payload starts through OpenDevelop.exe and has no extensionless launcher. -->
+    <WriteLinesToFile File="$(_Installed)OpenDevelop.exe" Lines="launcher" Overwrite="true" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)OpenDevelop.AddinSdk.InstalledLayout.Tests.proj" Targets="Check" />
+  </Target>
   <!-- PackOdAddin runs Build first (the test's Build above), then zips the trimmed output. -->
   <Target Name="AssertPackage" AfterTargets="PackOdAddin">
     <PropertyGroup>

@@ -4,6 +4,11 @@
     <OpenDevelopPruneDeploymentAssets Condition="'$(OpenDevelopPruneDeploymentAssets)' == ''">true</OpenDevelopPruneDeploymentAssets>
     <OpenDevelopAddinKind Condition="'$(OpenDevelopAddinKind)' == ''">InProcess</OpenDevelopAddinKind>
     <OpenDevelopHostBin Condition="'$(OpenDevelopHostBin)' == '' And '$(OpenDevelopRepoRoot)' != ''">$(OpenDevelopRepoRoot)src/Main/SharpDevelop/bin/$(Configuration)/net11.0-windows/</OpenDevelopHostBin>
+    <!-- An installed IDE carries this SDK at <application root>/Sdks/OpenDevelop.Addin.Sdk/Sdk/ and its host assembly list
+         (OpenDevelop.host-assemblies.txt) at <application root>, so an add-in built against it needs no property to find the host.
+         A source checkout (OpenDevelopRepoRoot) or an explicit OpenDevelopHostBin takes precedence. -->
+    <_OpenDevelopInstalledRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../'))</_OpenDevelopInstalledRoot>
+    <OpenDevelopHostBin Condition="'$(OpenDevelopHostBin)' == '' And Exists('$(_OpenDevelopInstalledRoot)OpenDevelop.host-assemblies.txt')">$(_OpenDevelopInstalledRoot)</OpenDevelopHostBin>
     <OpenDevelopHostManifest Condition="'$(OpenDevelopHostManifest)' == '' And '$(OpenDevelopHostBin)' != ''">$(OpenDevelopHostBin)OpenDevelop.host-assemblies.txt</OpenDevelopHostManifest>
   </PropertyGroup>
   <!-- Run/Debug support: make the addin project startable so F5 launches a second OpenDevelop
@@ -19,6 +24,8 @@
        consuming repo's Directory.Build.targets (or the project itself) has set OpenDevelopRoot. -->
   <PropertyGroup Condition="'$(OpenDevelopAddin)' == 'true' And '$(OpenDevelopAddinKind)' == 'InProcess'">
     <OpenDevelopDebugHost Condition="'$(OpenDevelopDebugHost)' == '' And '$(OpenDevelopHostBin)' != ''">$(OpenDevelopHostBin)OpenDevelop</OpenDevelopDebugHost>
+    <!-- The Windows payload (and a Windows build output) starts through OpenDevelop.exe; the other platforms through the extensionless apphost/launcher. -->
+    <OpenDevelopDebugHost Condition="'$(OpenDevelopDebugHost)' == '$(OpenDevelopHostBin)OpenDevelop' And !Exists('$(OpenDevelopHostBin)OpenDevelop') And Exists('$(OpenDevelopHostBin)OpenDevelop.exe')">$(OpenDevelopHostBin)OpenDevelop.exe</OpenDevelopDebugHost>
     <!-- Per-project, stable across runs so the experimental instance remembers its own layout,
          and never the developer's real profile. -->
     <OpenDevelopDebugConfigDir Condition="'$(OpenDevelopDebugConfigDir)' == ''">$(MSBuildProjectDirectory)/.od-experimental-instance</OpenDevelopDebugConfigDir>

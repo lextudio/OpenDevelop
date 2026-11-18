@@ -235,6 +235,11 @@ trap - EXIT
 # also protects future copy paths: static archives are never runtime-loadable in a macOS .app.
 find "$bundle_macos" -type f -name '*.a' -delete
 
+# The host assembly list the Addin SDK reads (Sdk.targets, OpenDevelop.host-assemblies.txt next to Sdks/): the file
+# names of the host's own assemblies, as the dev build writes them from SharpDevelop's TargetDir *.dll. An add-in built
+# against this installed IDE drops exactly these from its output instead of carrying a second copy.
+find "$bundle_macos" -maxdepth 1 -type f -name '*.dll' -exec basename {} \; | LC_ALL=C sort -u > "$bundle_macos/OpenDevelop.host-assemblies.txt"
+
 "$script_dir/deduplicate-runtime-files.sh" "$bundle_macos"
 
 echo "Bundle ready: $bundle_root"

@@ -1,0 +1,30 @@
+<Project DefaultTargets="Check">
+  <!-- Invoked by OpenDevelop.AddinSdk.Tests.proj (AssertInstalledLayout) after it copied the SDK into a fake installed
+       IDE under obj/sdk-test/installed/. Nothing here names the host: no OpenDevelopHostBin, no manifest property, no
+       repository root. The SDK must find OpenDevelop.host-assemblies.txt on its own, from where it is installed. -->
+  <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
+    <Installed>$(MSBuildThisFileDirectory)obj/sdk-test/installed/</Installed>
+    <OutputPath>$(Installed)AddIns/Sample/</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <OpenDevelopAddinManifest Include="$(MSBuildThisFileDirectory)Sample.addin" />
+  </ItemGroup>
+  <Import Project="$(Installed)Sdks/OpenDevelop.Addin.Sdk/Sdk/Sdk.targets" />
+  <Target Name="Check" DependsOnTargets="Prepare;OpenDevelopTrimAddinOutput;Assert" />
+  <Target Name="Prepare">
+    <MakeDir Directories="$(OutputPath)" />
+    <WriteLinesToFile File="$(OutputPath)Host.Shared.dll" Lines="duplicate of a host assembly" Overwrite="true" />
+    <WriteLinesToFile File="$(OutputPath)Addin.Private.dll" Lines="the add-in's own" Overwrite="true" />
+  </Target>
+  <Target Name="Assert">
+    <!-- Not a string comparison with $(Installed): GetFullPath yields backslashes on Windows. -->
+    <Error Condition="!Exists('$(OpenDevelopHostBin)OpenDevelop.host-assemblies.txt')" Text="OpenDevelopHostBin was not derived from the SDK's installed location: '$(OpenDevelopHostBin)'." />
+    <Error Condition="!Exists('$(OpenDevelopHostBin)Sdks/OpenDevelop.Addin.Sdk/Sdk/Sdk.targets')" Text="OpenDevelopHostBin '$(OpenDevelopHostBin)' is not the installed root that holds this SDK." />
+    <Error Condition="Exists('$(OutputPath)Host.Shared.dll')" Text="A host assembly listed in the installed OpenDevelop.host-assemblies.txt was not trimmed." />
+    <Error Condition="!Exists('$(OutputPath)Addin.Private.dll')" Text="The add-in's own assembly was trimmed." />
+    <Error Condition="!$(StartProgram.EndsWith('OpenDevelop.exe'))" Text="F5 would start '$(StartProgram)', not the Windows payload's OpenDevelop.exe." />
+    <Message Importance="high" Text="OpenDevelop Addin SDK installed-layout discovery test passed." />
+  </Target>
+</Project>

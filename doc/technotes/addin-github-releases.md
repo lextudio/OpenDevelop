@@ -166,6 +166,16 @@ Gaps found while verifying:
   payload without them fails the package build). The two functions were exercised on macOS with
   PowerShell against the real build output; the Windows packaging path itself has not run, so a
   `release.yml` rehearsal (`gh workflow run release.yml --ref master`) is still the proof.
+- **The installed IDE did not ship `OpenDevelop.host-assemblies.txt`**, the list the SDK trims an add-in's
+  output by (the file names of the host's own `*.dll`, written by the dev build from SharpDevelop's
+  `TargetDir`). Without it the SDK skipped the trim, so a package built against an installed IDE carried a
+  second copy of the host and of everything the host's references dragged in (CoreWF: 435 MB). The macOS
+  bundle, the Linux payload and the Windows payload now write it at the application root, next to `Sdks/`
+  (`Write-HostAssemblyManifest` in `dist.ps1`, the two shell scripts), and `Sdk.targets` derives
+  `OpenDevelopHostBin` from its own location (`<root>/Sdks/OpenDevelop.Addin.Sdk/Sdk/` -> `<root>`) when that file
+  is there, so an add-in needs no property to find the host. Covered by `AssertInstalledLayout` in
+  `tests/OpenDevelop.AddinSdk.Tests`. Releases up to v5.9.1 lack the file; an add-in built against them must
+  prune the host payload itself (CoreWF's `WorkflowDesignerPruneHostPayload`).
 - CoreWF, Stride and MAUI Designer import `Sdk.props`/`Sdk.targets` by path from `$(OpenDevelopRoot)`
   (a source checkout), not through `Sdk=`. To publish from an installed OpenDevelop they must switch
   to the `Sdk=` form (or point `OpenDevelopRoot` at the install's `Sdks/` layout).

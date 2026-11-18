@@ -47,6 +47,10 @@ done
 glfw="$payload/runtimes/$rid/native/libglfw.so.3"
 [[ -f "$glfw" ]] || { echo "GLFW native library is missing: $glfw" >&2; exit 1; }
 cp -p "$glfw" "$payload/libglfw.so.3"
+# The host assembly list the Addin SDK reads (Sdk.targets, OpenDevelop.host-assemblies.txt next to Sdks/): the
+# file names of the host's own assemblies, i.e. what the dev build writes from SharpDevelop's TargetDir *.dll.
+# An add-in built against this installed IDE drops exactly these from its output instead of carrying a second copy.
+find "$payload" -maxdepth 1 -type f -name '*.dll' -exec basename {} \; | LC_ALL=C sort -u > "$payload/OpenDevelop.host-assemblies.txt"
 cat > "$payload/OpenDevelop" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
