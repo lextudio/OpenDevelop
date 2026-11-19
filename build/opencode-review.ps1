@@ -139,9 +139,20 @@ switch ($Action) {
         $export = $null
         while ($true) {
             $null = Get-SessionList
-            $null | & opencode session export $sessionId > $exportFile 2> (Artifact '-export.err')
+            if ($IsWindows) {
+                $null | & opencode session export $sessionId > $exportFile 2> (Artifact '-export.err')
+            }
+            else {
+                # Piping $null into the export truncated a large session (about 210-230 KB of a 247 KB export, a different cut every time, so
+                # the JSON never parsed); the same command with stdin from /dev/null writes all of it.
+                & /bin/sh -c 'exec opencode session export "$1" < /dev/null > "$2" 2> "$3"' sh $sessionId $exportFile (Artifact '-export.err')
+            }
             $raw = Get-Content -LiteralPath $exportFile -Raw -ErrorAction SilentlyContinue
-            if ($raw -and $raw.Contains('"info"')) { $export = ($raw.Substring($raw.IndexOf('{')) | ConvertFrom-Json -Depth 100); break }
+            # An export that does not parse yet is a polling state like an empty one (exit 3 below), not a failure of the review.
+            if ($raw -and $raw.Contains('"info"')) {
+                try { $export = ($raw.Substring($raw.IndexOf('{')) | ConvertFrom-Json -Depth 100); break }
+                catch { Write-Host "The export does not parse yet ($($_.Exception.Message))." }
+            }
             if ([DateTime]::UtcNow -gt $deadline) { break }
             Start-Sleep -Seconds 30
         }
