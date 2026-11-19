@@ -19,8 +19,8 @@ GitHub Releases of the repositories the user trusts; `PackOdAddin` in the Addin 
 ## Model
 
 1. Each add-in author owns a GitHub repository.
-2. Each version is a GitHub **Release** whose tag is `vMAJOR.MINOR.PATCH[-suffix]` and whose assets
-   include exactly one `*.odaddin` file.
+2. Each version is a GitHub **Release** whose tag is `v` followed by a [Semantic Version 2.0.0](https://semver.org/spec/v2.0.0.html)
+   (`vMAJOR.MINOR.PATCH[-prerelease][+build]`) and whose assets include exactly one `*.odaddin` file.
 3. A user keeps a list of **trusted repositories** (`owner/repo`) in Tools > Options.
 4. The AddIn Manager lists the add-ins published by those repositories, offers *Install* for new
    ones and *Update* when a newer release exists for an installed add-in.
@@ -61,12 +61,28 @@ package type instead of trying to load it. Layout:
 - The manifest's `<Identity name>` is the add-in's unique key. The repository is only where it comes
   from.
 - The release tag is the version source of truth. Before installing, the package's
-  `<Identity version>` must equal the tag (without the leading `v`); a mismatch rejects the install.
-- *Update available* means: the installed add-in with that identity has a version lower than the
-  newest eligible release of a trusted repository. Reuse `IAddInSetup.CompareAddInToPackageVersion`
-  semantics.
-- Releases flagged *prerelease* (or drafts) are ignored unless `AddInManager2.ShowPrereleases` is on.
-  Drafts are never shown.
+  `<Identity version>` must equal the tag (without the leading `v`) as a Semantic Version; a
+  mismatch rejects the install, and so does a package whose version is not a Semantic Version.
+  A tag that is not a strict Semantic Version (`v1.9`, `v1.2.3.4`, `v01.2.3`, `v1.2.3-01`) makes the
+  release invisible to the manager; the reason is listed among the skipped releases.
+- Versions are parsed and ordered by NuGet's `NuGet.Versioning.SemanticVersion` and `VersionComparer.Default` (no parser of our own),
+  which follow Semantic Versioning precedence (spec item 11): the numeric parts, then a
+  pre-release before the same version without one (`1.0.0-rc.2` < `1.0.0`), pre-release identifiers
+  one by one (numeric ones numerically, alphanumeric ones in ASCII order, a numeric one before an
+  alphanumeric one). Build metadata (`+build`) is ignored. NuGet differs from the specification in two corners
+  that real versions do not reach: pre-release labels compare case-insensitively, and numeric identifiers that
+  do not fit an integer compare wrongly. `PackOdAddin` refuses a release version that does not match the
+  specification's own regular expression.
+- *Update available* means: the installed add-in with that identity has a version lower, in that
+  order, than the newest eligible release of a trusted repository, so an installed `0.1.1-rc1` is
+  offered `0.1.1`. An installed version that is not a Semantic Version (the four-part versions of
+  the built-in add-ins) counts as its numeric `MAJOR.MINOR.PATCH`.
+- The add-in tree itself still compares `System.Version`: `AddIn.Version` is the numeric part of
+  the Identity version (`1.2.3` for `1.2.3-rc.1`) and `AddIn.SemanticVersion` the full Semantic Version, or
+  null. In a `<Dependency>` or `<Conflict>` a `-` separates a version range (`5.9-5.10`) and is not a
+  pre-release.
+- Releases flagged *prerelease* on GitHub or whose tag has a pre-release part (or drafts) are ignored
+  unless `AddInManager2.ShowPrereleases` is on. Drafts are never shown.
 
 ## Host compatibility
 

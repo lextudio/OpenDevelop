@@ -13,7 +13,7 @@
     <!-- The early shared-host filter is also used by ordinary development builds. -->
     <OpenDevelopDistributionBuild Condition="'$(OpenDevelopDistributionBuild)' == ''">false</OpenDevelopDistributionBuild>
     <OpenDevelopDistributionRidFamily>osx</OpenDevelopDistributionRidFamily>
-    <OpenDevelopAddinReleaseVersion Condition="'$(OpenDevelopAddinReleaseVersion)' == ''">1.0</OpenDevelopAddinReleaseVersion>
+    <OpenDevelopAddinReleaseVersion Condition="'$(OpenDevelopAddinReleaseVersion)' == ''">1.0.0</OpenDevelopAddinReleaseVersion>
     <OpenDevelopAddinPackageDir>$(TestRoot)package/</OpenDevelopAddinPackageDir>
   </PropertyGroup>
   <ItemGroup>

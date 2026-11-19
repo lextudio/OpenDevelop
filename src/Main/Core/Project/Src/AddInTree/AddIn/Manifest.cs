@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Xml;
+using NuGet.Versioning;
 
 namespace ICSharpCode.Core
 {
@@ -32,6 +33,7 @@ namespace ICSharpCode.Core
 		List<AddInReference> conflicts = new List<AddInReference>();
 		Dictionary<string, Version> identities = new Dictionary<string, Version>();
 		Version primaryVersion;
+		SemanticVersion primarySemanticVersion;
 		string primaryIdentity;
 		
 		public string PrimaryIdentity {
@@ -43,6 +45,13 @@ namespace ICSharpCode.Core
 		public Version PrimaryVersion {
 			get {
 				return primaryVersion;
+			}
+		}
+
+		/// <summary>The primary Identity's version as a Semantic Version (with its pre-release), or null when it is not one.</summary>
+		public SemanticVersion PrimarySemanticVersion {
+			get {
+				return primarySemanticVersion;
 			}
 		}
 		
@@ -73,17 +82,22 @@ namespace ICSharpCode.Core
 					throw new AddInLoadException("Identity name contains invalid character: '" + c + "'");
 				}
 			}
-			// A release tag may carry a pre-release suffix (v1.2.3-rc1) and the package manifest must equal the tag, so an Identity version can too.
-			// Only the numeric part is the version (as in AddInRelease.Version); the suffix is dropped here. This is the Identity only: in a
-			// Dependency or Conflict a '-' separates a version range (5.9-5.10), see AddInReference.Create.
+			// A release tag is a Semantic Version (v1.2.3-rc.1+build) and the package manifest must equal the tag, so an Identity version can be one
+			// too. The Version stays the numeric part (as before: it is what the add-in tree compares for dependencies); the full Semantic Version,
+			// when the text is one, is kept next to it for the release logic (pre-release precedence). Other texts, such as the four-part versions
+			// of the built-in add-ins, have no Semantic Version. This is the Identity only: in a Dependency or Conflict a '-' separates a version range
+			// (5.9-5.10), see AddInReference.Create.
+			SemanticVersion semVer = null;
 			if (version != null && !version.StartsWith("@")) {
-				int suffix = version.IndexOf('-');
+				SemanticVersion.TryParse(version, out semVer);
+				int suffix = version.IndexOfAny(new[] { '-', '+' });
 				if (suffix > 0)
 					version = version.Substring(0, suffix);
 			}
 			Version v = AddInReference.ParseVersion(version, hintPath);
 			if (primaryVersion == null) {
 				primaryVersion = v;
+				primarySemanticVersion = semVer;
 			}
 			if (primaryIdentity == null) {
 				primaryIdentity = name;

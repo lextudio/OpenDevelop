@@ -25,6 +25,21 @@ public class AddInManifestVersionTests
 		Assert.Equal(new Version(expected), addIn.Version);
 	}
 
+	[Theory]
+	[InlineData("0.1.1-rc1", "0.1.1-rc1")]
+	[InlineData("1.2.3", "1.2.3")]
+	[InlineData("1.0.0-rc.1+build.5", "1.0.0-rc.1+build.5")]
+	[InlineData("1.2.3+meta", "1.2.3+meta")]
+	[InlineData("1.0-preview", null)] // not a Semantic Version: only the numeric Version is known
+	[InlineData("1.2.3.4", null)]
+	[InlineData("5.9", null)]
+	public void IdentityVersion_KeepsTheFullSemanticVersionWhenItIsOne(string written, string expected)
+	{
+		var addIn = Load("<Identity name='Test.Versions' version='" + written + "'/>");
+
+		Assert.Equal(expected, addIn.SemanticVersion?.ToFullString());
+	}
+
 	[Fact]
 	public void IdentityVersion_AWrongNumericPartIsStillRejected()
 	{

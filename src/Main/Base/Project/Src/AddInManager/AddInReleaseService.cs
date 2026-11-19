@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.Core;
+using NuGet.Versioning;
 
 namespace ICSharpCode.AddInManager2.Model
 {
@@ -222,7 +223,7 @@ namespace ICSharpCode.AddInManager2.Model
 					continue; // removed since the last refresh
 				AddInRelease latest = ReleaseVersioning.Latest(result.Releases, includePrereleases);
 				ManagedAddIn managed = installed.FirstOrDefault(m => result.Repository.Equals(m.InstalledFromRepository));
-				bool hasUpdate = managed != null && ReleaseVersioning.IsNewer(managed.AddIn.Version, latest);
+				bool hasUpdate = managed != null && ReleaseVersioning.IsNewer(managed.AddIn, latest);
 				entries.Add(new AddInCatalogEntry(result.Repository, result, latest, managed, hasUpdate));
 			}
 			return entries;
@@ -283,8 +284,11 @@ namespace ICSharpCode.AddInManager2.Model
 			}
 			if (candidate == null || candidate.Manifest == null || string.IsNullOrEmpty(candidate.Manifest.PrimaryIdentity))
 				return release.Repository + " " + release.Tag + " has no add-in identity in its manifest.";
-			if (ReleaseVersioning.Compare(candidate.Version, release.Version) != 0)
-				return "The package of " + release.Repository + " " + release.Tag + " says it is version " + candidate.Version
+			// The manifest's version must be the tag's Semantic Version (pre-release included): a package that says 1.0.0 for the tag v1.0.0-rc.1,
+			// or whose version is not a Semantic Version at all, is not the release it claims to be.
+			if (candidate.SemanticVersion == null || VersionComparer.Default.Compare(candidate.SemanticVersion, release.SemanticVersion) != 0)
+				return "The package of " + release.Repository + " " + release.Tag + " says it is version "
+					+ (candidate.SemanticVersion != null ? candidate.SemanticVersion.ToFullString() : candidate.Version.ToString())
 					+ ", which does not match its release tag.";
 			IReadOnlyList<string> problems = AddInCompatibility.Problems(candidate, management.AddIns);
 			if (problems.Count > 0)

@@ -157,6 +157,12 @@
     <Error Condition="'$(OpenDevelopAddinKind)' != 'InProcess'" Text="PackOdAddin packages an InProcess add-in; OpenDevelopAddinKind is '$(OpenDevelopAddinKind)'." />
     <Error Condition="'$(OpenDevelopDistributionBuild)' != 'true'" Text="A .odaddin must be built as a distribution so ref/ assemblies, XML documentation and foreign-platform runtimes are pruned: pass -p:OpenDevelopDistributionBuild=true (and -p:OpenDevelopDistributionRidFamily=osx|win, or OpenDevelopDistributionRuntimeIdentifier=linux-x64|linux-arm64, to choose the native runtimes to keep)." />
     <Error Condition="'$(OpenDevelopAddinReleaseVersion)' == ''" Text="Set OpenDevelopAddinReleaseVersion to the release version (the tag without the leading 'v'), e.g. -p:OpenDevelopAddinReleaseVersion=1.2.3." />
+    <!-- The tag is a Semantic Version 2.0.0 (the pattern is the official one, https://semver.org/spec/v2.0.0.html#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string),
+         and the host reads the package's Identity version, which equals it, by the same rules. -->
+    <PropertyGroup>
+      <_OdAddinSemVerPattern>^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$</_OdAddinSemVerPattern>
+    </PropertyGroup>
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(OpenDevelopAddinReleaseVersion)', '$(_OdAddinSemVerPattern)'))" Text="OpenDevelopAddinReleaseVersion '$(OpenDevelopAddinReleaseVersion)' is not a Semantic Version 2.0.0 (MAJOR.MINOR.PATCH[-prerelease][+build], no leading zeros), e.g. 1.2.3 or 1.2.3-rc.1." />
     <Error Condition="'$(RuntimeIdentifier)' != '' And '$(OpenDevelopAllowRidSpecificAddin)' != 'true'" Text="A .odaddin must be AnyCPU, but this build has RuntimeIdentifier '$(RuntimeIdentifier)'. See 'Architecture: addins are AnyCPU' in doc/technotes/addin-sdk.md." />
     <ItemGroup>
       <_OdAddinManifestInOutput Include="$(OutputPath)*.addin" />

@@ -303,6 +303,36 @@ public class AddInReleaseServiceTests : IDisposable
 		Assert.False(Directory.Exists(Path.GetDirectoryName(h.Source.DownloadedTo[0])));
 	}
 
+	[Theory]
+	[InlineData("1.0.0", "v1.0.0-rc.1")] // the final package under a pre-release tag
+	[InlineData("1.0.0-rc.1", "v1.0.0")] // a pre-release package under the final tag
+	[InlineData("1.0.0-rc.2", "v1.0.0-rc.1")]
+	[InlineData("1.0", "v1.0.0")] // not a Semantic Version at all
+	public async Task InstallAsync_RefusesAPackageWhoseSemanticVersionIsNotTheTags(string packageVersion, string tag)
+	{
+		var h = NewHarness();
+		h.DeliverPackage(directory, Manifest(version: packageVersion));
+
+		AddIn addIn = await h.Service.InstallAsync(Release(tag: tag), default);
+
+		Assert.Null(addIn);
+		Assert.Contains("does not match its release tag", Assert.Single(h.Errors));
+		Assert.Empty(h.Management.AddedToTree);
+	}
+
+	[Fact]
+	public async Task InstallAsync_AcceptsAPreReleasePackageUnderItsPreReleaseTag()
+	{
+		var h = NewHarness();
+		h.DeliverPackage(directory, Manifest(version: "1.0.0-rc.1"));
+
+		AddIn addIn = await h.Service.InstallAsync(Release(tag: "v1.0.0-rc.1"), default);
+
+		Assert.NotNull(addIn);
+		Assert.Empty(h.Errors);
+		Assert.Equal("1.0.0-rc.1", addIn.SemanticVersion.ToFullString());
+	}
+
 	[Fact]
 	public async Task InstallAsync_RefusesAPackageBuiltForAnotherHostVersion_BeforeInstallingAnything()
 	{

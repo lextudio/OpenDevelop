@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
+using ICSharpCode.Core;
+using NuGet.Versioning;
 using System.Text.RegularExpressions;
 
 namespace ICSharpCode.AddInManager2.Model
@@ -13,9 +15,6 @@ namespace ICSharpCode.AddInManager2.Model
 	/// </summary>
 	public static class GitHubReleaseParser
 	{
-		static readonly Regex TagPattern = new Regex(
-			@"^v(?<version>[0-9]+(?:\.[0-9]+){1,3})(?<suffix>-[0-9A-Za-z][0-9A-Za-z.\-]*)?$",
-			RegexOptions.CultureInvariant);
 		static readonly Regex AssetNamePattern = new Regex(@"^[A-Za-z0-9][A-Za-z0-9._ -]*\.odaddin$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 		static readonly Regex DigestPattern = new Regex(@"^sha256:(?<hex>[0-9A-Fa-f]{64})$", RegexOptions.CultureInvariant);
 
@@ -49,7 +48,7 @@ namespace ICSharpCode.AddInManager2.Model
 				}
 			}
 			releases.Sort((a, b) => {
-				int byVersion = ReleaseVersioning.Compare(b.Version, a.Version);
+				int byVersion = VersionComparer.Default.Compare(b.SemanticVersion, a.SemanticVersion);
 				return byVersion != 0 ? byVersion : a.IsPrerelease.CompareTo(b.IsPrerelease);
 			});
 			return (releases, skipped);
@@ -61,12 +60,10 @@ namespace ICSharpCode.AddInManager2.Model
 			string tag = GetString(element, "tag_name");
 			if (tag == null)
 				return "no tag name";
-			Match tagMatch = TagPattern.Match(tag);
-			if (!tagMatch.Success)
-				return "the tag is not of the form vMAJOR.MINOR.PATCH[-suffix]";
-			if (!Version.TryParse(tagMatch.Groups["version"].Value, out Version version))
-				return "the tag's version is out of range";
-			bool isPrerelease = GetBool(element, "prerelease") || tagMatch.Groups["suffix"].Success;
+			// The tag is a v followed by a Semantic Version 2.0.0 (MAJOR.MINOR.PATCH[-prerelease][+build]), strictly.
+			if (tag.Length < 2 || tag[0] != 'v' || !SemanticVersion.TryParse(tag.Substring(1), out SemanticVersion version))
+				return "the tag is not a v followed by a Semantic Version (vMAJOR.MINOR.PATCH[-prerelease][+build])";
+			bool isPrerelease = GetBool(element, "prerelease") || version.IsPrerelease;
 
 			var packages = new List<JsonElement>();
 			if (element.TryGetProperty("assets", out JsonElement assets) && assets.ValueKind == JsonValueKind.Array) {

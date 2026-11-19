@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ICSharpCode.Core;
+using NuGet.Versioning;
 
 namespace ICSharpCode.AddInManager2.Model
 {
@@ -13,13 +15,13 @@ namespace ICSharpCode.AddInManager2.Model
 		public const string PackageExtension = ".odaddin";
 
 		public AddInRelease(
-			RepositoryReference repository, string tag, Version version, bool isPrerelease,
+			RepositoryReference repository, string tag, SemanticVersion semanticVersion, bool isPrerelease,
 			string assetName, Uri assetUrl, long assetSize, string sha256,
 			string notes, DateTimeOffset? publishedAt, Uri pageUrl)
 		{
 			Repository = repository ?? throw new ArgumentNullException(nameof(repository));
 			Tag = tag ?? throw new ArgumentNullException(nameof(tag));
-			Version = version ?? throw new ArgumentNullException(nameof(version));
+			SemanticVersion = semanticVersion ?? throw new ArgumentNullException(nameof(semanticVersion));
 			IsPrerelease = isPrerelease;
 			AssetName = assetName ?? throw new ArgumentNullException(nameof(assetName));
 			AssetUrl = assetUrl ?? throw new ArgumentNullException(nameof(assetUrl));
@@ -35,8 +37,11 @@ namespace ICSharpCode.AddInManager2.Model
 		/// <summary>The release tag, for example <c>v1.2.3</c>.</summary>
 		public string Tag { get; }
 
+		/// <summary>The tag as a Semantic Version 2.0.0, pre-release included: <c>1.2.3-rc.1</c>. Release precedence is decided on this.</summary>
+		public SemanticVersion SemanticVersion { get; }
+
 		/// <summary>The numeric part of the tag: <c>1.2.3</c>.</summary>
-		public Version Version { get; }
+		public Version Version { get { return new Version(SemanticVersion.Major, SemanticVersion.Minor, SemanticVersion.Patch); } }
 
 		/// <summary>True for a GitHub pre-release, or when the tag carries a suffix such as <c>-rc1</c>.</summary>
 		public bool IsPrerelease { get; }
@@ -133,15 +138,35 @@ namespace ICSharpCode.AddInManager2.Model
 		{
 			return (releases ?? Enumerable.Empty<AddInRelease>())
 				.Where(r => includePrereleases || !r.IsPrerelease)
-				.OrderByDescending(r => Normalize(r.Version))
-				.ThenBy(r => r.IsPrerelease) // a stable release outranks a pre-release of the same number
+				.OrderByDescending(r => r.SemanticVersion, VersionComparer.Default)
+				.ThenBy(r => r.IsPrerelease) // a release GitHub flags as a pre-release without a suffix ranks below an unflagged one of the same version
 				.FirstOrDefault();
 		}
 
-		/// <summary>Whether <paramref name="release"/> is newer than the installed version.</summary>
+		/// <summary>
+		/// Whether <paramref name="release"/> is newer than the installed version: by Semantic Versioning precedence, so <c>1.0.0</c> is newer than
+		/// an installed <c>1.0.0-rc.1</c>. An installed version that is not a Semantic Version (<paramref name="installedSemanticVersion"/> null, such as a
+		/// four-part version) is taken as the release version with its numeric parts.
+		/// </summary>
+		public static bool IsNewer(Version installed, SemanticVersion installedSemanticVersion, AddInRelease release)
+		{
+			if (release == null)
+				return false;
+			installed = Normalize(installed);
+			SemanticVersion installedVersion = installedSemanticVersion ?? new SemanticVersion(installed.Major, installed.Minor, installed.Build);
+			return VersionComparer.Default.Compare(release.SemanticVersion, installedVersion) > 0;
+		}
+
+		/// <summary>Whether <paramref name="release"/> is newer than the installed add-in.</summary>
+		public static bool IsNewer(ICSharpCode.Core.AddIn installed, AddInRelease release)
+		{
+			return installed != null && IsNewer(installed.Version, installed.SemanticVersion, release);
+		}
+
+		/// <summary>Whether <paramref name="release"/> is newer than the installed version, a plain numeric one.</summary>
 		public static bool IsNewer(Version installed, AddInRelease release)
 		{
-			return release != null && Compare(release.Version, installed) > 0;
+			return IsNewer(installed, null, release);
 		}
 
 		/// <summary>Compares two versions treating unspecified parts as zero (unlike <see cref="Version.CompareTo(Version)"/>).</summary>

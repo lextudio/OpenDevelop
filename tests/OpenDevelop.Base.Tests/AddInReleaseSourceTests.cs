@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ICSharpCode.AddInManager2.Model;
+using ICSharpCode.Core;
+using NuGet.Versioning;
 using Xunit;
 
 namespace OpenDevelop.Base.Tests;
@@ -167,9 +169,14 @@ public class AddInReleaseSourceTests : IDisposable
 		yield return new object[] { "no asset", Json(Release("v1.0.0")), "no .odaddin asset" };
 		yield return new object[] { "only another asset", Json(Release("v1.0.0", assets: Asset("notes.txt", good))), "no .odaddin asset" };
 		yield return new object[] { "two packages", Json(Release("v1.0.0", assets: new[] { Asset("A.odaddin", good), Asset("B.odaddin", good) })), "2 .odaddin assets" };
-		yield return new object[] { "tag without v", Json(Release("1.0.0", assets: Asset("A.odaddin", good))), "not of the form" };
-		yield return new object[] { "tag not a version", Json(Release("vNext", assets: Asset("A.odaddin", good))), "not of the form" };
-		yield return new object[] { "tag with one number", Json(Release("v1", assets: Asset("A.odaddin", good))), "not of the form" };
+		yield return new object[] { "tag without v", Json(Release("1.0.0", assets: Asset("A.odaddin", good))), "not a v followed by a Semantic Version" };
+		yield return new object[] { "tag not a version", Json(Release("vNext", assets: Asset("A.odaddin", good))), "not a v followed by a Semantic Version" };
+		yield return new object[] { "tag with one number", Json(Release("v1", assets: Asset("A.odaddin", good))), "not a v followed by a Semantic Version" };
+		yield return new object[] { "tag with two numbers", Json(Release("v1.9", assets: Asset("A.odaddin", good))), "not a v followed by a Semantic Version" };
+		yield return new object[] { "tag with four numbers", Json(Release("v1.2.3.4", assets: Asset("A.odaddin", good))), "not a v followed by a Semantic Version" };
+		yield return new object[] { "tag with a leading zero", Json(Release("v01.2.3", assets: Asset("A.odaddin", good))), "not a v followed by a Semantic Version" };
+		yield return new object[] { "tag with a numeric pre-release with a leading zero", Json(Release("v1.2.3-01", assets: Asset("A.odaddin", good))), "not a v followed by a Semantic Version" };
+		yield return new object[] { "tag with an empty pre-release", Json(Release("v1.2.3-", assets: Asset("A.odaddin", good))), "not a v followed by a Semantic Version" };
 		yield return new object[] { "no digest", Json(Release("v1.0.0", assets: Asset("A.odaddin", null))), "no SHA-256 digest" };
 		yield return new object[] { "wrong digest algorithm", Json(Release("v1.0.0", assets: Asset("A.odaddin", "sha1:" + new string('a', 40)))), "no SHA-256 digest" };
 		yield return new object[] { "short digest", Json(Release("v1.0.0", assets: Asset("A.odaddin", "sha256:abcd"))), "no SHA-256 digest" };
@@ -474,7 +481,7 @@ public class AddInReleaseSourceTests : IDisposable
 	static AddInRelease ReleaseFor(byte[] content, string digest = null, long? size = null, string url = null, string repo = "owner/my-addin")
 	{
 		return new AddInRelease(
-			Repo(repo), "v1.0.0", new Version(1, 0, 0), false, "My Addin.odaddin",
+			Repo(repo), "v1.0.0", SemanticVersion.Parse("1.0.0"), false, "My Addin.odaddin",
 			new Uri(url ?? $"https://github.com/{repo}/releases/download/v1.0.0/My%20Addin.odaddin"),
 			size ?? content.Length, (digest ?? Sha256Of(content))["sha256:".Length..], "", null, null);
 	}

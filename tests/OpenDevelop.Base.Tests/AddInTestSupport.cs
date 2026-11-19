@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using ICSharpCode.AddInManager2.Model;
 using ICSharpCode.Core;
+using NuGet.Versioning;
 using ICSharpCode.SharpDevelop;
 
 namespace OpenDevelop.Base.Tests;
@@ -74,11 +75,8 @@ static class AddInTestSupport
 
 	public static AddInRelease Release(string repo = "owner/my-addin", string tag = "v1.2.3", bool prerelease = false)
 	{
-		string numeric = tag.TrimStart('v');
-		int dash = numeric.IndexOf('-');
-		if (dash >= 0)
-			numeric = numeric.Substring(0, dash);
-		return new(RepositoryReference.Parse(repo), tag, Version.Parse(numeric), prerelease || dash >= 0, "Sample.odaddin",
+		SemanticVersion semVer = SemanticVersion.Parse(tag.TrimStart('v'));
+		return new(RepositoryReference.Parse(repo), tag, semVer, prerelease || semVer.IsPrerelease, "Sample.odaddin",
 			new Uri($"https://github.com/{repo}/releases/download/{tag}/Sample.odaddin"), 4, new string('a', 64), "", null, null);
 	}
 

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
+// Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
 // software and associated documentation files (the "Software"), to deal in the Software
@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Xml;
+using NuGet.Versioning;
 
 namespace ICSharpCode.Core
 {
@@ -179,6 +180,11 @@ namespace ICSharpCode.Core
 		
 		public Version Version {
 			get { return manifest.PrimaryVersion; }
+		}
+
+		/// <summary>The version as a Semantic Version (with its pre-release), or null when the Identity's version is not one.</summary>
+		public SemanticVersion SemanticVersion {
+			get { return manifest.PrimarySemanticVersion; }
 		}
 		
 		public string FileName {

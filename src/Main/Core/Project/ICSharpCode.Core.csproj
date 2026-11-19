@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net11.0-windows</TargetFramework>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
@@ -25,5 +25,6 @@
          ILSpy's tree nodes and document views subscribe per-instance from their constructors, so a
          plain strong event would keep every closed node alive. -->
     <PackageReference Include="TomsToolbox.Essentials" />
+    <PackageReference Include="NuGet.Versioning" />
   </ItemGroup>
 </Project>

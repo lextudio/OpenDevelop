@@ -143,7 +143,7 @@ namespace ICSharpCode.AddInManager2.ViewModel
 		{
 			get
 			{
-				return IsInstalled && ReleaseVersioning.IsNewer(_managed.AddIn.Version, Latest);
+				return IsInstalled && ReleaseVersioning.IsNewer(_managed.AddIn, Latest);
 			}
 		}
 
