@@ -73,6 +73,14 @@ namespace ICSharpCode.Core
 					throw new AddInLoadException("Identity name contains invalid character: '" + c + "'");
 				}
 			}
+			// A release tag may carry a pre-release suffix (v1.2.3-rc1) and the package manifest must equal the tag, so an Identity version can too.
+			// Only the numeric part is the version (as in AddInRelease.Version); the suffix is dropped here. This is the Identity only: in a
+			// Dependency or Conflict a '-' separates a version range (5.9-5.10), see AddInReference.Create.
+			if (version != null && !version.StartsWith("@")) {
+				int suffix = version.IndexOf('-');
+				if (suffix > 0)
+					version = version.Substring(0, suffix);
+			}
 			Version v = AddInReference.ParseVersion(version, hintPath);
 			if (primaryVersion == null) {
 				primaryVersion = v;
