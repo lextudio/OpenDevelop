@@ -122,7 +122,7 @@ public sealed class KeyChordTests : IDisposable
 		Assert.Equal(1, free.Executed); // the combined command skips the one that cannot execute
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void TheService_RunsAChordOverride_OnTheOwner_AndDropsItOnAReset()
 	{
 		var service = new KeyBindingService(Path.Combine(directory, "KeyBindings.xml"), _ => { });

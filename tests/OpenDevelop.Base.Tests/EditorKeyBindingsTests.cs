@@ -21,7 +21,7 @@ public sealed class EditorKeyBindingsTests : IDisposable
 			.Where(b => EditorKeyBindings.KeyFor(b.Command) == commandKey)
 			.Select(b => (b.Key, b.Modifiers)).ToList();
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void TheDescribedCommands_ExcludeTheTextEntryOnes_AndHaveReadableNamesAndDefaults()
 	{
 		var commands = EditorKeyBindings.Describe().ToList();
@@ -32,7 +32,7 @@ public sealed class EditorKeyBindingsTests : IDisposable
 		Assert.All(commands, c => Assert.Equal("Text editor", c.Scope));
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void AnOverride_IsAppliedAtOnce_AndAResetBringsTheOriginalBack()
 	{
 		var textArea = new TextArea();
@@ -49,7 +49,7 @@ public sealed class EditorKeyBindingsTests : IDisposable
 		Assert.Equal(new[] { (Key.Delete, ModifierKeys.Control) }, Gestures(textArea, DeleteNextWord));
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void AttachingTwice_KeepsTheOriginals_SoAResetStillWorks()
 	{
 		var textArea = new TextArea();
@@ -62,7 +62,7 @@ public sealed class EditorKeyBindingsTests : IDisposable
 		Assert.Equal(new[] { (Key.Delete, ModifierKeys.Control) }, Gestures(textArea, DeleteNextWord));
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void TheTextEntryKeys_AreNeverTouched()
 	{
 		var textArea = new TextArea();

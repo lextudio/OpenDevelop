@@ -90,7 +90,7 @@ public sealed class CommandCatalogTests
 		Assert.Empty(CommandCatalog.Build(new[] { Load(suspended: true) }));
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void AnItemWithoutAShortcut_TakesTheDefaultOfItsCommand()
 	{
 		var directory = Path.Combine(Path.GetTempPath(), "od-catalog-" + Guid.NewGuid().ToString("N"));

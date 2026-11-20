@@ -125,8 +125,15 @@ namespace ICSharpCode.SharpDevelop.Editor
 			live.RemoveAll(w => { TextArea t; return !w.TryGetTarget(out t); });
 			foreach (var weak in live.ToArray()) {
 				TextArea textArea;
-				if (weak.TryGetTarget(out textArea))
+				if (!weak.TryGetTarget(out textArea))
+					continue;
+				var dispatcher = textArea.Dispatcher;
+				if (dispatcher.CheckAccess())
 					Apply(textArea);
+				else if (dispatcher.HasShutdownStarted)
+					live.Remove(weak);
+				else
+					dispatcher.BeginInvoke(new Action(() => Apply(textArea)));
 			}
 		}
 

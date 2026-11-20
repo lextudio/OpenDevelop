@@ -33,7 +33,7 @@ public sealed class KeyBindingServiceTests : IDisposable
 
 	static string Text(KeyGesture gesture) => gesture.Key + "+" + gesture.Modifiers;
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void TheManifestShortcut_IsBound_AndItsDisplayTextReturned()
 	{
 		var service = NewService();
@@ -50,7 +50,7 @@ public sealed class KeyBindingServiceTests : IDisposable
 		Assert.Equal(1, command.Executed);
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void AnOverride_ReplacesTheGesture_AtOnce_AndTheDisplayTextFollows()
 	{
 		var service = NewService();
@@ -70,7 +70,7 @@ public sealed class KeyBindingServiceTests : IDisposable
 		Assert.Equal(1, command.Executed);
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void AnOverrideToNone_RemovesTheBinding_AndClearsTheText_EvenWhenTheManifestHasAShortcut()
 	{
 		var service = NewService();
@@ -85,7 +85,7 @@ public sealed class KeyBindingServiceTests : IDisposable
 		Assert.Equal("", shown);
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void AnItemWithoutAShortcut_CanBeGivenOne()
 	{
 		var service = NewService();
@@ -102,7 +102,7 @@ public sealed class KeyBindingServiceTests : IDisposable
 		Assert.Equal(1, command.Executed);
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void TheOverrideAppliesToEverySiteOfTheCommand_OnEveryOwner()
 	{
 		var service = NewService();
@@ -124,7 +124,7 @@ public sealed class KeyBindingServiceTests : IDisposable
 		Assert.All(texts.Values, t => Assert.Equal(expected, t));
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void ResetOverride_RestoresTheManifestShortcut_AndResetAllRestoresEverything()
 	{
 		var service = NewService();
@@ -142,7 +142,7 @@ public sealed class KeyBindingServiceTests : IDisposable
 		Assert.Empty(service.Overrides);
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void TheSameItemRegisteringAgain_ReplacesItsRegistration_SoNothingPilesUp()
 	{
 		var service = NewService();
@@ -159,7 +159,7 @@ public sealed class KeyBindingServiceTests : IDisposable
 		Assert.Equal(1, latest.Executed);
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void TwoItemsOnTheSameGesture_RunTheFirstThatCanExecute()
 	{
 		var service = NewService();
@@ -181,7 +181,7 @@ public sealed class KeyBindingServiceTests : IDisposable
 		Assert.Equal(1, second.Executed);
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void BindingsThatOtherCodeAdded_AreLeftAlone()
 	{
 		var service = NewService();
@@ -196,7 +196,7 @@ public sealed class KeyBindingServiceTests : IDisposable
 		Assert.Same(foreign, Assert.Single(Bindings(owner)));
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void AnOverride_IsStillThereForTheNextService_AsAfterARestart()
 	{
 		NewService().SetOverride("class:Foo.Clean", "Ctrl+Shift+F8");
@@ -210,7 +210,7 @@ public sealed class KeyBindingServiceTests : IDisposable
 		Assert.Equal(MenuService.GetDisplayStringForShortcut(gesture), text);
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void ANonsenseOverrideIsRefused_AndOneInTheFileIsReportedAndIgnored()
 	{
 		var service = NewService();
@@ -228,7 +228,7 @@ public sealed class KeyBindingServiceTests : IDisposable
 		Assert.Contains(problems, p => p.Contains("class:B") && p.Contains("not valid"));
 	}
 
-	[Fact]
+	[Xunit.UIFactAttribute]
 	public void Changed_IsRaised_AndReloadPicksUpAnEditFromOutside()
 	{
 		var service = NewService();

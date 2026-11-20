@@ -156,6 +156,14 @@ jobs:
           # The debugger suite launches an x86 net10 fixture on both Windows architectures.
           dotnet-version: 10.0.x
           architecture: x86
+      - name: Install .NET 11 x86 runtime for the debug adapter
+        if: startsWith(matrix.name, 'windows-')
+        uses: actions/setup-dotnet@v6
+        with:
+          # SharpDbg.Cli is a net11 program and runs under the debuggee's architecture, so the
+          # x86 debugger journeys need an x86 net11 host as well as the net10 fixture runtime.
+          global-json-file: global.json
+          architecture: x86
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
@@ -249,6 +257,14 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
+          architecture: x86
+      - name: Install .NET 11 x86 runtime for the debug adapter
+        if: startsWith(matrix.platform, 'windows-')
+        uses: actions/setup-dotnet@v6
+        with:
+          # SharpDbg.Cli is a net11 program and runs under the debuggee's architecture, so the
+          # x86 debugger journeys need an x86 net11 host as well as the net10 fixture runtime.
+          global-json-file: global.json
           architecture: x86
       - uses: actions/setup-dotnet@v6
         with:
