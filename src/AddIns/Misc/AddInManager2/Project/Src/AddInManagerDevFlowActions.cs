@@ -68,6 +68,9 @@ namespace ICSharpCode.AddInManager2
 				installable = p.IsInstallable,
 				installed = p.IsInstalled,
 				update = p.IsUpdate,
+				preinstalled = p.IsPreinstalled,
+				uninstallable = p.IsUninstallable,
+				uninstall = p.RemovePackageCommand.CanExecute(null),
 			}).ToList(),
 		};
 
@@ -79,6 +82,17 @@ namespace ICSharpCode.AddInManager2
 				success = viewModel != null,
 				lists = viewModel?.ViewModels.Select(Describe).ToList(),
 			});
+		}
+
+		[DevFlowAction("od.addin-manager.show-preinstalled", Description = "Tick or untick the Installed list's 'show preinstalled add-ins' filter, through the same command the checkbox runs, and report the names it lists afterwards.")]
+		public static string ShowPreinstalled(bool show)
+		{
+			var installed = shown?.ViewModel?.InstalledAddInsViewModel;
+			if (installed == null)
+				return JsonSerializer.Serialize(new { success = false });
+			installed.ShowPreinstalledAddIns = show;
+			installed.UpdatePreinstalledFilterCommand.Execute(null);
+			return JsonSerializer.Serialize(new { success = true, show, entries = installed.AddInPackages.Select(p => p.Name).ToList() });
 		}
 
 		[DevFlowAction("od.addin-manager.trust", Description = "Trust a repository the way the options panel does: type owner/repo into the real Trusted repositories panel, press Add, then save.")]

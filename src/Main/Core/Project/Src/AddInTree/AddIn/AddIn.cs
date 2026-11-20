@@ -350,18 +350,38 @@ namespace ICSharpCode.Core
 		}
 		
 		/// <summary>
-		/// Gets whether the AddIn is a preinstalled component of the host application.
+		/// Gets whether the AddIn is a preinstalled component of the host application: its manifest ships
+		/// inside the application root and not in one of the user add-in directories.
 		/// </summary>
 		public bool IsPreinstalled {
 			get {
-				if (FileUtility.IsBaseDirectory(FileUtility.ApplicationRootPath, this.FileName)) {
-					string hidden = this.Properties["addInManagerHidden"];
-					return string.Equals(hidden, "true", StringComparison.OrdinalIgnoreCase)
-						|| string.Equals(hidden, "preinstalled", StringComparison.OrdinalIgnoreCase);
-				} else {
-					return false;
-				}
+				return IsManifestPreinstalled(this.FileName, AddInManager.UserAddInPath, AddInManager.AddInInstallTemp);
 			}
+		}
+
+		/// <summary>
+		/// Whether a manifest at <paramref name="fileName"/> is one the application ships, as opposed to one
+		/// the user installed. The location decides, not the <c>addInManagerHidden</c> attribute: a shipped
+		/// manifest that forgets to declare itself as preinstalled must still not become removable.
+		/// <paramref name="userAddInPath"/> is where installed add-ins live and
+		/// <paramref name="addInInstallTempPath"/> where a package is staged for the next start; both are user
+		/// locations, so a manifest in either stays removable even when the configuration directory is inside
+		/// the application root.
+		/// </summary>
+		public static bool IsManifestPreinstalled(string fileName, string userAddInPath, string addInInstallTempPath) {
+			if (String.IsNullOrEmpty(fileName)) {
+				return false;
+			}
+			if (!FileUtility.IsBaseDirectory(FileUtility.ApplicationRootPath, fileName)) {
+				return false;
+			}
+			if (!String.IsNullOrEmpty(userAddInPath) && FileUtility.IsBaseDirectory(userAddInPath, fileName)) {
+				return false;
+			}
+			if (!String.IsNullOrEmpty(addInInstallTempPath) && FileUtility.IsBaseDirectory(addInInstallTempPath, fileName)) {
+				return false;
+			}
+			return true;
 		}
 	}
 }

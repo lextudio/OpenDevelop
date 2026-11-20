@@ -97,7 +97,12 @@ static class AddInTestSupport
 		public string Temp { get; set; } = "";
 		public IReadOnlyList<AddIn> AddIns => Installed;
 		public string TempInstallDirectory => Temp;
-		public string UserInstallDirectory => Temp;
+		string userInstallDirectory;
+		/// <summary>Where user add-ins live; defaults to <see cref="Temp"/> as before.</summary>
+		public string UserInstallDirectory {
+			get => userInstallDirectory ?? Temp;
+			set => userInstallDirectory = value;
+		}
 		public string ConfigDirectory => Temp;
 		public void AddToTree(AddIn addIn) { AddedToTree.Add(addIn); Installed.Add(addIn); } // the real tree lists it afterwards
 		public void AbortRemoveUserAddInOnNextStart(string identity) => AbortedRemovals.Add(identity);

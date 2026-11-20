@@ -461,18 +461,19 @@ namespace ICSharpCode.AddInManager2.Model
 			        .FirstOrDefault() != null);
 		}
 		
+		/// <summary>
+		/// An add-in is pre-installed when its manifest ships inside the application (under the application
+		/// root) and not in a user add-in location. The location decides, not a manifest property: a shipped
+		/// manifest that forgets <c>addInManagerHidden="preinstalled"</c> must not become removable.
+		/// </summary>
 		public bool IsAddInPreinstalled(AddIn addIn)
 		{
-			if (addIn != null)
-			{
-				return
-					String.Equals(addIn.Properties["addInManagerHidden"], "preinstalled", StringComparison.OrdinalIgnoreCase)
-					&& FileUtility.IsBaseDirectory(FileUtility.ApplicationRootPath, addIn.FileName);
-			}
-			else
+			if (addIn == null)
 			{
 				return false;
 			}
+			return AddIn.IsManifestPreinstalled(
+				addIn.FileName, _sdAddInManagement.UserInstallDirectory, _sdAddInManagement.TempInstallDirectory);
 		}
 		
 		public IEnumerable<ManagedAddIn> GetDependentAddIns(AddIn addIn)

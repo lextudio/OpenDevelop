@@ -60,8 +60,13 @@ public class AddInGitHubReleasesJourneyTests
 
             // 3. Install it: the file is downloaded, verified and placed for the next start.
             Assert.True((await ide.InvokeAsync("od.addin-manager.install", "Available", name)).GetProperty("success").GetBoolean());
-            await WaitAsync(ide, s => Entries(s, "InstalledAddInsViewModel").Any(e => e.GetProperty("name").GetString() == name),
+            state = await WaitAsync(ide, s => Entries(s, "InstalledAddInsViewModel").Any(e => e.GetProperty("name").GetString() == name),
                 "the add-in to appear in the Installed list");
+            // A package the user installed is user-installed, not one of the application's own: it stays uninstallable.
+            JsonElement installedEntry = Entries(state, "InstalledAddInsViewModel").Single(e => e.GetProperty("name").GetString() == name);
+            Assert.True(installedEntry.GetProperty("installed").GetBoolean(), installedEntry.ToString());
+            Assert.False(installedEntry.GetProperty("preinstalled").GetBoolean(), installedEntry.ToString());
+            Assert.True(installedEntry.GetProperty("uninstallable").GetBoolean(), installedEntry.ToString());
             string staged = Path.Combine(work, "config");
             Assert.True(Directory.EnumerateFiles(staged, "Vendor.Sample.addin", SearchOption.AllDirectories).Any()
                     || Directory.EnumerateFiles(staged, "Sample.dll", SearchOption.AllDirectories).Any(),
