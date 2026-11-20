@@ -5,6 +5,19 @@ Linux support is new: the tar.xz is built and smoke-tested on x64 and ARM64 runn
 least exercised platform. If something below does not match your distribution, please open an
 issue at https://github.com/lextudio/OpenDevelop/issues.
 
+Supported distributions
+-----------------------
+
+The baseline is **Ubuntu 26.04 (glibc 2.43) or newer**, on both x64 and ARM64. The native renderer
+library (`libprogpu_native.so`) is built on GitHub's `ubuntu-latest` image, currently Ubuntu 26.04, and
+the x64 build refuses to load on an older distribution with
+
+``` text
+libm.so.6: version `GLIBC_2.43' not found (required by .../libprogpu_native.so)
+```
+
+CI and the release workflow run on the same images, so the baseline moves with `ubuntu-latest`.
+
 Extract the archive and run one of,
 
 ``` sh

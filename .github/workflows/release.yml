@@ -230,10 +230,10 @@ jobs:
       matrix:
         include:
           - rid: linux-x64
-            runner: ubuntu-24.04
+            runner: ubuntu-latest
             dotnet_architecture: x64
           - rid: linux-arm64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
             dotnet_architecture: arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90

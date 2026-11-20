@@ -26,7 +26,7 @@
     "windows-x64": "Every unit and integration entry is required here since 2026-10-27 (base-tests and xamldom-tests-microsoftwpf were the last unit entries promoted), so a focus run executes only its observe entries here: a few in the fast job and the integration-winui and integration-winui-microsoft jobs, whose entries are all observe. Its build also supplies windows-arm64.",
     "windows-arm64": "Runs the native Windows ARM64 Terminal journey against the same unified Windows payload the x64 lane tests: dist.windows.bat ships one package with runtimes/ plus per-RID win-x64/win-arm64 folders and both launchers, so 'buildFrom': 'windows-x64' keeps a single compile for both lanes.",
     "linux-x64": "Enabled on 2026-11-02 with the unit suites (Profiler among them, which profiler.yml once ran on ubuntu-latest) and the workbench and DevFlow journeys, all 'observe'. The IDE entries run under xvfb-run with Mesa's software Vulkan driver (install-linux-prerequisites.sh); promote per the usual two green runs.",
-    "linux-arm64": "Same entries and rules as linux-x64, on the native ubuntu-24.04-arm runner: dist.linux.sh ships one archive per Linux architecture, so each builds for itself."
+    "linux-arm64": "Same entries and rules as linux-x64, on the native ubuntu-26.04-arm runner: dist.linux.sh ships one archive per Linux architecture, so each builds for itself."
   },
   "throughBatch": 5,
   "focus": true,
@@ -49,12 +49,12 @@
       "needsCliclick": true
     },
     "linux-x64": {
-      "runner": "ubuntu-24.04",
+      "runner": "ubuntu-latest",
       "dotnetArchitecture": "x64",
       "rid": "linux-x64"
     },
     "linux-arm64": {
-      "runner": "ubuntu-24.04-arm",
+      "runner": "ubuntu-26.04-arm",
       "dotnetArchitecture": "arm64",
       "rid": "linux-arm64"
     }
@@ -100,7 +100,7 @@
       "needsNuGetCache": true,
       "deviceClasses": { "AndroidDebuggingIntegrationTests": "linux" },
       "allowAllFailures": true,
-      "note": "The Android debugging journey (Debugger.AddIn's AndroidDebugProjectBehavior) against a headless emulator on the hosted ubuntu-24.04 runner, the only runner image family with KVM (macOS arm64 and ubuntu-24.04-arm have no nested virtualisation). The job enables /dev/kvm, installs the android workload next to the SDK 11 it puts in ~/.dotnet, and boots one google_apis x86_64 AVD, whose ABI the archive's AddIns/Debugger/android/x86_64 agent covers. allowAllFailures is the bootstrap exception (a lane whose only entry failed fails the lane): drop it and promote the entry to required after two green runs. A runner whose host exposes no usable /dev/kvm skips the emulator and this lane with a warning instead of failing the job."
+      "note": "The Android debugging journey (Debugger.AddIn's AndroidDebugProjectBehavior) against a headless emulator on the hosted ubuntu-latest runner, the only runner image family with KVM (macOS arm64 and ubuntu-26.04-arm have no nested virtualisation). The job enables /dev/kvm, installs the android workload next to the SDK 11 it puts in ~/.dotnet, and boots one google_apis x86_64 AVD, whose ABI the archive's AddIns/Debugger/android/x86_64 agent covers. allowAllFailures is the bootstrap exception (a lane whose only entry failed fails the lane): drop it and promote the entry to required after two green runs. A runner whose host exposes no usable /dev/kvm skips the emulator and this lane with a warning instead of failing the job."
     },
     "integration-unstable": {
       "job": "fast",

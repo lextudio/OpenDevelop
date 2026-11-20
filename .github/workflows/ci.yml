@@ -493,7 +493,7 @@ jobs:
         run: ./.github/ci/verify-terminal-assets.ps1 -Platform '${{ matrix.platform }}'
       # The device lanes. Each runs on the one runner image family that can host its device: an iOS Simulator is a
       # native macOS process, and the Android emulator needs KVM, which only the hosted Linux x86_64 runners provide
-      # (macOS arm64 and ubuntu-24.04-arm have no nested virtualisation). The plan declares which lane may run which
+      # (macOS arm64 and ubuntu-26.04-arm have no nested virtualisation). The plan declares which lane may run which
       # device class, and verify-no-device-journeys.ps1 fails the plan when a lane's runner cannot host it.
       # The image ships /dev/kvm as root-only, and this is the rule GitHub documents for its hosted Linux runners
       # (the one reactivecircus/android-emulator-runner ships; Uno Platform's Android pipeline writes the same file).

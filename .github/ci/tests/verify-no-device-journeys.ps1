@@ -1,7 +1,7 @@
 <#
   A device journey (a real Android emulator or an iOS Simulator) may run in CI only where a runner hosts the device:
   an iOS Simulator is a native macOS process and needs no virtualisation, while an Android emulator needs KVM, which
-  the hosted Linux x86_64 runners provide and the macOS arm64 and ubuntu-24.04-arm images do not. So a lane declares
+  the hosted Linux x86_64 runners provide and the macOS arm64 and ubuntu-26.04-arm images do not. So a lane declares
   the device classes it may run together with the OS family whose runner hosts the device:
 
       "deviceClasses": { "AndroidDebuggingIntegrationTests": "linux" }
