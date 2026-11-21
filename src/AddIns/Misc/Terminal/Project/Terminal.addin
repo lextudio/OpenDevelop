@@ -30,14 +30,14 @@
 		             class = "OpenDevelop.Terminal.TerminalSessionComboBox"
 		             type  = "Custom"/>
 		<ToolbarItem id      = "NewTerminal"
-		             tooltip = "New Terminal"
+		             tooltip = "${res:Terminal.Toolbar.New}"
 		             icon    = "Icons.16x16.Add"
 		             class   = "OpenDevelop.Terminal.NewTerminalCommand"/>
 		<ToolbarItem id    = "NewTerminalShell"
 		             class = "OpenDevelop.Terminal.TerminalNewShellButton"
 		             type  = "Custom"/>
 		<ToolbarItem id      = "SplitTerminal"
-		             tooltip = "Split Terminal Left and Right"
+		             tooltip = "${res:Terminal.Toolbar.Split}"
 		             icon    = "Icons.16x16.SplitWindowHorizontal"
 		             class   = "OpenDevelop.Terminal.SplitTerminalCommand"/>
 		<ToolbarItem id      = "SplitTerminalVertical"
@@ -74,47 +74,47 @@
 
 	<Path name = "/SharpDevelop/Dialogs/OptionsDialog/UIOptions">
 		<OptionPanel id    = "TerminalOptions"
-		             label = "Terminal"
+		             label = "${res:Terminal.Options.Title}"
 		             class = "OpenDevelop.Terminal.TerminalOptions"/>
 	</Path>
 
 	<Path name = "/SharpDevelop/Workbench/MainMenu/Edit">
 		<Condition name = "WindowActive" activewindow="ICSharpCode.SharpDevelop.Editor.ITextEditor" action="Disable">
 			<MenuItem id    = "SendToTerminal"
-			          label = "Send to Terminal"
+			          label = "${res:Terminal.SendTo}"
 			          class = "OpenDevelop.Terminal.SendToTerminalCommand"/>
 		</Condition>
 	</Path>
 
 	<Path name = "/SharpDevelop/ViewContent/TextEditor/ContextMenu">
 		<MenuItem id          = "SendToTerminal"
-		          label       = "Send to Terminal"
+		          label       = "${res:Terminal.SendTo}"
 		          insertafter = "Delete"
 		          class       = "OpenDevelop.Terminal.SendToTerminalCommand"/>
 	</Path>
 
 	<Path name = "/SharpDevelop/Workbench/MainMenu/View">
 		<MenuItem id           = "Terminal"
-		          label        = "Terminal"
+		          label        = "${res:Terminal.View.Show}"
 		          icon         = "Icons.16x16.Console"
 		          shortcut     = "Control|OemTilde"
 		          insertbefore = "ViewItemsSeparator"
 		          class        = "OpenDevelop.Terminal.ShowTerminalCommand"/>
 		<MenuItem id           = "NewTerminal"
-		          label        = "New Terminal"
+		          label        = "${res:Terminal.View.New}"
 		          shortcut     = "Control|Shift|OemTilde"
 		          insertbefore = "ViewItemsSeparator"
 		          class        = "OpenDevelop.Terminal.NewTerminalFromMenuCommand"/>
 		<MenuItem id           = "NextTerminal"
-		          label        = "Next Terminal"
+		          label        = "${res:Terminal.View.Next}"
 		          insertbefore = "ViewItemsSeparator"
 		          class        = "OpenDevelop.Terminal.NextTerminalCommand"/>
 		<MenuItem id           = "PreviousTerminal"
-		          label        = "Previous Terminal"
+		          label        = "${res:Terminal.View.Previous}"
 		          insertbefore = "ViewItemsSeparator"
 		          class        = "OpenDevelop.Terminal.PreviousTerminalCommand"/>
 		<MenuItem id           = "RenameTerminal"
-		          label        = "Rename Terminal..."
+		          label        = "${res:Terminal.View.Rename}"
 		          insertbefore = "ViewItemsSeparator"
 		          class        = "OpenDevelop.Terminal.RenameTerminalCommand"/>
 	</Path>

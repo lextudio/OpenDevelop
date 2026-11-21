@@ -9751,6 +9751,66 @@ Press Esc to cancel this operation.</value>
   <data name="Translations.Menu.Title" xml:space="preserve">
     <value>Update Translations</value>
   </data>
+  <data name="Terminal.Options.Title" xml:space="preserve">
+    <value>Terminal</value>
+  </data>
+  <data name="Terminal.View.Show" xml:space="preserve">
+    <value>Terminal</value>
+  </data>
+  <data name="Terminal.View.New" xml:space="preserve">
+    <value>New Terminal</value>
+  </data>
+  <data name="Terminal.View.Next" xml:space="preserve">
+    <value>Next Terminal</value>
+  </data>
+  <data name="Terminal.View.Previous" xml:space="preserve">
+    <value>Previous Terminal</value>
+  </data>
+  <data name="Terminal.View.Rename" xml:space="preserve">
+    <value>Rename Terminal...</value>
+  </data>
+  <data name="Terminal.SendTo" xml:space="preserve">
+    <value>Send to Terminal</value>
+  </data>
+  <data name="Terminal.Toolbar.New" xml:space="preserve">
+    <value>New Terminal</value>
+  </data>
+  <data name="Terminal.Toolbar.Split" xml:space="preserve">
+    <value>Split Terminal Left and Right</value>
+  </data>
+  <data name="Edit.Format.SurroundWith" xml:space="preserve">
+    <value>Surround with</value>
+  </data>
+  <data name="Edit.SendToFSharpInteractive" xml:space="preserve">
+    <value>Send To F# Interactive</value>
+  </data>
+  <data name="File.Open.Assembly" xml:space="preserve">
+    <value>Assembly...</value>
+  </data>
+  <data name="Analysis.AnalyzeCodeQuality" xml:space="preserve">
+    <value>Analyze Code Quality</value>
+  </data>
+  <data name="Help.Web.Downloads" xml:space="preserve">
+    <value>Downloads</value>
+  </data>
+  <data name="Help.Web.Forums" xml:space="preserve">
+    <value>Community Forums</value>
+  </data>
+  <data name="Help.Web.Announcements" xml:space="preserve">
+    <value>Announcements</value>
+  </data>
+  <data name="Help.Web.Mail" xml:space="preserve">
+    <value>Send Us a Mail</value>
+  </data>
+  <data name="Help.Web.Twitter" xml:space="preserve">
+    <value>On Twitter</value>
+  </data>
+  <data name="Help.Web.IntegratedProjects" xml:space="preserve">
+    <value>Integrated Projects</value>
+  </data>
+  <data name="Help.Web.DotNetPlatforms" xml:space="preserve">
+    <value>.NET Platforms</value>
+  </data>
   <data name="AndroidDeviceManager.NewAvdAction" xml:space="preserve">
     <value>New Android emulator</value>
   </data>

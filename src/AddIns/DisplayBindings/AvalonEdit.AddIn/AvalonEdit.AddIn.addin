@@ -121,7 +121,7 @@
 			<MenuItem id = "SurroundWithSnippet"
 			          insertbefore = "Separator4"
 			          shortcut="Ctrl|J"
-			          label = "Surround with"
+			          label = "${res:Edit.Format.SurroundWith}"
 			          class = "ICSharpCode.AvalonEdit.AddIn.Commands.SurroundWithCommand"/>
 		</Condition>
 	</Path>

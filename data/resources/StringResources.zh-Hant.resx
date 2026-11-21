@@ -9334,6 +9334,69 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
   <data name="Translations.Menu.Title" xml:space="preserve">
     <value>更新翻譯</value>
   </data>
+  <data name="Terminal.Options.Title" xml:space="preserve">
+    <value>終端</value>
+  </data>
+  <data name="Terminal.View.Show" xml:space="preserve">
+    <value>終端</value>
+  </data>
+  <data name="Terminal.View.New" xml:space="preserve">
+    <value>新增終端</value>
+  </data>
+  <data name="Terminal.View.Next" xml:space="preserve">
+    <value>下一個終端</value>
+  </data>
+  <data name="Terminal.View.Previous" xml:space="preserve">
+    <value>上一個終端</value>
+  </data>
+  <data name="Terminal.View.Rename" xml:space="preserve">
+    <value>重新命名終端...</value>
+  </data>
+  <data name="Terminal.SendTo" xml:space="preserve">
+    <value>傳送到終端</value>
+  </data>
+  <data name="Terminal.Toolbar.New" xml:space="preserve">
+    <value>新增終端</value>
+  </data>
+  <data name="Terminal.Toolbar.Split" xml:space="preserve">
+    <value>左右分割終端</value>
+  </data>
+  <data name="Edit.Format.SurroundWith" xml:space="preserve">
+    <value>用…包圍</value>
+  </data>
+  <data name="Edit.SendToFSharpInteractive" xml:space="preserve">
+    <value>傳送到 F# 互動視窗</value>
+  </data>
+  <data name="File.Open.Assembly" xml:space="preserve">
+    <value>組件...</value>
+  </data>
+  <data name="Analysis.AnalyzeCodeQuality" xml:space="preserve">
+    <value>分析程式碼品質</value>
+  </data>
+  <data name="Help.Web.Downloads" xml:space="preserve">
+    <value>下載</value>
+  </data>
+  <data name="Help.Web.Forums" xml:space="preserve">
+    <value>社群論壇</value>
+  </data>
+  <data name="Help.Web.Announcements" xml:space="preserve">
+    <value>公告</value>
+  </data>
+  <data name="Help.Web.Mail" xml:space="preserve">
+    <value>寄信給我們</value>
+  </data>
+  <data name="Help.Web.Twitter" xml:space="preserve">
+    <value>在 Twitter 上</value>
+  </data>
+  <data name="Help.Web.IntegratedProjects" xml:space="preserve">
+    <value>整合專案</value>
+  </data>
+  <data name="Help.Web.DotNetPlatforms" xml:space="preserve">
+    <value>.NET 平台</value>
+  </data>
+  <data name="AddInManager2.OptionPanel.Tree.TrustedRepositories" xml:space="preserve">
+    <value>受信任的存放庫</value>
+  </data>
   <data name="AndroidDeviceManager.NewAvdAction" xml:space="preserve">
     <value>新增 Android 模擬器</value>
   </data>

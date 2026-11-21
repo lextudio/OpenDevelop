@@ -86,7 +86,7 @@
 	<Path name = "/SharpDevelop/ViewContent/TextEditor/ContextMenu">
 		<Condition name = "ProjectActive" activeproject="F#">
 			<MenuItem id = "SendToFSharpInteractive"
-				  label = "Send To F# Interactive"
+				  label = "${res:Edit.SendToFSharpInteractive}"
 				  class= "FSharpBinding.SentToFSharpInteractive"/>
 		</Condition>
 	</Path>

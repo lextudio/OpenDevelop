@@ -142,7 +142,7 @@
 
 	<Path name = "/SharpDevelop/Workbench/MainMenu/File/Open">
 		<MenuItem id = "OpenAssembly"
-		          label = "Assembly..."
+		          label = "${res:File.Open.Assembly}"
 		          insertafter = "Project"
 		          class = "ICSharpCode.ILSpyAddIn.Commands.OpenAssemblyCommand"/>
 	</Path>

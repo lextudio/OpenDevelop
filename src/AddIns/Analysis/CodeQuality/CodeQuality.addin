@@ -18,7 +18,7 @@
 		     not visible as an ordering sibling here; not worth restructuring SourceAnalysis.addin just
 		     for menu ordering. -->
 		<MenuItem id    = "AnalyzeCodeQuality"
-		          label = "Analyze Code Quality"
+		          label = "${res:Analysis.AnalyzeCodeQuality}"
 		          class = "ICSharpCode.CodeQuality.Gui.AnalyzeCodeQualityCommand" />
 	</Path>
 </AddIn>
