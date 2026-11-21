@@ -9337,6 +9337,27 @@ Press Esc to cancel this operation.</value>
   <data name="AndroidSdkManager.SelectSdkLocation" xml:space="preserve">
     <value>Select Android SDK Location</value>
   </data>
+  <data name="AndroidSdkManager.CouldNotFindSdkManager" xml:space="preserve">
+    <value>Could not find sdkmanager under "{0}". Set the Android SDK location first.</value>
+  </data>
+  <data name="AndroidSdkManager.UpdateAvailable" xml:space="preserve">
+    <value>Update available</value>
+  </data>
+  <data name="AndroidSdkManager.Installed" xml:space="preserve">
+    <value>Installed</value>
+  </data>
+  <data name="AndroidSdkManager.ToBeInstalled" xml:space="preserve">
+    <value>To be installed</value>
+  </data>
+  <data name="AndroidSdkManager.ToBeRemoved" xml:space="preserve">
+    <value>To be removed</value>
+  </data>
+  <data name="AndroidDeviceManager.CouldNotFindEmulator" xml:space="preserve">
+    <value>Could not find the emulator executable under "{0}".</value>
+  </data>
+  <data name="AndroidDeviceManager.CouldNotFindTool" xml:space="preserve">
+    <value>Could not find {0} under "{1}". Set the Android SDK location first.</value>
+  </data>
   <data name="AndroidSdkManager.Platforms" xml:space="preserve">
     <value>Platforms</value>
   </data>

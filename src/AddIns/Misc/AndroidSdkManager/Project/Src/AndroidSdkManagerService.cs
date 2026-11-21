@@ -107,7 +107,10 @@ namespace ICSharpCode.AndroidSdkManager
 
 		public async Task<IReadOnlyList<SdkPackage>> ListPackagesAsync(string sdkRoot)
 		{
-			var (output, _) = await RunAsync(sdkRoot, "--list --verbose", stdin: null).ConfigureAwait(false);
+			// Plain --list prints the pipe-delimited tables the parser understands. --verbose switches current
+			// cmdline-tools to a block-per-package format ("build-tools;34.0.0" then indented "Version:" lines),
+			// which the parser would drop entirely, leaving the Platforms/Tools trees empty.
+			var (output, _) = await RunAsync(sdkRoot, "--list", stdin: null).ConfigureAwait(false);
 			return SdkManagerOutputParser.Parse(output);
 		}
 
@@ -140,7 +143,7 @@ namespace ICSharpCode.AndroidSdkManager
 		{
 			var executable = FindSdkManagerExecutable(sdkRoot);
 			if (executable == null)
-				throw new InvalidOperationException("Could not find sdkmanager under \"" + sdkRoot + "\". Set the Android SDK location first.");
+				throw new InvalidOperationException(string.Format(ResourceService.GetString("AndroidSdkManager.CouldNotFindSdkManager"), sdkRoot));
 
 			var startInfo = new ProcessStartInfo {
 				FileName = executable,

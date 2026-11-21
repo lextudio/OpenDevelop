@@ -155,7 +155,7 @@ namespace ICSharpCode.AndroidDeviceManager
 		{
 			var emulator = FindEmulatorExecutable(sdkRoot);
 			if (emulator == null)
-				throw new InvalidOperationException("Could not find the emulator executable under \"" + sdkRoot + "\".");
+				throw new InvalidOperationException(string.Format(ResourceService.GetString("AndroidDeviceManager.CouldNotFindEmulator"), sdkRoot));
 
 			var startInfo = new ProcessStartInfo {
 				FileName = emulator,
@@ -227,7 +227,7 @@ namespace ICSharpCode.AndroidDeviceManager
 		{
 			var executable = FindCommandLineToolExecutable(sdkRoot, toolName);
 			if (executable == null)
-				throw new InvalidOperationException("Could not find " + toolName + " under \"" + sdkRoot + "\". Set the Android SDK location first.");
+				throw new InvalidOperationException(string.Format(ResourceService.GetString("AndroidDeviceManager.CouldNotFindTool"), toolName, sdkRoot));
 
 			var startInfo = new ProcessStartInfo {
 				FileName = executable,

@@ -1,3 +1,4 @@
+using ICSharpCode.Core;
 // Copyright (c) 2014 AlphaSierraPapa for the SharpDevelop Team
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of this
@@ -50,7 +51,7 @@ namespace ICSharpCode.AndroidSdkManager
 				if (leaves.Count == 0)
 					return string.Empty;
 				if (leaves.Any(l => l.Package.HasUpdate))
-					return "Update available";
+					return ResourceService.GetString("AndroidSdkManager.UpdateAvailable");
 				return string.Empty;
 			}
 		}
@@ -95,9 +96,9 @@ namespace ICSharpCode.AndroidSdkManager
 		public string StatusText {
 			get {
 				if (IsChecked == true && !Package.IsInstalled)
-					return "To be installed";
+					return ResourceService.GetString("AndroidSdkManager.ToBeInstalled");
 				if (IsChecked == false && Package.IsInstalled)
-					return "To be removed";
+					return ResourceService.GetString("AndroidSdkManager.ToBeRemoved");
 				return Package.StatusText;
 			}
 		}

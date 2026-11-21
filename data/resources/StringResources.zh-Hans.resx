@@ -8920,6 +8920,27 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="AndroidSdkManager.SelectSdkLocation" xml:space="preserve">
     <value>选择 Android SDK 位置</value>
   </data>
+  <data name="AndroidSdkManager.CouldNotFindSdkManager" xml:space="preserve">
+    <value>在 "{0}" 下找不到 sdkmanager。请先设置 Android SDK 位置。</value>
+  </data>
+  <data name="AndroidSdkManager.UpdateAvailable" xml:space="preserve">
+    <value>有可用更新</value>
+  </data>
+  <data name="AndroidSdkManager.Installed" xml:space="preserve">
+    <value>已安装</value>
+  </data>
+  <data name="AndroidSdkManager.ToBeInstalled" xml:space="preserve">
+    <value>待安装</value>
+  </data>
+  <data name="AndroidSdkManager.ToBeRemoved" xml:space="preserve">
+    <value>待移除</value>
+  </data>
+  <data name="AndroidDeviceManager.CouldNotFindEmulator" xml:space="preserve">
+    <value>在 "{0}" 下找不到模拟器可执行文件。</value>
+  </data>
+  <data name="AndroidDeviceManager.CouldNotFindTool" xml:space="preserve">
+    <value>在 "{1}" 下找不到 {0}。请先设置 Android SDK 位置。</value>
+  </data>
   <data name="AndroidSdkManager.Platforms" xml:space="preserve">
     <value>平台</value>
   </data>

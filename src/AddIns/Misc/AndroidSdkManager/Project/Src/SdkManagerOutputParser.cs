@@ -16,7 +16,7 @@ using System.Linq;
 namespace ICSharpCode.AndroidSdkManager
 {
 	/// <summary>
-	/// Parses the three pipe-delimited tables printed by `sdkmanager --list --verbose`
+	/// Parses the three pipe-delimited tables printed by `sdkmanager --list`
 	/// ("Installed packages:", "Available Packages:", "Available Updates:") into a merged
 	/// package-id -> SdkPackage map.
 	/// </summary>
@@ -111,8 +111,10 @@ namespace ICSharpCode.AndroidSdkManager
 			var id = cells[0];
 			var package = GetOrAdd(packages, id);
 			package.HasUpdate = true;
-			if (cells.Length > 2)
-				package.AvailableVersion = cells[2];
+			// Same column order as the other two tables (Path | Version | Description): the version is cells[1],
+			// not the description.
+			if (cells.Length > 1)
+				package.AvailableVersion = cells[1];
 		}
 
 		static SdkPackage GetOrAdd(Dictionary<string, SdkPackage> packages, string id)

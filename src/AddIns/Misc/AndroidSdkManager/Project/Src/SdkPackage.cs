@@ -10,6 +10,7 @@
 // substantial portions of the Software.
 
 using System;
+using ICSharpCode.Core;
 
 namespace ICSharpCode.AndroidSdkManager
 {
@@ -39,9 +40,9 @@ namespace ICSharpCode.AndroidSdkManager
 		public string StatusText {
 			get {
 				if (HasUpdate)
-					return "Update available";
+					return ResourceService.GetString("AndroidSdkManager.UpdateAvailable");
 				if (IsInstalled)
-					return "Installed";
+					return ResourceService.GetString("AndroidSdkManager.Installed");
 				return string.Empty;
 			}
 		}

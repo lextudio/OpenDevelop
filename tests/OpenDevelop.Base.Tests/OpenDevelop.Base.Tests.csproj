@@ -67,6 +67,7 @@
     <ProjectReference Include="..\..\src\AddIns\Misc\AddInManager2\Project\AddInManager2.csproj" />
     <!-- AndroidDeviceProvider maps parsed AVDs to the shared Device model. -->
     <ProjectReference Include="..\..\src\AddIns\Misc\AndroidDeviceManager\Project\AndroidDeviceManager.csproj" />
+    <ProjectReference Include="..\..\src\AddIns\Misc\AndroidSdkManager\Project\AndroidSdkManager.csproj" />
   </ItemGroup>
 
   <Target Name="PrepareRoslynTestHost" AfterTargets="Build">
