@@ -25,9 +25,9 @@ Available Packages:
   platforms;android-10                  | 2       | Android SDK Platform 10
   build-tools;34.0.0                    | 35.0.0  | Android SDK Build-Tools 34
 Available Updates:
-  Path                                  | Version | Description
-  -------                               | ------- | -------
-  build-tools;34.0.0                    | 35.0.0  | Android SDK Build-Tools 34
+  ID                                    | Installed | Available
+  -------                               | -------   | -------
+  build-tools;34.0.0                    | 34.0.0    | 35.0.0
 """;
 
 	const string VerboseBlocks = """

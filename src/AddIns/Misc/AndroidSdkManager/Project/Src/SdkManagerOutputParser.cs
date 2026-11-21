@@ -111,10 +111,13 @@ namespace ICSharpCode.AndroidSdkManager
 			var id = cells[0];
 			var package = GetOrAdd(packages, id);
 			package.HasUpdate = true;
-			// Same column order as the other two tables (Path | Version | Description): the version is cells[1],
-			// not the description.
+			// The updates table has its own header, "ID | Installed | Available", so the two version cells are the
+			// installed version and the version that is available now - not the Path | Version | Description shape of
+			// the other two tables.
 			if (cells.Length > 1)
-				package.AvailableVersion = cells[1];
+				package.InstalledVersion = cells[1];
+			if (cells.Length > 2)
+				package.AvailableVersion = cells[2];
 		}
 
 		static SdkPackage GetOrAdd(Dictionary<string, SdkPackage> packages, string id)
