@@ -18,6 +18,7 @@ namespace OpenDevelop.Base.Tests;
 /// looked up in the running IDE rather than taking a constructor dependency - registered the same
 /// way <c>RegisterCSharpOpenLensProvidersCommand</c> does in production.
 /// </summary>
+[Collection(ProcessWideStateCollection.Name)]
 public class LanguageOpenLensProvidersTests : IDisposable
 {
 	readonly FakeLanguageService languageService = new();

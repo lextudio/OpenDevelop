@@ -6,6 +6,7 @@ using Xunit;
 namespace OpenDevelop.Base.Tests;
 
 /// <summary>Key chords such as Ctrl+K, Ctrl+C: parsing (ShortcutGesture), the state machine (ChordRouter), the service on a real element, and the Keyboard page's rules.</summary>
+[Collection(ProcessWideStateCollection.Name)]
 public sealed class KeyChordTests : IDisposable
 {
 	readonly string directory = Path.Combine(Path.GetTempPath(), "od-key-chord-" + Guid.NewGuid().ToString("N"));

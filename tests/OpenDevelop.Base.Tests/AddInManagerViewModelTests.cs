@@ -8,6 +8,7 @@ using static OpenDevelop.Base.Tests.AddInTestSupport;
 namespace OpenDevelop.Base.Tests;
 
 /// <summary>The AddIn Manager window's view models over the GitHub Releases service.</summary>
+[Collection(ProcessWideStateCollection.Name)]
 public class AddInManagerViewModelTests : IDisposable
 {
 	readonly string directory = Path.Combine(Path.GetTempPath(), "od-vm-" + Guid.NewGuid().ToString("N"));

@@ -5,6 +5,7 @@ using Xunit;
 
 namespace OpenDevelop.Base.Tests;
 
+[Collection(ProcessWideStateCollection.Name)]
 public sealed class BuildOptionsStopAfterFailureTests : IDisposable
 {
 	public BuildOptionsStopAfterFailureTests() => SD.InitializeForUnitTests();

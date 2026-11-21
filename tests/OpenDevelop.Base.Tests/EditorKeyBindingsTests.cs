@@ -7,7 +7,7 @@ using Xunit;
 namespace OpenDevelop.Base.Tests;
 
 /// <summary>EditorKeyBindings on a real AvalonEdit TextArea: the commands, applying an override, resetting, and attaching twice.</summary>
-[Collection("KeyBindingServiceDefault")]
+[Collection(ProcessWideStateCollection.Name)]
 public sealed class EditorKeyBindingsTests : IDisposable
 {
 	const string DeleteNextWord = "editor:EditingCommands.DeleteNextWord";
@@ -71,6 +71,3 @@ public sealed class EditorKeyBindingsTests : IDisposable
 		Assert.Contains((Key.Enter, ModifierKeys.None), Gestures(textArea, "editor:EditingCommands.EnterParagraphBreak"));
 	}
 }
-
-[CollectionDefinition("KeyBindingServiceDefault", DisableParallelization = true)]
-public sealed class KeyBindingServiceDefaultCollection { }

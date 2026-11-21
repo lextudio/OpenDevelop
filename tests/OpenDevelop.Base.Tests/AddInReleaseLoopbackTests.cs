@@ -15,6 +15,7 @@ namespace OpenDevelop.Base.Tests;
 /// The whole GitHub Releases chain over real HTTP: a local fake of api.github.com and the release asset
 /// host, the real GitHubReleaseSource and HttpClient, the release service and the real installer.
 /// </summary>
+[Collection(ProcessWideStateCollection.Name)]
 public class AddInReleaseLoopbackTests : IDisposable
 {
 	readonly string directory = Path.Combine(Path.GetTempPath(), "od-loopback-" + Guid.NewGuid().ToString("N"));

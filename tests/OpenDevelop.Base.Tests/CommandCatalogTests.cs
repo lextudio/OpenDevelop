@@ -10,6 +10,7 @@ namespace OpenDevelop.Base.Tests;
 /// CommandCatalog: the commands of the AddIn tree, found from the codons, and the command-wide default shortcut an item without a
 /// <c>shortcut</c> of its own takes from another item of the same command. doc/technotes/keyboard-shortcuts.md.
 /// </summary>
+[Collection(ProcessWideStateCollection.Name)]
 public sealed class CommandCatalogTests
 {
 	const string Manifest = @"

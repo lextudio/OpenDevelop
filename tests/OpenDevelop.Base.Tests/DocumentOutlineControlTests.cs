@@ -12,6 +12,7 @@ namespace OpenDevelop.Base.Tests;
 /// the row the user had just clicked. The document root's own id is the empty string, which the
 /// control used to filter out as "nothing selected", so "[Page]" could never stay selected either.
 /// </summary>
+[Collection(ProcessWideStateCollection.Name)]
 public class DocumentOutlineControlTests
 {
 	static DocumentOutlineControl CreateOutline(string rootId, string childId)

@@ -6,6 +6,7 @@ using Xunit;
 
 namespace OpenDevelop.Base.Tests;
 
+[Collection(ProcessWideStateCollection.Name)]
 public class DotNetSdkServiceTests : IDisposable
 {
 	public DotNetSdkServiceTests() => SD.InitializeForUnitTests();

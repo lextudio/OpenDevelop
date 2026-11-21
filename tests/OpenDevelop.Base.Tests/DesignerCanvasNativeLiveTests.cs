@@ -9,6 +9,7 @@ namespace OpenDevelop.Base.Tests;
 /// is the only thing that asks the backend to change mode, and reflecting a backend-initiated change
 /// never echoes a second request (so a failed start can visibly uncheck the button).
 /// </summary>
+[Collection(ProcessWideStateCollection.Name)]
 public sealed class DesignerCanvasNativeLiveTests
 {
 	[Xunit.UIFactAttribute]

@@ -11,23 +11,13 @@ using Xunit;
 namespace OpenDevelop.Base.Tests;
 
 /// <summary>
-/// Tests in this collection replace the process-wide SharpDevelop service container (the AddIn tree),
-/// so they must not overlap another collection that may be reading the current one.
-/// </summary>
-[CollectionDefinition(Name, DisableParallelization = true)]
-public sealed class GlobalServicesCollection
-{
-    public const string Name = "Global services";
-}
-
-/// <summary>
 /// MenuService builds a type="Menu" item with one dummy child and fills its children inside that
 /// item's SubmenuOpened. SubmenuOpened bubbles, so the handler also runs for every descendant that
 /// opens; rebuilding an ancestor then removed the item whose popup was opening (Help &gt; Web &gt;
 /// SharpDevelop never showed a third level and closed the whole chain). Only the item's own event
 /// may replace its children.
 /// </summary>
-[Collection(GlobalServicesCollection.Name)]
+[Collection(ProcessWideStateCollection.Name)]
 public sealed class MenuServiceTests : IDisposable
 {
     const string Manifest = """

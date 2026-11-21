@@ -16,6 +16,7 @@ namespace OpenDevelop.Base.Tests;
 /// the renderer's catalog picks the editor (Brush, CornerRadius, FontFamily), and a child of a Grid
 /// or Canvas is offered its parent's attached layout properties.
 /// </summary>
+[Collection(ProcessWideStateCollection.Name)]
 public sealed class WinUIPropertyPadDepthTests
 {
 	const string GridSource =

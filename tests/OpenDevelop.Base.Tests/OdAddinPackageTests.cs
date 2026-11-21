@@ -12,6 +12,7 @@ namespace OpenDevelop.Base.Tests;
 /// Installing a .odaddin: reading and unpacking an untrusted zip, validating the identity that becomes the
 /// install folder, and recording (or refusing to record) where an add-in came from.
 /// </summary>
+[Collection(ProcessWideStateCollection.Name)]
 public class OdAddinPackageTests : IDisposable
 {
 	readonly string directory = Path.Combine(Path.GetTempPath(), "od-odaddin-" + Guid.NewGuid().ToString("N"));

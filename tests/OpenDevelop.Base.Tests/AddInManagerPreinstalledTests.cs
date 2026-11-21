@@ -12,6 +12,7 @@ namespace OpenDevelop.Base.Tests;
 /// declare <c>addInManagerHidden="preinstalled"</c>; one in the user add-in directory or in the package
 /// staging directory is user-installed and removable.
 /// </summary>
+[Collection(ProcessWideStateCollection.Name)]
 public class AddInManagerPreinstalledTests : IDisposable
 {
 	readonly string root = Path.Combine(Path.GetTempPath(), "od-preinstalled-" + Guid.NewGuid().ToString("N"));

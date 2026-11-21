@@ -9,6 +9,7 @@ namespace OpenDevelop.Base.Tests;
 /// KeyBindingService: one gesture per command (the override, else the manifest's), installed on owners and kept up to date so that a change
 /// applies at once. The owners are real WPF elements; the commands count their executions. doc/technotes/keyboard-shortcuts.md.
 /// </summary>
+[Collection(ProcessWideStateCollection.Name)]
 public sealed class KeyBindingServiceTests : IDisposable
 {
 	readonly string directory = Path.Combine(Path.GetTempPath(), "od-keybinding-service-" + Guid.NewGuid().ToString("N"));

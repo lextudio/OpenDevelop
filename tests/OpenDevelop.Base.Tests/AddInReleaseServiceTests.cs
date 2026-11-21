@@ -10,6 +10,7 @@ namespace OpenDevelop.Base.Tests;
 /// The online side of the AddIn Manager: trusted repositories, what they offer, which installed add-ins
 /// have an update, and the download + verify + compatibility check + install of a release.
 /// </summary>
+[Collection(ProcessWideStateCollection.Name)]
 public class AddInReleaseServiceTests : IDisposable
 {
 	readonly string directory = Path.Combine(Path.GetTempPath(), "od-release-service-" + Guid.NewGuid().ToString("N"));

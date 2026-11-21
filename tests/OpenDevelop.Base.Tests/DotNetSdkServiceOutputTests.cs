@@ -8,6 +8,7 @@ namespace OpenDevelop.Base.Tests;
 /// The Output-pad description reads the IDE's SDK settings, so it needs the property service. Kept
 /// apart from <see cref="DotNetSdkServiceTests"/> so that class's tests keep running without one.
 /// </summary>
+[Collection(ProcessWideStateCollection.Name)]
 public sealed class DotNetSdkServiceOutputTests : IDisposable
 {
 	public DotNetSdkServiceOutputTests() => SD.InitializeForUnitTests();
