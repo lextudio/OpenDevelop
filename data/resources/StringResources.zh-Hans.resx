@@ -9322,6 +9322,18 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="Devices.Menu.Title" xml:space="preserve">
     <value>设备管理器...</value>
   </data>
+  <data name="Blueprint.Menu.Compile" xml:space="preserve">
+    <value>编译 Blueprint</value>
+  </data>
+  <data name="Blueprint.Menu.Decompile" xml:space="preserve">
+    <value>将 .ui 转换为 Blueprint</value>
+  </data>
+  <data name="TextTemplating.Menu.Title" xml:space="preserve">
+    <value>处理 T4 模板...</value>
+  </data>
+  <data name="Translations.Menu.Title" xml:space="preserve">
+    <value>更新翻译</value>
+  </data>
   <data name="AndroidDeviceManager.NewAvdAction" xml:space="preserve">
     <value>新建 Android 模拟器</value>
   </data>

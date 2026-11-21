@@ -36,7 +36,7 @@
 	</Path>
 
 	<Path name="/SharpDevelop/Workbench/Tools">
-		<MenuItem id="BlueprintCompile" label="Compile Blueprint" class="BlueprintBinding.CompileBlueprintCommand"/>
-		<MenuItem id="BlueprintDecompile" label="Convert .ui to Blueprint" class="BlueprintBinding.DecompileToBlueprintCommand"/>
+		<MenuItem id="BlueprintCompile" label="${res:Blueprint.Menu.Compile}" class="BlueprintBinding.CompileBlueprintCommand"/>
+		<MenuItem id="BlueprintDecompile" label="${res:Blueprint.Menu.Decompile}" class="BlueprintBinding.DecompileToBlueprintCommand"/>
 	</Path>
 </AddIn>

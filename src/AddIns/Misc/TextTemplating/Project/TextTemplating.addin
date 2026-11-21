@@ -62,7 +62,7 @@
 
 	<Path name = "/SharpDevelop/Workbench/Tools">
 		<MenuItem id = "TextTemplating"
-		          label = "Process T4 Templates..."
+		          label = "${res:TextTemplating.Menu.Title}"
 		          class = "ICSharpCode.TextTemplating.GenerateT4Command"
 		/>
 	</Path>

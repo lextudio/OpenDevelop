@@ -17,6 +17,6 @@
     <DisplayBinding id="Translator" type="Secondary" class="ICSharpCode.Translations.TranslatorDisplayBinding" fileNamePattern="\.(po|resx)$" />
   </Path>
   <Path name="/SharpDevelop/Workbench/Tools">
-    <MenuItem id="UpdateTranslations" label="Update Translations" class="ICSharpCode.Translations.UpdateTranslationsCommand" />
+    <MenuItem id="UpdateTranslations" label="${res:Translations.Menu.Title}" class="ICSharpCode.Translations.UpdateTranslationsCommand" />
   </Path>
 </AddIn>

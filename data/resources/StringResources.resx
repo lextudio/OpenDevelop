@@ -9739,6 +9739,18 @@ Press Esc to cancel this operation.</value>
   <data name="Devices.Menu.Title" xml:space="preserve">
     <value>Device Manager...</value>
   </data>
+  <data name="Blueprint.Menu.Compile" xml:space="preserve">
+    <value>Compile Blueprint</value>
+  </data>
+  <data name="Blueprint.Menu.Decompile" xml:space="preserve">
+    <value>Convert .ui to Blueprint</value>
+  </data>
+  <data name="TextTemplating.Menu.Title" xml:space="preserve">
+    <value>Process T4 Templates...</value>
+  </data>
+  <data name="Translations.Menu.Title" xml:space="preserve">
+    <value>Update Translations</value>
+  </data>
   <data name="AndroidDeviceManager.NewAvdAction" xml:space="preserve">
     <value>New Android emulator</value>
   </data>
