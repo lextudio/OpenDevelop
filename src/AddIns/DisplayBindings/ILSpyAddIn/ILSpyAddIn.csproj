@@ -326,7 +326,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
     <None Include="ILSpyAddIn.addin" CopyToOutputDirectory="Always" />
     <!-- The "ILSpy" named layout template (IlSpyLayoutTemplateProvider resolves it next to this
          assembly) - without this the AddIn-contributed layout row has no file to restore. -->

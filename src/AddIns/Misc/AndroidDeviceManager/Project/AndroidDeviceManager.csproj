@@ -22,7 +22,6 @@
     <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <None Include="AndroidDeviceManager.addin" CopyToOutputDirectory="Always" />
   </ItemGroup>
 </Project>

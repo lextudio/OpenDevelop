@@ -63,7 +63,6 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <None Include="Terminal.addin" CopyToOutputDirectory="Always" />
   </ItemGroup>
 </Project>

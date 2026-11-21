@@ -38,7 +38,6 @@
     <Compile Remove="ListViewSorting\**\*.cs" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Designer\Designer.Presentation\Designer.Presentation.csproj" />

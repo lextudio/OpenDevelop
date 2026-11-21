@@ -59,9 +59,6 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\GlobalAssemblyInfo.cs">
-      <Link>Configuration\GlobalAssemblyInfo.cs</Link>
-    </Compile>
     <Compile Include="..\ICSharpCode.SharpDevelop.BuildWorker\BuildJob.cs">
       <Link>BuildJob.cs</Link>
     </Compile>

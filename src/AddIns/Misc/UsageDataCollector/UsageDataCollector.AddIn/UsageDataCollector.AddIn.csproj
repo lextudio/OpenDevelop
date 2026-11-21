@@ -57,9 +57,6 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>GlobalAssemblyInfo.cs</Link>
-    </Compile>
     <Compile Include="AnalyticsMonitor.AppProperties.cs">
       <DependentUpon>AnalyticsMonitor.AppProperties.template</DependentUpon>
     </Compile>

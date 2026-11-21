@@ -24,7 +24,6 @@
     <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Translations.addin">

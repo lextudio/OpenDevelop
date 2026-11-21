@@ -26,7 +26,6 @@
     <Compile Include="Src\RegisterCSharpLanguageServiceCommand.cs" />
     <Compile Include="Src\RegisterCSharpOpenLensProvidersCommand.cs" />
     <Compile Include="Src\Project\CSharpProject.cs" />
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
 
   <ItemGroup>

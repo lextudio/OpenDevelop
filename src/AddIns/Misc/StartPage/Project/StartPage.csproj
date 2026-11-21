@@ -19,7 +19,6 @@
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <Resource Include="Resources\**\*" />
     <!-- CopyToOutputDirectory content propagates through the full transitive project-reference
          closure. SharpDevelop references StartPage and AvalonEdit.AddIn references SharpDevelop,

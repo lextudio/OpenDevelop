@@ -84,7 +84,6 @@
     <Compile Include="..\..\SharpDevelop\Dom\TreeNodeFactoryService.cs">
       <Link>Dom\TreeNodeFactoryService.cs</Link>
     </Compile>
-    <Compile Include="..\..\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
     <!-- Update checker reuses ILSpy's own minimal data-shape type verbatim (the remaining update
          pieces live in Src/Updates/ and follow the same API shape: AppUpdateService.CurrentVersion,
          UpdateService.CheckForUpdatesIfEnabledAsync/GetLatestVersionAsync, UpdateSettings). -->

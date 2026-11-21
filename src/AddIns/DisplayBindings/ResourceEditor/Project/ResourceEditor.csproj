@@ -18,7 +18,6 @@
          those CLR types. -->
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <!-- Depends on ICSharpCode.NRefactory.TypeSystem (removed elsewhere in this codebase already)
          and System.Resources.Tools.StronglyTypedResourceBuilder; not ported (see ResourceEditor.addin). -->
     <Compile Remove="Src\ResourceCodeGeneratorTool.cs" />

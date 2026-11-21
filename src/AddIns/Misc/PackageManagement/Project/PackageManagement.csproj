@@ -47,7 +47,6 @@
     <ProjectReference Include="..\PowerShell\Project\PackageManagement.PowerShell.csproj" Private="false" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <None Include="PackageManagement.addin" CopyToOutputDirectory="Always" />
     <None Include="..\RequiredLibraries\LICENSE.txt" Link="NuGet-LICENSE.txt" CopyToOutputDirectory="Always" />
     <None Include="Scripts\Package.Format.ps1xml" CopyToOutputDirectory="Always" />

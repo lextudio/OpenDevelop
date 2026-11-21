@@ -94,9 +94,6 @@
     <Compile Include="Src\Project\WixProject.cs" />
     <Compile Include="Src\Gui\CompilerParametersPanel.cs" />
     <Compile Include="Configuration\AssemblyInfo.cs" />
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>Configuration\GlobalAssemblyInfo.cs</Link>
-    </Compile>
     <Compile Include="Src\Gui\ApplicationSettingsPanel.cs" />
     <EmbeddedResource Include="Resources\ApplicationSettingsPanel.xfrm" />
     <EmbeddedResource Include="Resources\CompilerParametersPanel.xfrm" />

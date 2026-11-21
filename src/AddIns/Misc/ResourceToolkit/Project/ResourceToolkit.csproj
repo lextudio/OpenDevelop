@@ -24,7 +24,6 @@
     <ProjectReference Include="..\..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <None Include="Hornung.ResourceToolkit.addin" CopyToOutputDirectory="Always" />
   </ItemGroup>
 </Project>

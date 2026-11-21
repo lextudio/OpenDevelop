@@ -16,7 +16,6 @@
     <ProjectReference Include="..\..\..\Analysis\UnitTesting\UnitTesting.csproj" Private="false" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
   <!-- WinForms: out of MVP scope -->
   <ItemGroup>

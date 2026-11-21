@@ -12,8 +12,6 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
   <ItemGroup>
-    <!-- GlobalAssemblyInfo.cs is outside project dir, must be linked explicitly -->
-    <Compile Include="..\..\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <!-- MessageBus/MessageBus<T> (the generic publish/subscribe primitive only - the ILSpy-specific
          message payloads are a separate file) is shared with ILSpyAddIn by source-linking rather
          than by referencing that AddIn, which would be circular: ILSpyAddIn references THIS assembly.

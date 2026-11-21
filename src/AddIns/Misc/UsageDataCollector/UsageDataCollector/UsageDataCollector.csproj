@@ -57,9 +57,6 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>GlobalAssemblyInfo.cs</Link>
-    </Compile>
     <Compile Include="Contracts\UsageDataDataContracts.cs" />
     <Compile Include="Contracts\UsageDataServiceContracts.cs" />
     <Compile Include="Reference.cs" />

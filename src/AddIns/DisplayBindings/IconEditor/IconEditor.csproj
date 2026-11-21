@@ -18,7 +18,6 @@
     <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <None Include="IconEditor.addin" CopyToOutputDirectory="Always" />
   </ItemGroup>
 </Project>

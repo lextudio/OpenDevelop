@@ -74,9 +74,6 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>Configuration\GlobalAssemblyInfo.cs</Link>
-    </Compile>
     <Compile Include="Helpers\FakeAddMvcItemToProjectView.cs" />
     <Compile Include="Helpers\FakeMvcModelClassLocator.cs" />
     <Compile Include="Helpers\FakeMvcClass.cs" />

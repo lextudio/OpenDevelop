@@ -57,9 +57,6 @@
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="CopyLocalWorkaround.cs" />
     <Compile Include="KnownFrameworkAssemblies.cs" />
-    <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>GlobalAssemblyInfo.cs</Link>
-    </Compile>
     <None Include="SharpDevelop.CheckMSBuild35Features.targets">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

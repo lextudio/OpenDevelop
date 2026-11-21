@@ -35,7 +35,6 @@
   <ItemGroup>
     <!-- Stamps the product version. Without it the DLL is 0.0.0.0 while the generated XAML locators ask
          for "/OpenDevelop.Profiler.AddIn;V5.x.y.z;component/...", so every view fails to load. -->
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
     <None Include="Profiler.addin" CopyToOutputDirectory="Always" />
   </ItemGroup>
 </Project>

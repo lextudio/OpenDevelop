@@ -78,7 +78,6 @@
       <DependentUpon>CodeCoverageProjectOptionsPanel.xaml</DependentUpon>
     </Compile>
     <Compile Include="Configuration\AssemblyInfo.cs" />
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
   <!-- UseWPF's default item globbing already picks up **/*.xaml as Page items (that's a separate
        default-items list from Compile, which EnableDefaultCompileItems=false above only disables) -

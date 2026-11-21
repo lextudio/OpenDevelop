@@ -34,9 +34,6 @@
     <Reference Include="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>GlobalAssemblyInfo.cs</Link>
-    </Compile>
     <Compile Include="BaseRectangle.cs" />
     <Compile Include="DiagramRouter.cs" />
     <Compile Include="AssemblyInfo.cs" />

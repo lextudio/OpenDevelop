@@ -20,7 +20,6 @@
     <ProjectReference Include="..\..\..\..\BackendBindings\Scripting\Project\ICSharpCode.Scripting.csproj" Private="false" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
 
   <!-- See PackageManagement.csproj: Private=false doesn't stop transitive projects' own .addin

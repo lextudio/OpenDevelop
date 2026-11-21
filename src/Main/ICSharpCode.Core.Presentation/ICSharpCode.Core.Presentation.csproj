@@ -12,7 +12,6 @@
     <ProjectReference Include="..\Core\Project\ICSharpCode.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Remove="Resources\VS2026\**\*.xaml" />

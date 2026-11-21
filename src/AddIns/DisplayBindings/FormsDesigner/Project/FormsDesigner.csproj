@@ -136,7 +136,6 @@
   </Target>
 
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <None Include="FormsDesigner.addin" />
   </ItemGroup>
 

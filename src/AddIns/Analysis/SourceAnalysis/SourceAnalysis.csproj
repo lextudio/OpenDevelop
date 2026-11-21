@@ -60,9 +60,6 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\Main\GlobalAssemblyInfo.cs">
-      <Link>Configuration\GlobalAssemblyInfo.cs</Link>
-    </Compile>
     <EmbeddedResource Include="Resources\Settings.SourceAnalysis">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>

@@ -24,6 +24,5 @@
     <!-- Version and platform attributes come from the shared file the other projects link. Without
          it this host counted as reachable on every platform, so every call into the Windows-only
          designer and language service reported CA1416. -->
-    <Compile Include="../../GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
 </Project>

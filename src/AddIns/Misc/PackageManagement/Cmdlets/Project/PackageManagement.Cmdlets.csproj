@@ -30,7 +30,6 @@
     <ProjectReference Include="..\..\SharpDevelop.EnvDTE\SharpDevelop.EnvDTE.vbproj" Private="false" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
 
   <!-- See PackageManagement.csproj: Private=false doesn't stop transitive projects' own .addin

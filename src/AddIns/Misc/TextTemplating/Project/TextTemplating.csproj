@@ -19,7 +19,6 @@
     <PackageReference Include="ICSharpCode.AvalonEdit.LibreWPF" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Resources\TextTemplating.xshd" />

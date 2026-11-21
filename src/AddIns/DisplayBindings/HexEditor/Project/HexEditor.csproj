@@ -21,7 +21,6 @@
          against this project's custom OutputPath layout. -->
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <None Include="HexEditor.addin" CopyToOutputDirectory="Always" />
   </ItemGroup>
   <ItemGroup>

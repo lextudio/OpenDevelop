@@ -57,7 +57,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\..\..\Main\GlobalAssemblyInfo.cs" Link="Configuration\GlobalAssemblyInfo.cs" />
     <!-- Intentionally NOT CopyToOutputDirectory="Always": MSBuild propagates a project's own
          <None CopyToOutputDirectory> content items into every downstream consumer's own
          OutputPath (via GetCopyToOutputDirectoryItems walking the full transitive P2P closure),
