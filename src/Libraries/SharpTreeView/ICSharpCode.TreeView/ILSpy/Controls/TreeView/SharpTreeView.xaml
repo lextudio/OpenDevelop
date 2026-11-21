@@ -120,6 +120,16 @@
         </Style.Triggers>
     </Style>
 
+    <!-- The keyed container style below is BasedOn the implicit ListViewItem style. StaticResource only resolves
+         inside this dictionary chain, so that implicit style has to be defined here: without it the dictionary
+         throws "Cannot find resource named 'System.Windows.Controls.ListViewItem'" the first time a grid row is
+         realized (empty trees never did), and rows fall back to the framework's navy foreground, which is
+         unreadable on the dark theme. The brush is looked up dynamically so both themes stay readable. -->
+    <Style TargetType="{x:Type ListViewItem}">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
     <Style x:Key="{x:Static Default:SharpGridView.ItemContainerStyleKey}"
            TargetType="{x:Type ListViewItem}" BasedOn="{StaticResource {x:Type ListViewItem}}">
         <Setter Property="Background"
