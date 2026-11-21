@@ -254,6 +254,16 @@ namespace ICSharpCode.Core.Presentation
 					item.Items.Add(new MenuItem());
 					var subItems = CreateUnexpandedMenuItems(context, descriptor.SubItems);
 					item.SubmenuOpened += (sender, args) => {
+						// SubmenuOpened bubbles, so this handler also runs for every
+						// descendant that opens. Only the item's own opening may replace
+						// its children: rebuilding an ancestor here would remove the
+						// item whose popup is opening, and its SubmenuHeader ->
+						// SubmenuItem -> SubmenuHeader role change swaps the template,
+						// destroying the already open popup under the pointer. Menu
+						// mode then ends and the whole open chain closes (for example
+						// Help > Web > SharpDevelop never showed a third level).
+						if (!ReferenceEquals(args.OriginalSource, item))
+							return;
 						ReplaceMenuItems(item, ExpandMenuBuilders(subItems, true));
 					};
 					if (context.ImmediatelyExpandMenuBuildersForShortcuts)
