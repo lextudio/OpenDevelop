@@ -1097,6 +1097,16 @@
                                       IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
                                       Style="{StaticResource SharpDevelopComboBoxToggleButtonStyle}"
                                       Grid.ColumnSpan="2" />
+                        <TextBox x:Name="PART_EditableTextBox"
+                                 Style="{x:Null}"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Padding="0"
+                                 VerticalContentAlignment="Center"
+                                 Foreground="{TemplateBinding Foreground}"
+                                 Margin="6,0,24,0"
+                                 Visibility="Collapsed"
+                                 IsReadOnly="{TemplateBinding IsReadOnly}" />
                         <ContentPresenter x:Name="contentPresenter"
                                           Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
@@ -1109,6 +1119,10 @@
                                           VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsEditable" Value="True">
+                            <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="contentPresenter" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
                         <Trigger Property="HasItems" Value="False">
                             <Setter Property="Height" TargetName="DropDownBorder" Value="95" />
                         </Trigger>
