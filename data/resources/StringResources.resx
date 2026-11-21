@@ -9334,6 +9334,9 @@ Press Esc to cancel this operation.</value>
   <data name="AndroidSdkManager.SdkLocationLabel" xml:space="preserve">
     <value>Android SDK Location:</value>
   </data>
+  <data name="AndroidSdkManager.SelectSdkLocation" xml:space="preserve">
+    <value>Select Android SDK Location</value>
+  </data>
   <data name="AndroidSdkManager.Platforms" xml:space="preserve">
     <value>Platforms</value>
   </data>

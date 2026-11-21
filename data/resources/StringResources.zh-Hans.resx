@@ -8917,6 +8917,9 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="AndroidSdkManager.SdkLocationLabel" xml:space="preserve">
     <value>Android SDK 位置：</value>
   </data>
+  <data name="AndroidSdkManager.SelectSdkLocation" xml:space="preserve">
+    <value>选择 Android SDK 位置</value>
+  </data>
   <data name="AndroidSdkManager.Platforms" xml:space="preserve">
     <value>平台</value>
   </data>

@@ -58,7 +58,7 @@ namespace ICSharpCode.AndroidSdkManager
 			try {
 				packages = await service.ListPackagesAsync(sdkRoot);
 			} catch (Exception ex) {
-				MessageBox.Show(this, ex.Message, "Android SDK Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+				MessageBox.Show(this, ex.Message, ResourceService.GetString("AndroidSdkManager.Title"), MessageBoxButton.OK, MessageBoxImage.Warning);
 				packages = Array.Empty<SdkPackage>();
 			}
 
@@ -133,7 +133,7 @@ namespace ICSharpCode.AndroidSdkManager
 		void BrowseButton_Click(object sender, RoutedEventArgs e)
 		{
 			var dialog = new OpenFolderDialog {
-				Title = "Select Android SDK Location",
+				Title = ResourceService.GetString("AndroidSdkManager.SelectSdkLocation"),
 				InitialDirectory = sdkLocationComboBox.Text,
 			};
 			if (dialog.ShowDialog(this) == true) {
@@ -169,7 +169,7 @@ namespace ICSharpCode.AndroidSdkManager
 				if (toRemove.Count > 0)
 					await service.UninstallAsync(sdkRoot, toRemove);
 			} catch (Exception ex) {
-				MessageBox.Show(this, ex.Message, "Android SDK Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+				MessageBox.Show(this, ex.Message, ResourceService.GetString("AndroidSdkManager.Title"), MessageBoxButton.OK, MessageBoxImage.Error);
 			}
 
 			await RefreshAsync();
