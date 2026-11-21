@@ -278,6 +278,110 @@
       "reason": "Observed on enabled platforms; inspect per-entry lane summaries before promoting to required."
     },
     {
+      "id": "android-sdk-manager-tests",
+      "batch": 5,
+      "lane": "integration-stable",
+      "measuredSeconds": 45,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.AndroidSdkManagerIntegrationTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe",
+        "linux-x64": "observe",
+        "linux-arm64": "observe"
+      },
+      "buildArgs": [
+        "-p:BuildIntegrationFixtures=false"
+      ],
+      "note": "Drives the real Android SDK Manager against a fake cmdline-tools sdkmanager in a temporary SDK root (no Android SDK or Java needed): editable location ComboBox, parsed Platforms/Tools trees, checkbox toggle and the --install call. Covers the 5.9.3 SDK manager window end-to-end; starts as observe."
+    },
+    {
+      "id": "device-manager-tests",
+      "batch": 5,
+      "lane": "integration-stable",
+      "measuredSeconds": 25,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.DeviceManagerIntegrationTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe",
+        "linux-x64": "observe",
+        "linux-arm64": "observe"
+      },
+      "buildArgs": [
+        "-p:BuildIntegrationFixtures=false"
+      ],
+      "note": "Opens the shared Device Manager, reads the same snapshot, refreshes every provider and closes it. Contents are platform-dependent (the host row always exists), so only the snapshot shape is asserted. Starts as observe."
+    },
+    {
+      "id": "addin-manager-installed-tests",
+      "batch": 5,
+      "lane": "integration-stable",
+      "measuredSeconds": 30,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.AddInManagerInstalledListTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe",
+        "linux-x64": "observe",
+        "linux-arm64": "observe"
+      },
+      "buildArgs": [
+        "-p:BuildIntegrationFixtures=false"
+      ],
+      "note": "The AddIn Manager Installed list in an isolated IDE: shipped add-ins are preinstalled without Uninstall, a user-directory add-in stays uninstallable. Was written with the preinstalled classification but had no CI entry. Starts as observe."
+    },
+    {
+      "id": "addin-manager-releases-journey",
+      "batch": 5,
+      "lane": "integration-stable",
+      "measuredSeconds": 40,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.AddInGitHubReleasesJourneyTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe",
+        "linux-x64": "observe",
+        "linux-arm64": "observe"
+      },
+      "buildArgs": [
+        "-p:BuildIntegrationFixtures=false"
+      ],
+      "note": "Trust, install and update an add-in against a fake GitHub release feed in an isolated IDE. Self-contained (no network); it existed without a CI entry. Starts as observe."
+    },
+    {
       "id": "workbench-tests",
       "batch": 3,
       "lane": "integration-stable",
