@@ -33,7 +33,46 @@ namespace ICSharpCode.AndroidDeviceManager
 
 		public static string GetSavedSdkPath()
 		{
-			return PropertyService.Get(SdkPathPropertyKey, string.Empty);
+			var saved = PropertyService.Get(SdkPathPropertyKey, string.Empty);
+			if (!string.IsNullOrWhiteSpace(saved) && Directory.Exists(saved))
+				return saved;
+			var discovered = FindDefaultSdkPath();
+			if (!string.IsNullOrEmpty(discovered))
+				PropertyService.Set(SdkPathPropertyKey, discovered);
+			return discovered ?? string.Empty;
+		}
+
+		/// <summary>
+		/// Mirrors AndroidSdkManagerService.FindDefaultSdkPath so the device manager can pick up an
+		/// SDK that was installed in a standard location without forcing the user through the SDK
+		/// manager first.
+		/// </summary>
+		static string FindDefaultSdkPath()
+		{
+			var androidHome = Environment.GetEnvironmentVariable("ANDROID_HOME");
+			if (!string.IsNullOrEmpty(androidHome) && Directory.Exists(androidHome))
+				return androidHome;
+
+			var androidSdkRoot = Environment.GetEnvironmentVariable("ANDROID_SDK_ROOT");
+			if (!string.IsNullOrEmpty(androidSdkRoot) && Directory.Exists(androidSdkRoot))
+				return androidSdkRoot;
+
+			var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+			var defaultWindowsPath = Path.Combine(localAppData, "Android", "Sdk");
+			if (Directory.Exists(defaultWindowsPath))
+				return defaultWindowsPath;
+
+			// macOS/Linux conventional locations
+			var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+			foreach (var candidate in new[] {
+				Path.Combine(home, "Library", "Android", "sdk"),
+				Path.Combine(home, "Android", "Sdk"),
+			}) {
+				if (Directory.Exists(candidate))
+					return candidate;
+			}
+
+			return null;
 		}
 
 		static string FindCommandLineToolExecutable(string sdkRoot, string toolName)

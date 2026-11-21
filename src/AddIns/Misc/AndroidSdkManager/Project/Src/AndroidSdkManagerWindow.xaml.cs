@@ -93,9 +93,9 @@ namespace ICSharpCode.AndroidSdkManager
 			var pendingCount = nodes.Count(n => n.IsPendingChange);
 			var updateCount = nodes.Count(n => n.Package.HasUpdate);
 
-			installCountText.Text = "Install: " + pendingCount;
+			installCountText.Text = string.Format(ResourceService.GetString("AndroidSdkManager.InstallCount"), pendingCount);
 			applyChangesButton.IsEnabled = pendingCount > 0;
-			updatesAvailableButton.Content = updateCount + " Updates Available";
+			updatesAvailableButton.Content = string.Format(ResourceService.GetString("AndroidSdkManager.UpdatesAvailable"), updateCount);
 			updatesAvailableButton.IsEnabled = updateCount > 0;
 		}
 

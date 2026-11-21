@@ -13,6 +13,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
+using ICSharpCode.Core;
 
 namespace ICSharpCode.AndroidDeviceManager
 {
@@ -50,7 +51,7 @@ namespace ICSharpCode.AndroidDeviceManager
 				var images = await service.ListInstalledSystemImagesAsync(sdkRoot);
 				systemImageComboBox.ItemsSource = images;
 			} catch (Exception ex) {
-				MessageBox.Show(this, ex.Message, "Android Device Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+				MessageBox.Show(this, ex.Message, ResourceService.GetString("AndroidDeviceManager.Title"), MessageBoxButton.OK, MessageBoxImage.Warning);
 			}
 
 			if (existingAvd != null) {
@@ -115,7 +116,7 @@ namespace ICSharpCode.AndroidDeviceManager
 		{
 			var name = nameTextBox.Text?.Trim();
 			if (string.IsNullOrEmpty(name)) {
-				MessageBox.Show(this, "Enter a name for the device.", "Android Device Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+				MessageBox.Show(this, ResourceService.GetString("AvdEditor.EnterName"), ResourceService.GetString("AndroidDeviceManager.Title"), MessageBoxButton.OK, MessageBoxImage.Warning);
 				return;
 			}
 
@@ -125,13 +126,13 @@ namespace ICSharpCode.AndroidDeviceManager
 				if (existingAvd == null) {
 					var image = systemImageComboBox.SelectedItem as SystemImageInfo;
 					if (image == null) {
-						MessageBox.Show(this, "Select a system image (OS).", "Android Device Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+						MessageBox.Show(this, ResourceService.GetString("AvdEditor.SelectSystemImage"), ResourceService.GetString("AndroidDeviceManager.Title"), MessageBoxButton.OK, MessageBoxImage.Warning);
 						return;
 					}
 					var device = baseDeviceComboBox.SelectedItem as DeviceDefinition;
 					var created = await service.CreateAvdAsync(sdkRoot, name, image.PackageId, device?.Id, force: true);
 					if (!created) {
-						MessageBox.Show(this, "avdmanager failed to create the AVD. Check the SDK location and that the selected system image is installed.", "Android Device Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+						MessageBox.Show(this, ResourceService.GetString("AvdEditor.CreateFailed"), ResourceService.GetString("AndroidDeviceManager.Title"), MessageBoxButton.OK, MessageBoxImage.Error);
 						return;
 					}
 					configPath = System.IO.Path.Combine(
@@ -148,7 +149,7 @@ namespace ICSharpCode.AndroidDeviceManager
 
 				DialogResult = true;
 			} catch (Exception ex) {
-				MessageBox.Show(this, ex.Message, "Android Device Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+				MessageBox.Show(this, ex.Message, ResourceService.GetString("AndroidDeviceManager.Title"), MessageBoxButton.OK, MessageBoxImage.Error);
 			} finally {
 				saveButton.IsEnabled = true;
 			}

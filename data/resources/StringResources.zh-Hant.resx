@@ -8939,7 +8939,10 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
     <value>工具</value>
   </data>
   <data name="AndroidSdkManager.InstallCount" xml:space="preserve">
-    <value>安裝：0</value>
+    <value>安裝：{0}</value>
+  </data>
+  <data name="AndroidSdkManager.UpdatesAvailable" xml:space="preserve">
+    <value>{0} 個更新可用</value>
   </data>
   <data name="AndroidSdkManager.ApplyChanges" xml:space="preserve">
     <value>套用變更</value>
@@ -9162,6 +9165,30 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
   </data>
   <data name="AndroidDeviceManager.Title" xml:space="preserve">
     <value>Android 裝置管理員</value>
+  </data>
+  <data name="AndroidDeviceManager.CreateDevice" xml:space="preserve">
+    <value>+ 建立裝置...</value>
+  </data>
+  <data name="AndroidDeviceManager.SdkNotConfigured" xml:space="preserve">
+    <value>請先在 Android SDK 管理員中設定 Android SDK 位置。</value>
+  </data>
+  <data name="AndroidDeviceManager.DeleteConfirm" xml:space="preserve">
+    <value>刪除 AVD "{0}"？此動作無法復原。</value>
+  </data>
+  <data name="AvdEditor.EnterName" xml:space="preserve">
+    <value>請輸入裝置名稱。</value>
+  </data>
+  <data name="AvdEditor.SelectSystemImage" xml:space="preserve">
+    <value>請選擇系統映像 (OS)。</value>
+  </data>
+  <data name="AvdEditor.CreateFailed" xml:space="preserve">
+    <value>avdmanager 建立 AVD 失敗。請檢查 SDK 位置並確認已安裝所選系統映像。</value>
+  </data>
+  <data name="AvdEditor.GoogleApis" xml:space="preserve">
+    <value>Google APIs</value>
+  </data>
+  <data name="AvdEditor.GooglePlayStore" xml:space="preserve">
+    <value>Google Play Store</value>
   </data>
   <data name="AndroidDeviceManager.Start" xml:space="preserve">
     <value>啟動</value>

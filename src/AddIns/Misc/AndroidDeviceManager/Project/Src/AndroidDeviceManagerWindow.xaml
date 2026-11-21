@@ -9,15 +9,18 @@
 		<Grid.RowDefinitions>
 			<RowDefinition Height="Auto"/>
 			<RowDefinition Height="*"/>
+			<RowDefinition Height="Auto"/>
 		</Grid.RowDefinitions>
 
 		<StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8">
-			<Button x:Name="createButton" Content="+ Create Device..." Padding="8,4" Click="CreateButton_Click"/>
+			<Button x:Name="createButton" Content="{core:Localize AndroidDeviceManager.CreateDevice}" Padding="8,4" Click="CreateButton_Click"/>
 			<Button x:Name="startButton" Content="{core:Localize AndroidDeviceManager.Start}" Padding="8,4" Margin="8,0,0,0" Click="StartButton_Click"/>
 			<Button x:Name="editButton" Content="{core:Localize AndroidDeviceManager.Edit}" Padding="8,4" Margin="8,0,0,0" Click="EditButton_Click"/>
 			<Button x:Name="deleteButton" Content="{core:Localize AndroidDeviceManager.Delete}" Padding="8,4" Margin="8,0,0,0" Click="DeleteButton_Click"/>
 			<Button x:Name="refreshButton" Content="{core:Localize AndroidDeviceManager.Refresh}" Padding="8,4" Margin="8,0,0,0" Click="RefreshButton_Click"/>
 		</StackPanel>
+
+		<TextBlock x:Name="statusText" Grid.Row="2" Margin="0,8,0,0" Foreground="OrangeRed" TextWrapping="Wrap" Visibility="Collapsed"/>
 
 		<ListView x:Name="avdListView" Grid.Row="1">
 			<ListView.View>

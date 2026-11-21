@@ -13,6 +13,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using ICSharpCode.Core;
 
 using ICSharpCode.SharpDevelop;
 
@@ -32,8 +33,14 @@ namespace ICSharpCode.AndroidDeviceManager
 
 		public async Task RefreshAsync()
 		{
+			statusText.Visibility = Visibility.Collapsed;
+			createButton.IsEnabled = true;
+
 			if (string.IsNullOrWhiteSpace(SdkRoot)) {
-				MessageBox.Show(this, "Set the Android SDK location in the Android SDK Manager first.", "Android Device Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+				statusText.Text = ResourceService.GetString("AndroidDeviceManager.SdkNotConfigured");
+				statusText.Visibility = Visibility.Visible;
+				createButton.IsEnabled = false;
+				avdListView.ItemsSource = null;
 				return;
 			}
 
@@ -41,7 +48,8 @@ namespace ICSharpCode.AndroidDeviceManager
 				var avds = await service.ListAvdsAsync(SdkRoot);
 				avdListView.ItemsSource = avds;
 			} catch (Exception ex) {
-				MessageBox.Show(this, ex.Message, "Android Device Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+				statusText.Text = ex.Message;
+				statusText.Visibility = Visibility.Visible;
 			}
 		}
 
@@ -72,7 +80,7 @@ namespace ICSharpCode.AndroidDeviceManager
 			try {
 				service.StartAvd(SdkRoot, avd.Name);
 			} catch (Exception ex) {
-				MessageBox.Show(this, ex.Message, "Android Device Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+				MessageBox.Show(this, ex.Message, ResourceService.GetString("AndroidDeviceManager.Title"), MessageBoxButton.OK, MessageBoxImage.Error);
 			}
 		}
 
@@ -81,13 +89,13 @@ namespace ICSharpCode.AndroidDeviceManager
 			var avd = SelectedAvd;
 			if (avd == null)
 				return;
-			if (MessageBox.Show(this, "Delete AVD \"" + avd.Name + "\"? This cannot be undone.", "Android Device Manager", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+			if (MessageBox.Show(this, string.Format(ResourceService.GetString("AndroidDeviceManager.DeleteConfirm"), avd.Name), ResourceService.GetString("AndroidDeviceManager.Title"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
 				return;
 
 			try {
 				await service.DeleteAvdAsync(SdkRoot, avd.Name);
 			} catch (Exception ex) {
-				MessageBox.Show(this, ex.Message, "Android Device Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+				MessageBox.Show(this, ex.Message, ResourceService.GetString("AndroidDeviceManager.Title"), MessageBoxButton.OK, MessageBoxImage.Error);
 			}
 			await RefreshAsync();
 		}

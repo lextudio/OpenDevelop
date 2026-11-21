@@ -32,7 +32,15 @@ namespace ICSharpCode.AndroidSdkManager
 
 		public static string GetSavedSdkPath()
 		{
-			return PropertyService.Get(SdkPathPropertyKey, FindDefaultSdkPath() ?? string.Empty);
+			var saved = PropertyService.Get(SdkPathPropertyKey, string.Empty);
+			if (!string.IsNullOrWhiteSpace(saved) && Directory.Exists(saved))
+				return saved;
+			// Fall back to auto-discovery when nothing usable was saved (including an empty value left by a
+			// previous run that never configured the SDK).
+			var discovered = FindDefaultSdkPath();
+			if (!string.IsNullOrEmpty(discovered))
+				SaveSdkPath(discovered);
+			return discovered ?? string.Empty;
 		}
 
 		public static void SaveSdkPath(string path)
@@ -54,6 +62,16 @@ namespace ICSharpCode.AndroidSdkManager
 			var defaultWindowsPath = Path.Combine(localAppData, "Android", "Sdk");
 			if (Directory.Exists(defaultWindowsPath))
 				return defaultWindowsPath;
+
+			// macOS/Linux conventional locations
+			var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+			foreach (var candidate in new[] {
+				Path.Combine(home, "Library", "Android", "sdk"),
+				Path.Combine(home, "Android", "Sdk"),
+			}) {
+				if (Directory.Exists(candidate))
+					return candidate;
+			}
 
 			return null;
 		}

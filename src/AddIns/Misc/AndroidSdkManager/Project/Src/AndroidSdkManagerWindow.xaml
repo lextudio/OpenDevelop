@@ -88,7 +88,7 @@
 				<ColumnDefinition Width="Auto"/>
 				<ColumnDefinition Width="Auto"/>
 			</Grid.ColumnDefinitions>
-			<Button x:Name="updatesAvailableButton" Grid.Column="0" Content="0 Updates Available"
+			<Button x:Name="updatesAvailableButton" Grid.Column="0" Content="{core:Localize AndroidSdkManager.UpdatesAvailable}"
 			        Padding="8,2" Click="UpdatesAvailableButton_Click"/>
 			<TextBlock x:Name="installCountText" Grid.Column="2" Text="{core:Localize AndroidSdkManager.InstallCount}"
 			           VerticalAlignment="Center" Margin="0,0,8,0"/>

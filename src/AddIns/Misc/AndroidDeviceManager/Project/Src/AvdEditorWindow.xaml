@@ -40,8 +40,8 @@
 				<TextBlock Text="{core:Localize AvdEditor.Os}" Margin="0,0,0,2"/>
 				<ComboBox x:Name="systemImageComboBox" DisplayMemberPath="DisplayName" Margin="0,0,0,10"/>
 
-				<CheckBox x:Name="googleApisCheckBox" Content="Google APIs" Margin="0,0,0,4"/>
-				<CheckBox x:Name="playStoreCheckBox" Content="Google Play Store"/>
+				<CheckBox x:Name="googleApisCheckBox" Content="{core:Localize AvdEditor.GoogleApis}" Margin="0,0,0,4"/>
+				<CheckBox x:Name="playStoreCheckBox" Content="{core:Localize AvdEditor.GooglePlayStore}"/>
 			</StackPanel>
 
 			<!-- Advanced hardware property grid -->
