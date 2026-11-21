@@ -30,6 +30,8 @@ public sealed class AddInVersionConsistencyTests
 
 		Version host = typeof(ProductCopyright).Assembly.GetName().Version!;
 		Assert.NotEqual(new Version(0, 0, 0, 0), host);
+		// The product version must not drift with the commit count: only a new v tag moves it.
+		Assert.Equal(0, host.Revision);
 
 		var checkedAssemblies = new List<string>();
 		var mismatches = new List<string>();

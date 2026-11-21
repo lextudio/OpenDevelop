@@ -197,8 +197,9 @@
       <_OdMinor Condition="'$(_OdMinor)' == ''">0</_OdMinor>
       <_OdPatch Condition="'$(GitVersion_Patch)' != ''">$(GitVersion_Patch)</_OdPatch>
       <_OdPatch Condition="'$(_OdPatch)' == ''">0</_OdPatch>
-      <_OdRevision Condition="'$(GitVersion_CommitsSinceVersionSource)' != ''">$(GitVersion_CommitsSinceVersionSource)</_OdRevision>
-      <_OdRevision Condition="'$(_OdRevision)' == ''">0</_OdRevision>
+      <!-- The revision (4th AssemblyVersion field) deliberately stays 0 between tags: only a new v tag moves
+           the product version. CommitsSinceVersionSource would otherwise make every commit a new version. -->
+      <_OdRevision>0</_OdRevision>
       <_OdFullSemVer Condition="'$(GitVersion_FullSemVer)' != ''">$(GitVersion_FullSemVer)</_OdFullSemVer>
       <_OdFullSemVer Condition="'$(_OdFullSemVer)' == ''">$(_OdMajor).$(_OdMinor).$(_OdPatch)</_OdFullSemVer>
       <_OdSha Condition="'$(GitVersion_ShortSha)' != ''">$(GitVersion_ShortSha)</_OdSha>

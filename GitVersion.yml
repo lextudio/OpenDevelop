@@ -4,8 +4,8 @@
 # Mirrors the configuration used by the Roma project.
 mode: ContinuousDeployment
 tag-prefix: 'v'
-# No automatic bump: a commit after v5.5.13 stays 5.5.13 (the commit count still goes into the
-# 4th assembly-version field via CommitsSinceVersionSource). Only a new v tag moves the version.
+# No automatic bump: a commit after v5.9.3 stays 5.9.3.0. The fourth AssemblyVersion field is fixed at 0 and does
+# not track CommitsSinceVersionSource; only a new v tag moves the version.
 increment: None
 branches:
   main:
