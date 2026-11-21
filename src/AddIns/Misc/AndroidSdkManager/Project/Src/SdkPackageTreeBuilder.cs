@@ -121,6 +121,7 @@ namespace ICSharpCode.AndroidSdkManager
 					.OrderBy(package => PlatformKindRank(package.Id))
 					.ThenBy(package => package.Id, StringComparer.OrdinalIgnoreCase))
 					group.Children.Add(new SdkPackageTreeNode(package));
+				group.RefreshCheckState();
 				root.Children.Add(group);
 			}
 
@@ -159,6 +160,7 @@ namespace ICSharpCode.AndroidSdkManager
 				var node = new SdkGroupNode(group.Key);
 				foreach (var package in group.Value.OrderBy(package => package, NewestFirstComparer.Instance))
 					node.Children.Add(new SdkPackageTreeNode(package));
+				node.RefreshCheckState();
 				root.Children.Add(node);
 			}
 

@@ -115,6 +115,67 @@ public sealed class SdkPackageTreeBuilderTests
 	}
 
 	[Fact]
+	public void GroupCheckState_FollowsTheLeaves_InsteadOfStartingIndeterminate()
+	{
+		// SharpTreeNode never aggregates on its own, so without an explicit pass every group would stay null and the
+		// checkbox would draw the indeterminate box - the solid square seen in both themes.
+		var none = SdkPackageTreeBuilder.BuildPlatformsRoot(new[] {
+			Pkg("platforms;android-34"), Pkg("sources;android-34"),
+		});
+		Assert.False(none.Children[0].IsChecked);
+
+		var some = SdkPackageTreeBuilder.BuildPlatformsRoot(new[] {
+			Pkg("platforms;android-34", installed: "2"), Pkg("sources;android-34"),
+		});
+		Assert.Null(some.Children[0].IsChecked);
+
+		var all = SdkPackageTreeBuilder.BuildPlatformsRoot(new[] {
+			Pkg("platforms;android-34", installed: "2"), Pkg("sources;android-34", installed: "1"),
+		});
+		Assert.True(all.Children[0].IsChecked);
+	}
+
+	[Fact]
+	public void GroupState_FollowsLeafToggles_AndAGroupToggleCascadesToTheLeaves()
+	{
+		// The build-time pass is not enough: when a user ticks a leaf, the group must recompute, and ticking a group must
+		// reach its leaves. This also proves the recompute cannot recurse forever (it would overflow the stack here).
+		var root = SdkPackageTreeBuilder.BuildPlatformsRoot(new[] {
+			Pkg("platforms;android-34"), Pkg("sources;android-34"),
+		});
+		var group = root.Children[0];
+		var leaves = group.Children.Cast<SdkPackageTreeNode>().ToList();
+		Assert.False(group.IsChecked);
+
+		leaves[0].IsChecked = true;
+		Assert.Null(group.IsChecked);
+
+		leaves[1].IsChecked = true;
+		Assert.True(group.IsChecked);
+
+		group.IsChecked = false;
+		Assert.All(leaves, leaf => Assert.False(leaf.IsChecked));
+		Assert.False(group.IsChecked);
+	}
+
+	[Fact]
+	public void EmptyGroup_IsUnchecked_RatherThanIndeterminate()
+	{
+		var group = new SdkGroupNode("empty");
+		group.RefreshCheckState();
+		Assert.False(group.IsChecked);
+	}
+
+	[Fact]
+	public void ToolsGroupCheckState_FollowsTheLeaves()
+	{
+		var root = SdkPackageTreeBuilder.BuildToolsRoot(new[] {
+			Pkg("build-tools;34.0.0", installed: "34.0.0"), Pkg("build-tools;35.0.0"),
+		});
+		Assert.Null(root.Children[0].IsChecked);
+	}
+
+	[Fact]
 	public void PlatformsRoot_KeepsNonPlatformPackagesOut()
 	{
 		var root = SdkPackageTreeBuilder.BuildPlatformsRoot(new[] {

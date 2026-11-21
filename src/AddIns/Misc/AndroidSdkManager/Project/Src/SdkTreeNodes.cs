@@ -29,6 +29,26 @@ namespace ICSharpCode.AndroidSdkManager
 			this.text = text;
 		}
 
+		/// <summary>
+		/// Recomputes the tri-state from the leaves: all checked, all unchecked, or mixed (null).
+		/// SharpTreeNode only cascades a value that is assigned - it never aggregates on its own - so without this a
+		/// freshly built group stays null, which the checkbox draws as the indeterminate box (a solid square).
+		/// Assigning true or false cascades to the children, which is the same value they already hold here.
+		/// </summary>
+		public void RefreshCheckState()
+		{
+			var states = Descendants().OfType<SdkPackageTreeNode>().Select(leaf => leaf.IsChecked).ToList();
+			if (states.Count == 0) {
+				// An empty group has nothing to be partial about; unchecked is the honest state, and null would draw the
+				// indeterminate marker (the solid square this method exists to prevent).
+				IsChecked = false;
+				return;
+			}
+			IsChecked = states.All(state => state == true) ? true
+				: states.All(state => state == false) ? false
+				: (bool?)null;
+		}
+
 		public override object Text {
 			get { return text; }
 		}
@@ -72,8 +92,19 @@ namespace ICSharpCode.AndroidSdkManager
 			// SharpTreeNode.IsChecked's setter isn't virtual, so re-raise StatusText here
 			// whenever the checkbox changes (StatusText depends on IsChecked vs Package.IsInstalled).
 			PropertyChanged += (s, e) => {
-				if (e.PropertyName == "IsChecked")
-					RaisePropertyChanged("StatusText");
+				if (e.PropertyName != "IsChecked")
+					return;
+				RaisePropertyChanged("StatusText");
+				// Keep the owning group's tri-state in step with the leaves the user ticked. Skip the echo of the group's
+				// own cascade: setting a group's IsChecked pushes the value it already holds into every leaf, and
+				// recomputing from those half-updated leaves would overwrite the group mid-cascade.
+				for (var ancestor = Parent; ancestor is SharpTreeNode; ancestor = ancestor.Parent) {
+					if (ancestor is SdkGroupNode owner) {
+						if (!(owner.IsChecked is bool groupState && groupState == IsChecked))
+							owner.RefreshCheckState();
+						break;
+					}
+				}
 			};
 		}
 

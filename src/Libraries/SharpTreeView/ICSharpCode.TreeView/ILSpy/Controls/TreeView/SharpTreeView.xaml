@@ -104,6 +104,51 @@
         </Style.Triggers>
     </Style>
 
+    <!-- The tree's row checkbox is drawn by the framework's default template, which paints a solid black box in this
+         WPF port and is unreadable in the light theme. This self-contained template follows the theme through the
+         SystemColors overrides the IDE themes install (ControlTextBrushKey is light on dark, dark on light). -->
+    <Style x:Key="SharpTreeCheckBoxStyle" TargetType="{x:Type CheckBox}">
+        <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type CheckBox}">
+                    <Grid Background="Transparent">
+                        <Border x:Name="box"
+                                Width="13" Height="13"
+                                BorderThickness="1"
+                                Background="Transparent"
+                                BorderBrush="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+                        <Path x:Name="check"
+                              Visibility="Collapsed"
+                              Stretch="None"
+                              Margin="2,2,0,0"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Top"
+                              Fill="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                              Data="F1 M 0,4 L 2,6 L 7,1 L 8,2 L 2,8 Z" />
+                        <Rectangle x:Name="indeterminate"
+                                   Visibility="Collapsed"
+                                   Width="7" Height="7"
+                                   Fill="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="check" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="{x:Null}">
+                            <Setter TargetName="indeterminate" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="box" Property="Opacity" Value="0.5" />
+                            <Setter TargetName="check" Property="Opacity" Value="0.5" />
+                            <Setter TargetName="indeterminate" Property="Opacity" Value="0.5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="{x:Static Default:SharpTreeView.DefaultItemContainerStyleKey}"
            TargetType="{x:Type Default:SharpTreeViewItem}">
         <Style.Triggers>
@@ -252,6 +297,7 @@
                                     Margin="0 0 3 0"
                                     Visibility="Collapsed">
                                 <CheckBox IsChecked="{Binding IsChecked}"
+                                          Style="{StaticResource SharpTreeCheckBoxStyle}"
                                           HorizontalAlignment="Center"
                                           VerticalAlignment="Center" />
                             </Border>
