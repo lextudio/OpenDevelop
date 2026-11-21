@@ -42,11 +42,13 @@ Keep this file concise and operational. Read the referenced technote only when t
     their own closure, including SharpDbg's MIT `SharpDbg.DapProtocol`; the `OmniSharp.Extensions.*` DAP fork is
     no longer used. To take a new SharpDbg version, publish both packages, move `SharpDbgCliVersion` and
     `SharpDbgAndroidAgentVersion` together in `Directory.Packages.props`, then run the sync before local builds.
-  - **Take a republish:** openavalon republishes under the same version, which no NuGet cache can
-    tell apart. `openavalon-closure.json` names the openavalon commit whose publish run this checkout
-    consumes; after a publish you want, set it to that commit. `sync-openavalon-feed.ps1` writes it
-    into each closure package's `.verified` receipt, so a republish is fetched again (CI restores every
-    run from scratch since it stopped caching the packages) (the script also drops the stale copy in `artifacts/nuget-packages`).
+  - **Take a republish:** openavalon now publishes under a unique version per run (`0.1.0-preview.69.<run>.<attempt>`),
+    so a version bump alone tells a newer publish apart and `openavalon-closure.json` is no longer needed.
+    After a publish you want, update the three version pins (`LibreWPF.Sdk` in `global.json`,
+    `ProGpuWpfLibreWinFormsPackageVersion` and `ProGpuPackageVersion` in `Directory.Build.props`, and
+    `ProGPU.System.Drawing.Common` in `Directory.Packages.props`) to the new version and run
+    `sync-openavalon-feed.ps1`. CI restores every run from scratch since it stopped caching the packages
+    (the script also drops the stale copy in `artifacts/nuget-packages`).
   - **Try a LibreWPF change locally:** build just that assembly in `../openavalon` and replace it -
     `../openavalon/dev-overlay.sh <OpenDevelop bin dir> <Assembly>` (the `bin` copy; the next build
     undoes it) or `../openavalon/dev-patch-feed.sh <Assembly>` (the package inside

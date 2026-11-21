@@ -60,7 +60,7 @@ function Test-NuGetPackage([string]$Path, [string]$PackageId, [string]$Version) 
 }
 
 # The receipt records what was verified: the id, the version and, for the OpenAvalon closure, the openavalon commit
-# from openavalon-closure.json. openavalon republishes under the same version, so the commit is what tells a newer
+# from the version pin. openavalon now publishes under a unique version per run, so a version bump alone
 # publish apart; a receipt written for another commit no longer matches and the package is fetched again.
 function Get-ReceiptText([string]$PackageId, [string]$Version, [string]$Closure) {
     if ([string]::IsNullOrWhiteSpace($Closure)) { return "$PackageId`n$Version" }
@@ -83,9 +83,10 @@ $proGpuVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Build.
 if ($sdkVersion -ne $libreWinFormsVersion -or $sdkVersion -ne $proGpuVersion) {
     throw "The OpenAvalon package closure requires one version, but this checkout requests LibreWPF.Sdk $sdkVersion, LibreWinForms $libreWinFormsVersion, and ProGPU $proGpuVersion. Update the package pins or extend this script with an explicit multi-version closure."
 }
-$closureFile = Join-Path $PSScriptRoot 'openavalon-closure.json'
-$closureCommit = [string](Get-Content -LiteralPath $closureFile -Raw | ConvertFrom-Json).openavalonCommit
-if ([string]::IsNullOrWhiteSpace($closureCommit)) { throw "$closureFile does not name an openavalonCommit." }
+# openavalon now publishes under a unique version per run (preview.69.<run>.<attempt>), so the
+# version alone distinguishes one publish from another and the openavalon commit receipt is no
+# longer needed for cache-busting. Keep $closureCommit empty so the receipt is just id + version.
+$closureCommit = ''
 $libGhosttyVersion = Get-XmlPropertyValue (Join-Path $PSScriptRoot 'Directory.Packages.props') 'LibGhosttyNetVersion'
 # The AvalonEdit and AvalonDock forks, which used to be submodules here, publish to the same GitHub
 # Packages endpoint from their own workflows; their versions are the central pins.
@@ -117,7 +118,7 @@ $packages = @($openAvalonPackages | ForEach-Object { [pscustomobject]@{ Id = $_;
     @($forkPackages + $devFlowPackages + $wpfHotReloadPackages + $sharpDbgPackages | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Version = $_.Version; Closure = '' } })
 
 Write-Host "OpenAvalon local feed: $FeedPath"
-Write-Host "OpenAvalon package version: $sdkVersion from openavalon $closureCommit ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion; $($forkPackages.Count) AvalonEdit/AvalonDock fork packages; $($devFlowPackages.Count) DevFlow packages; $($sharpDbgPackages.Count) SharpDbg packages"
+Write-Host "OpenAvalon package version: $sdkVersion ($($openAvalonPackages.Count) packages); LibGhostty.Net $libGhosttyVersion; $($forkPackages.Count) AvalonEdit/AvalonDock fork packages; $($devFlowPackages.Count) DevFlow packages; $($sharpDbgPackages.Count) SharpDbg packages"
 if ($Plan) {
     $packages | ForEach-Object { Write-Host "  $($_.Id) $($_.Version)" }
     exit 0
