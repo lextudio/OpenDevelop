@@ -1491,8 +1491,64 @@
     <!-- The one busy indicator the IDE shows for a long-running load: wrap the region that is being loaded and
          drive IsBusy, with a localized BusyContent. Foreground is set here so the busy text is readable in
          both themes; the control supplies its own animated progress bar. -->
+    <!-- The one busy indicator the IDE shows for a long-running load: wrap the region that is being loaded and drive
+         IsBusy, with a localized BusyContent. The default toolkit template uses the system's light palette (white veil,
+         white panel, pale text), which is unreadable on the dark theme, so the template is replaced with theme brushes and
+         a marquee bar of our own; the animation keeps running while IsBusy is true. -->
     <Style TargetType="{x:Type xctk:BusyIndicator}">
         <Setter Property="Foreground" Value="{DynamicResource Foreground}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type xctk:BusyIndicator}">
+                    <Grid>
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}" />
+                        <Border x:Name="PART_BusyOverlay"
+                                Background="{DynamicResource ToolWindowBackground}"
+                                Opacity="0.94"
+                                Visibility="Collapsed">
+                            <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Padding="16,12" CornerRadius="3"
+                                    Background="{DynamicResource ToolWindowBackground}"
+                                    BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                                <StackPanel>
+                                    <Border Width="180" Height="4" CornerRadius="2" ClipToBounds="True"
+                                            Background="{DynamicResource Border}">
+                                        <Border x:Name="PART_BusyBar" Width="60" Height="4" CornerRadius="2"
+                                                HorizontalAlignment="Left"
+                                                Background="{DynamicResource Selection}">
+                                            <Border.RenderTransform>
+                                                <TranslateTransform X="0" />
+                                            </Border.RenderTransform>
+                                        </Border>
+                                    </Border>
+                                    <ContentPresenter Margin="0,8,0,0"
+                                                      Content="{TemplateBinding BusyContent}"
+                                                      ContentTemplate="{TemplateBinding BusyContentTemplate}" />
+                                </StackPanel>
+                            </Border>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsBusy" Value="True">
+                            <Setter TargetName="PART_BusyOverlay" Property="Visibility" Value="Visible" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard x:Name="PART_BusyStoryboard">
+                                    <Storyboard RepeatBehavior="Forever">
+                                        <DoubleAnimation Storyboard.TargetName="PART_BusyBar"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                         From="0" To="180" Duration="0:0:1.2" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <StopStoryboard BeginStoryboardName="PART_BusyStoryboard" />
+                            </Trigger.ExitActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style TargetType="{x:Type ProgressBar}">
