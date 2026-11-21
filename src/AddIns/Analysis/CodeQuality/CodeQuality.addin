@@ -9,7 +9,7 @@
 	</Manifest>
 	
 	<Runtime>
-		<Import assembly = "ICSharpCode.CodeQuality.dll"/>
+		<Import assembly = "CodeQuality.dll"/>
 	</Runtime>
 	
 	<Path name = "/SharpDevelop/Workbench/MainMenu/Analysis">

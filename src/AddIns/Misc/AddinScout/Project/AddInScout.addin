@@ -10,7 +10,7 @@
 	</Manifest>
 	
 	<Runtime>
-		<Import assembly="AddInScout.dll"/>
+		<Import assembly="AddinScout.dll"/>
 	</Runtime>
 	
 	<Path name = "/SharpDevelop/Workbench/Tools">
