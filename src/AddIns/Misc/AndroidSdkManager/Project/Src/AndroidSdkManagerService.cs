@@ -146,8 +146,6 @@ namespace ICSharpCode.AndroidSdkManager
 				throw new InvalidOperationException(string.Format(ResourceService.GetString("AndroidSdkManager.CouldNotFindSdkManager"), sdkRoot));
 
 			var startInfo = new ProcessStartInfo {
-				FileName = executable,
-				Arguments = arguments,
 				UseShellExecute = false,
 				RedirectStandardOutput = true,
 				RedirectStandardError = true,
@@ -156,6 +154,15 @@ namespace ICSharpCode.AndroidSdkManager
 				StandardOutputEncoding = Encoding.UTF8,
 				StandardErrorEncoding = Encoding.UTF8,
 			};
+			if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) &&
+			    executable.EndsWith(".bat", StringComparison.OrdinalIgnoreCase)) {
+				// CreateProcess cannot start a batch file directly; sdkmanager is a .bat on Windows.
+				startInfo.FileName = Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe";
+				startInfo.Arguments = "/d /s /c \"\"" + executable + "\" " + arguments + "\"";
+			} else {
+				startInfo.FileName = executable;
+				startInfo.Arguments = arguments;
+			}
 			startInfo.EnvironmentVariables["ANDROID_HOME"] = sdkRoot;
 
 			using (var process = new Process { StartInfo = startInfo }) {

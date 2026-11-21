@@ -102,8 +102,12 @@ namespace ICSharpCode.AndroidSdkManager
 
 		IEnumerable<SdkPackageTreeNode> AllPackageNodes()
 		{
-			return platformsTreeView.Root.Descendants().OfType<SdkPackageTreeNode>()
-				.Concat(toolsTreeView.Root.Descendants().OfType<SdkPackageTreeNode>());
+			// Root stays null until the first successful refresh (and while one is in flight); the status
+			// bar and the DevFlow test hooks may ask for the nodes in that window.
+			var platforms = platformsTreeView.Root;
+			var tools = toolsTreeView.Root;
+			return (platforms == null ? Enumerable.Empty<SdkPackageTreeNode>() : platforms.Descendants().OfType<SdkPackageTreeNode>())
+				.Concat(tools == null ? Enumerable.Empty<SdkPackageTreeNode>() : tools.Descendants().OfType<SdkPackageTreeNode>());
 		}
 
 		void UpdateStatusBar()
