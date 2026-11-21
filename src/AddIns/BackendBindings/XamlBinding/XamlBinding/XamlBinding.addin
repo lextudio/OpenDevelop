@@ -1,7 +1,7 @@
 <AddIn name        = "XAML Binding"
        author      = "Siegfried Pammer"
        copyright   = "prj:///doc/copyright.txt"
-       url         = "http://icsharpcode.net"
+       url         = "https://github.com/lextudio/OpenDevelop"
        description = "AvalonEdit XML/XAML syntax highlighting and file-type registration for .xaml files."
        addInManagerHidden = "preinstalled">
 

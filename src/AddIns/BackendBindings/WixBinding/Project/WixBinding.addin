@@ -1,7 +1,7 @@
 <AddIn name        = "WiX Binding"
        author      = "Matt Ward"
        copyright   = "prj:///doc/copyright.txt"
-       url         = "http://icsharpcode.net"
+       url         = "https://github.com/lextudio/OpenDevelop"
        description = "Binding for the WiX installer."
        addInManagerHidden = "preinstalled">
 	

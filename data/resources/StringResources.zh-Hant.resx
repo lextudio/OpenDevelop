@@ -9376,23 +9376,20 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
   <data name="Help.Web.Downloads" xml:space="preserve">
     <value>下載</value>
   </data>
-  <data name="Help.Web.Forums" xml:space="preserve">
-    <value>社群論壇</value>
+  <data name="Help.Web.Home" xml:space="preserve">
+    <value>GitHub 上的 OpenDevelop</value>
   </data>
-  <data name="Help.Web.Announcements" xml:space="preserve">
-    <value>公告</value>
+  <data name="Help.Web.Issues" xml:space="preserve">
+    <value>回報問題</value>
   </data>
-  <data name="Help.Web.Mail" xml:space="preserve">
-    <value>寄信給我們</value>
+  <data name="Help.Web.Contributing" xml:space="preserve">
+    <value>參與貢獻</value>
   </data>
-  <data name="Help.Web.Twitter" xml:space="preserve">
-    <value>在 Twitter 上</value>
+  <data name="Help.Web.ThirdParty" xml:space="preserve">
+    <value>第三方聲明</value>
   </data>
-  <data name="Help.Web.IntegratedProjects" xml:space="preserve">
-    <value>整合專案</value>
-  </data>
-  <data name="Help.Web.DotNetPlatforms" xml:space="preserve">
-    <value>.NET 平台</value>
+  <data name="Help.Web.Sponsor" xml:space="preserve">
+    <value>贊助 OpenDevelop</value>
   </data>
   <data name="AddInManager2.OptionPanel.Tree.TrustedRepositories" xml:space="preserve">
     <value>受信任的存放庫</value>

@@ -9793,23 +9793,20 @@ Press Esc to cancel this operation.</value>
   <data name="Help.Web.Downloads" xml:space="preserve">
     <value>Downloads</value>
   </data>
-  <data name="Help.Web.Forums" xml:space="preserve">
-    <value>Community Forums</value>
+  <data name="Help.Web.Home" xml:space="preserve">
+    <value>OpenDevelop on GitHub</value>
   </data>
-  <data name="Help.Web.Announcements" xml:space="preserve">
-    <value>Announcements</value>
+  <data name="Help.Web.Issues" xml:space="preserve">
+    <value>Report an Issue</value>
   </data>
-  <data name="Help.Web.Mail" xml:space="preserve">
-    <value>Send Us a Mail</value>
+  <data name="Help.Web.Contributing" xml:space="preserve">
+    <value>Contributing</value>
   </data>
-  <data name="Help.Web.Twitter" xml:space="preserve">
-    <value>On Twitter</value>
+  <data name="Help.Web.ThirdParty" xml:space="preserve">
+    <value>Third-Party Notices</value>
   </data>
-  <data name="Help.Web.IntegratedProjects" xml:space="preserve">
-    <value>Integrated Projects</value>
-  </data>
-  <data name="Help.Web.DotNetPlatforms" xml:space="preserve">
-    <value>.NET Platforms</value>
+  <data name="Help.Web.Sponsor" xml:space="preserve">
+    <value>Sponsor OpenDevelop</value>
   </data>
   <data name="AndroidDeviceManager.NewAvdAction" xml:space="preserve">
     <value>New Android emulator</value>
