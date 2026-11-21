@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using System.Windows;
 
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.ILSpyX.TreeView;
 using Microsoft.Win32;
 
@@ -49,17 +50,35 @@ namespace ICSharpCode.AndroidSdkManager
 			await RefreshAsync();
 		}
 
+		/// <summary>Keeps one busy indicator honest while a slow sdkmanager run can be superseded by a newer one.</summary>
+		readonly LoadTracker loadTracker = new LoadTracker();
+
 		async Task RefreshAsync()
 		{
 			var sdkRoot = sdkLocationComboBox.Text;
 			if (string.IsNullOrWhiteSpace(sdkRoot))
 				return;
 
+			int run = loadTracker.Begin();
+			busyIndicator.IsBusy = true;
+			updatesAvailableButton.IsEnabled = false;
+			applyChangesButton.IsEnabled = false;
+
 			try {
-				packages = await service.ListPackagesAsync(sdkRoot);
+				var loaded = await service.ListPackagesAsync(sdkRoot);
+				// Publish only a result that is still the newest: the same slow load may have been started again.
+				if (!loadTracker.IsCurrent(run))
+					return;
+				packages = loaded;
 			} catch (Exception ex) {
-				MessageBox.Show(this, ex.Message, ResourceService.GetString("AndroidSdkManager.Title"), MessageBoxButton.OK, MessageBoxImage.Warning);
+				if (!loadTracker.IsCurrent(run))
+					return;
 				packages = Array.Empty<SdkPackage>();
+				MessageBox.Show(this, ex.Message, ResourceService.GetString("AndroidSdkManager.Title"), MessageBoxButton.OK, MessageBoxImage.Warning);
+			} finally {
+				// Cleared only when no other run is still in flight; an older run must not hide the newer one's indicator.
+				if (loadTracker.End(run))
+					busyIndicator.IsBusy = false;
 			}
 
 			isRefreshing = true;

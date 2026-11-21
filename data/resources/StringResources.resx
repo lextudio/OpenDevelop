@@ -9346,6 +9346,9 @@ Press Esc to cancel this operation.</value>
   <data name="AndroidSdkManager.Installed" xml:space="preserve">
     <value>Installed</value>
   </data>
+  <data name="AndroidSdkManager.ReadingPackages" xml:space="preserve">
+    <value>Reading installed and available packages…</value>
+  </data>
   <data name="AndroidSdkManager.ToBeInstalled" xml:space="preserve">
     <value>To be installed</value>
   </data>
@@ -9615,6 +9618,9 @@ Press Esc to cancel this operation.</value>
   </data>
   <data name="AndroidDeviceManager.DeleteConfirm" xml:space="preserve">
     <value>Delete AVD "{0}"? This cannot be undone.</value>
+  </data>
+  <data name="AndroidDeviceManager.LoadingDevices" xml:space="preserve">
+    <value>Loading Android devices…</value>
   </data>
   <data name="AvdEditor.EnterName" xml:space="preserve">
     <value>Enter a name for the device.</value>

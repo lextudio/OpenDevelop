@@ -8929,6 +8929,9 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="AndroidSdkManager.Installed" xml:space="preserve">
     <value>已安装</value>
   </data>
+  <data name="AndroidSdkManager.ReadingPackages" xml:space="preserve">
+    <value>正在读取已安装和可用的软件包…</value>
+  </data>
   <data name="AndroidSdkManager.ToBeInstalled" xml:space="preserve">
     <value>待安装</value>
   </data>
@@ -9198,6 +9201,9 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   </data>
   <data name="AndroidDeviceManager.DeleteConfirm" xml:space="preserve">
     <value>删除 AVD "{0}"？此操作无法撤销。</value>
+  </data>
+  <data name="AndroidDeviceManager.LoadingDevices" xml:space="preserve">
+    <value>正在加载 Android 设备…</value>
   </data>
   <data name="AvdEditor.EnterName" xml:space="preserve">
     <value>请输入设备名称。</value>

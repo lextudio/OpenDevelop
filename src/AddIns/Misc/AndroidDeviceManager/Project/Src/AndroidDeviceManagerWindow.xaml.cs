@@ -31,6 +31,19 @@ namespace ICSharpCode.AndroidDeviceManager
 
 		string SdkRoot => AvdManagerService.GetSavedSdkPath();
 
+		/// <summary>Keeps one busy indicator honest while a device list load can be restarted before it finishes.</summary>
+		readonly LoadTracker loadTracker = new LoadTracker();
+
+		/// <summary>Busy state also disables the commands that would start yet another load from the same window.</summary>
+		void SetBusy(bool busy)
+		{
+			busyIndicator.IsBusy = busy;
+			createButton.IsEnabled = !busy;
+			editButton.IsEnabled = !busy;
+			deleteButton.IsEnabled = !busy;
+			refreshButton.IsEnabled = !busy;
+		}
+
 		public async Task RefreshAsync()
 		{
 			statusText.Visibility = Visibility.Collapsed;
@@ -44,12 +57,21 @@ namespace ICSharpCode.AndroidDeviceManager
 				return;
 			}
 
+			int run = loadTracker.Begin();
+			SetBusy(true);
 			try {
 				var avds = await service.ListAvdsAsync(SdkRoot);
+				if (!loadTracker.IsCurrent(run))
+					return;
 				avdListView.ItemsSource = avds;
 			} catch (Exception ex) {
+				if (!loadTracker.IsCurrent(run))
+					return;
 				statusText.Text = ex.Message;
 				statusText.Visibility = Visibility.Visible;
+			} finally {
+				if (loadTracker.End(run))
+					SetBusy(false);
 			}
 		}
 

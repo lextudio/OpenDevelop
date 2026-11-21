@@ -1,7 +1,8 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:core="clr-namespace:ICSharpCode.Core.Presentation;assembly=ICSharpCode.Core.Presentation"
-    xmlns:reskeys="clr-namespace:AvalonDock.Themes.VS2013.Themes;assembly=AvalonDock.Themes.VS2013">
+    xmlns:reskeys="clr-namespace:AvalonDock.Themes.VS2013.Themes;assembly=AvalonDock.Themes.VS2013"
+    xmlns:xctk="clr-namespace:Xceed.Wpf.Toolkit;assembly=Xceed.Wpf.Toolkit">
     <!--
         Semantic application theme (Light). IdeThemeService swaps this dictionary in
         Application.Current.Resources.MergedDictionaries alongside AvalonDock's own
@@ -1485,6 +1486,13 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- The one busy indicator the IDE shows for a long-running load: wrap the region that is being loaded and
+         drive IsBusy, with a localized BusyContent. Foreground is set here so the busy text is readable in
+         both themes; the control supplies its own animated progress bar. -->
+    <Style TargetType="{x:Type xctk:BusyIndicator}">
+        <Setter Property="Foreground" Value="{DynamicResource Foreground}" />
     </Style>
 
     <Style TargetType="{x:Type ProgressBar}">

@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:core="http://icsharpcode.net/sharpdevelop/core"
         xmlns:tv="http://icsharpcode.net/sharpdevelop/treeview"
+        xmlns:xctk="clr-namespace:Xceed.Wpf.Toolkit;assembly=Xceed.Wpf.Toolkit"
         Title="{core:Localize AndroidSdkManager.Title}"
         Height="520" Width="700"
         WindowStartupLocation="CenterOwner">
@@ -29,7 +30,9 @@
 		</Grid>
 
 		<!-- Platforms / Tools tabs -->
-		<TabControl Grid.Row="1" x:Name="tabControl">
+		<xctk:BusyIndicator Grid.Row="1" x:Name="busyIndicator" IsBusy="False"
+		                   BusyContent="{core:Localize AndroidSdkManager.ReadingPackages}">
+		<TabControl x:Name="tabControl">
 			<TabItem Header="{core:Localize AndroidSdkManager.Platforms}">
 				<DockPanel>
 					<TextBlock DockPanel.Dock="Top" Text="{core:Localize AndroidSdkManager.Hint}"
@@ -79,6 +82,7 @@
 				</DockPanel>
 			</TabItem>
 		</TabControl>
+		</xctk:BusyIndicator>
 
 		<!-- Status / apply bar -->
 		<Grid Grid.Row="2" Margin="0,8,0,0">

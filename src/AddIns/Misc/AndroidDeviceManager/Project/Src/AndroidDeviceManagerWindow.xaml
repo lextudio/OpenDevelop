@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+        xmlns:xctk="clr-namespace:Xceed.Wpf.Toolkit;assembly=Xceed.Wpf.Toolkit"
         Title="{core:Localize AndroidDeviceManager.Title}"
         Height="480" Width="760"
         WindowStartupLocation="CenterOwner">
@@ -22,7 +23,9 @@
 
 		<TextBlock x:Name="statusText" Grid.Row="2" Margin="0,8,0,0" Foreground="OrangeRed" TextWrapping="Wrap" Visibility="Collapsed"/>
 
-		<ListView x:Name="avdListView" Grid.Row="1">
+		<xctk:BusyIndicator Grid.Row="1" x:Name="busyIndicator" IsBusy="False"
+		                   BusyContent="{core:Localize AndroidDeviceManager.LoadingDevices}">
+		<ListView x:Name="avdListView">
 			<ListView.View>
 				<GridView>
 					<GridViewColumn Header="{core:Localize AndroidDeviceManager.Name}" Width="220" DisplayMemberBinding="{Binding Name}"/>
@@ -32,5 +35,6 @@
 				</GridView>
 			</ListView.View>
 		</ListView>
+		</xctk:BusyIndicator>
 	</Grid>
 </Window>
