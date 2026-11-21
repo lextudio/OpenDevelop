@@ -28,7 +28,7 @@ namespace ICSharpCode.AndroidDeviceManager
 	/// <see cref="DeviceService"/>. It only adapts <see cref="AvdManagerService"/>; there is no second
 	/// avdmanager implementation.
 	/// </summary>
-	public sealed class AndroidDeviceProvider : IDeviceProvider, IDeviceManagement, IExternalDeviceCreator
+	public sealed class AndroidDeviceProvider : IDeviceProvider, IDeviceManagement, IExternalDeviceCreator, IExternalDeviceEditor
 	{
 		readonly AvdManagerService service = new AvdManagerService();
 		readonly Func<string> sdkRoot;
@@ -131,10 +131,44 @@ namespace ICSharpCode.AndroidDeviceManager
 				running ? DeviceState.Booted : DeviceState.Shutdown);
 		}
 
-		public string Label => "New Android emulator...";
+		public string Label => ResourceService.GetString("AndroidDeviceManager.NewAvdAction");
 
-		/// <summary>Android's device creation is the Android Device Manager window.</summary>
-		public void Open() => new ShowAndroidDeviceManagerCommand().Execute(null);
+		/// <summary>Creation opens the AVD editor directly; the shared Device Manager owns the list.</summary>
+		public Task<DeviceActionResult> OpenAsync(CancellationToken cancellationToken = default)
+		{
+			var sdk = sdkRoot();
+			if (sdk == null)
+				return Task.FromResult(DeviceActionResult.Failure(ResourceService.GetString("AndroidDeviceManager.SdkRequired")));
+			new AvdEditorWindow(sdk, existingAvd: null) { Owner = ICSharpCode.SharpDevelop.SD.Workbench.MainWindow }.ShowDialog();
+			return Task.FromResult(DeviceActionResult.Success);
+		}
+
+		/// <summary>Editing an existing AVD opens the same editor, which is the only place the hardware
+		/// properties are edited.</summary>
+		public string EditLabel => ResourceService.GetString("AndroidDeviceManager.EditAvdAction");
+
+		public bool CanEdit(Device device) => device.Platform == DevicePlatform.AndroidEmulator;
+
+		public async Task<DeviceActionResult> EditAsync(Device device, CancellationToken cancellationToken = default)
+		{
+			var sdk = sdkRoot();
+			if (sdk == null)
+				return DeviceActionResult.Failure(ResourceService.GetString("AndroidDeviceManager.SdkRequired"));
+			try {
+				// avdmanager is a process, and a cold JVM takes seconds: keep it off the UI thread and let the
+				// manager show its busy state while it runs.
+				var avds = await Task.Run(() => listAvds(sdk), cancellationToken).ConfigureAwait(true);
+				var avd = avds.FirstOrDefault(candidate => "android:" + candidate.Name == device.Id);
+				if (avd == null)
+					return DeviceActionResult.Failure(string.Format(ResourceService.GetString("AndroidDeviceManager.AvdNotFound"), device.Name));
+				new AvdEditorWindow(sdk, avd) { Owner = ICSharpCode.SharpDevelop.SD.Workbench.MainWindow }.ShowDialog();
+				return DeviceActionResult.Success;
+			} catch (OperationCanceledException) {
+				throw;
+			} catch (Exception ex) {
+				return DeviceActionResult.Failure(ex.Message);
+			}
+		}
 
 		static readonly TimeSpan AdbTimeout = TimeSpan.FromSeconds(8);
 

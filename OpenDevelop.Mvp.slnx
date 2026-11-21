@@ -42,6 +42,9 @@
   </Folder>
   <Folder Name="/src/Main/Designer/" />
   <Folder Name="/src/Main/ICSharpCode.SharpDevelop.Widgets/" />
+  <Folder Name="/src/AddIns/Misc/DeviceManager/">
+    <Project Path="src/AddIns/Misc/DeviceManager/DeviceManager.csproj" />
+  </Folder>
   <Folder Name="/src/AddIns/Misc/StartPage/">
     <Project Path="src/AddIns/Misc/StartPage/Project/StartPage.csproj" />
   </Folder>

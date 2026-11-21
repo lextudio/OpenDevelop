@@ -9619,6 +9619,138 @@ Press Esc to cancel this operation.</value>
   <data name="AndroidDeviceManager.DeleteConfirm" xml:space="preserve">
     <value>Delete AVD "{0}"? This cannot be undone.</value>
   </data>
+  <data name="Devices.Title" xml:space="preserve">
+    <value>Manage devices</value>
+  </data>
+  <data name="Devices.Start" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="Devices.Stop" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="Devices.Delete" xml:space="preserve">
+    <value>Delete…</value>
+  </data>
+  <data name="Devices.Edit" xml:space="preserve">
+    <value>Edit…</value>
+  </data>
+  <data name="Devices.Editing" xml:space="preserve">
+    <value>Opening the editor for {0}…</value>
+  </data>
+  <data name="Devices.HideFromPickers" xml:space="preserve">
+    <value>Hide from pickers</value>
+  </data>
+  <data name="Devices.ShowInPickers" xml:space="preserve">
+    <value>Show in pickers</value>
+  </data>
+  <data name="Devices.Refresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="Devices.Refreshed" xml:space="preserve">
+    <value>Device list refreshed.</value>
+  </data>
+  <data name="Devices.ActionStarted" xml:space="preserve">
+    <value>{0} {1}…</value>
+  </data>
+  <data name="Devices.ActionRequested" xml:space="preserve">
+    <value>{0}: {1} requested.</value>
+  </data>
+  <data name="Devices.ActionFailed" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="Devices.DeleteConfirm" xml:space="preserve">
+    <value>Delete {0}? This removes the device and its data from this machine.</value>
+  </data>
+  <data name="Devices.DeleteTitle" xml:space="preserve">
+    <value>Delete device</value>
+  </data>
+  <data name="Devices.ReadingModels" xml:space="preserve">
+    <value>Reading the available models and runtimes…</value>
+  </data>
+  <data name="Devices.NoModels" xml:space="preserve">
+    <value>No device models or runtimes are installed; install a runtime in Xcode first.</value>
+  </data>
+  <data name="Devices.Creating" xml:space="preserve">
+    <value>Creating {0}…</value>
+  </data>
+  <data name="Devices.Created" xml:space="preserve">
+    <value>Created {0}.</value>
+  </data>
+  <data name="Devices.CreateFailed" xml:space="preserve">
+    <value>Could not create {0}: {1}</value>
+  </data>
+  <data name="Devices.HiddenRow" xml:space="preserve">
+    <value>hidden</value>
+  </data>
+  <data name="Devices.ProviderReady" xml:space="preserve">
+    <value>{0}: ready</value>
+  </data>
+  <data name="Devices.ProviderUnavailable" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="Devices.NewDevice" xml:space="preserve">
+    <value>New {0}…</value>
+  </data>
+  <data name="Devices.State.ThisComputer" xml:space="preserve">
+    <value>This computer</value>
+  </data>
+  <data name="Devices.Group.Host" xml:space="preserve">
+    <value>This computer</value>
+  </data>
+  <data name="Devices.Group.Ios" xml:space="preserve">
+    <value>iOS simulators</value>
+  </data>
+  <data name="Devices.Group.Android" xml:space="preserve">
+    <value>Android emulators</value>
+  </data>
+  <data name="Devices.State.Running" xml:space="preserve">
+    <value>Running</value>
+  </data>
+  <data name="Devices.State.Starting" xml:space="preserve">
+    <value>Starting…</value>
+  </data>
+  <data name="Devices.State.Stopped" xml:space="preserve">
+    <value>Stopped</value>
+  </data>
+  <data name="Devices.State.Unknown" xml:space="preserve">
+    <value>State unknown</value>
+  </data>
+  <data name="Devices.NewSimulatorTitle" xml:space="preserve">
+    <value>New simulator</value>
+  </data>
+  <data name="Devices.Create" xml:space="preserve">
+    <value>Create</value>
+  </data>
+  <data name="Devices.Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Devices.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Devices.Model" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="Devices.Runtime" xml:space="preserve">
+    <value>Runtime</value>
+  </data>
+  <data name="Devices.NoCompatibleRuntime" xml:space="preserve">
+    <value>No installed runtime supports this model</value>
+  </data>
+  <data name="Devices.Menu.Title" xml:space="preserve">
+    <value>Device Manager...</value>
+  </data>
+  <data name="AndroidDeviceManager.NewAvdAction" xml:space="preserve">
+    <value>New Android emulator</value>
+  </data>
+  <data name="AndroidDeviceManager.EditAvdAction" xml:space="preserve">
+    <value>Edit AVD…</value>
+  </data>
+  <data name="AndroidDeviceManager.SdkRequired" xml:space="preserve">
+    <value>Set the Android SDK location before editing an AVD.</value>
+  </data>
+  <data name="AndroidDeviceManager.AvdNotFound" xml:space="preserve">
+    <value>Could not find the AVD "{0}".</value>
+  </data>
   <data name="AndroidDeviceManager.LoadingDevices" xml:space="preserve">
     <value>Loading Android devices…</value>
   </data>

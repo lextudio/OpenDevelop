@@ -1,0 +1,27 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <OpenDevelopAddin>true</OpenDevelopAddin>
+    <OpenDevelopAddinKind>InProcess</OpenDevelopAddinKind>
+    <TargetFramework>net11.0-windows</TargetFramework>
+    <RootNamespace>ICSharpCode.DeviceManager</RootNamespace>
+    <AssemblyName>DeviceManager</AssemblyName>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <OutputType>Library</OutputType>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>..\..\..\Main\ICSharpCode.SharpDevelop.snk</AssemblyOriginatorKeyFile>
+    <OutputPath>..\..\..\..\AddIns\Misc\DeviceManager\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Main\Base\Project\ICSharpCode.SharpDevelop.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\Core\Project\ICSharpCode.Core.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\ICSharpCode.Core.Presentation\ICSharpCode.Core.Presentation.csproj" Private="false" />
+    <ProjectReference Include="..\..\..\Main\Designer\Designer.Presentation\Designer.Presentation.csproj" Private="false" />
+    <PackageReference Include="LeXtudio.DevFlow.Agent.Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="DeviceManager.addin" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+</Project>

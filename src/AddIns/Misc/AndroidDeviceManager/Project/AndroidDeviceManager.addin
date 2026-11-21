@@ -1,6 +1,6 @@
 <AddIn name="Android Device Manager"
        author="OpenDevelop"
-       description="Standalone tool window for creating, editing, launching and removing Android Virtual Devices (AVDs) via the Android command-line avdmanager/emulator tools."
+       description="Android emulator support for the shared Device Manager: lists, starts, stops and deletes AVDs via the Android command-line tools, and hosts the AVD editor that creates and edits them."
        addInManagerHidden="preinstalled">
 
 	<Manifest>
@@ -11,17 +11,9 @@
 		<Import assembly="AndroidDeviceManager.dll"/>
 	</Runtime>
 
-	<Path name="/SharpDevelop/Workbench/Tools">
-		<MenuItem id="ShowAndroidDeviceManager"
-		          label="${res:AndroidDeviceManager.Menu.Title}"
-		          class="ICSharpCode.AndroidDeviceManager.ShowAndroidDeviceManagerCommand"/>
-	</Path>
-
-	<!-- Autostart so DevFlow can discover od.androiddevice.* actions without a menu click first -->
+	<!-- Autostart: register the provider so every designer and the Device Manager see AVDs without any window opened first. -->
 	<Path name="/SharpDevelop/Autostart">
 		<Class id="AndroidDeviceProviderRegistration"
 		       class="ICSharpCode.AndroidDeviceManager.RegisterDeviceProviderCommand"/>
-		<Class id="AndroidDeviceManagerRegisterDevFlowActionsCommand"
-		       class="ICSharpCode.AndroidDeviceManager.RegisterDevFlowActionsCommand"/>
 	</Path>
 </AddIn>

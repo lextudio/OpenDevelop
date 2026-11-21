@@ -47,5 +47,27 @@ public interface IExternalDeviceCreator
 {
     string Label { get; }
 
-    void Open();
+    /// <summary>
+    /// Opens the platform's own creation window and completes when it closes, so the manager can refresh its list
+    /// afterwards and report a failure (for example a missing SDK) in its status strip.
+    /// </summary>
+    Task<DeviceActionResult> OpenAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>Optional capability: edit an existing device in the platform's own editor (the Android
+/// AVD hardware editor). The manager shows an Edit button for the selected device when its
+/// provider supports this and accepts that device.</summary>
+public interface IExternalDeviceEditor
+{
+    /// <summary>Button caption ("Edit AVD…").</summary>
+    string EditLabel { get; }
+
+    bool CanEdit(Device device);
+
+    /// <summary>
+    /// Opens the platform editor for the device and completes when it closes. Asynchronous because finding the
+    /// device can involve a command-line tool (avdmanager); the manager shows its busy state meanwhile and surfaces a
+    /// failure in its status strip instead of letting an exception escape a void click handler.
+    /// </summary>
+    Task<DeviceActionResult> EditAsync(Device device, CancellationToken cancellationToken = default);
 }

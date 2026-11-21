@@ -1,0 +1,25 @@
+<AddIn name="Device Manager"
+       author="OpenDevelop"
+       description="One manager for every device the designers can target: iOS simulators (simctl), Android emulators (avdmanager) and this computer."
+       addInManagerHidden="preinstalled">
+
+	<Manifest>
+		<Identity name="ICSharpCode.DeviceManager" version="@DeviceManager.dll" />
+	</Manifest>
+
+	<Runtime>
+		<Import assembly="DeviceManager.dll"/>
+	</Runtime>
+
+	<Path name="/SharpDevelop/Workbench/Tools">
+		<MenuItem id="ShowDeviceManager"
+		          label="${res:Devices.Menu.Title}"
+		          class="ICSharpCode.DeviceManager.ShowDeviceManagerCommand"/>
+	</Path>
+
+	<!-- Autostart so DevFlow can discover od.devices.* actions without a menu click first -->
+	<Path name="/SharpDevelop/Autostart">
+		<Class id="DeviceManagerRegisterDevFlowActionsCommand"
+		       class="ICSharpCode.DeviceManager.RegisterDevFlowActionsCommand"/>
+	</Path>
+</AddIn>
