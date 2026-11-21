@@ -8,9 +8,6 @@
         ResizeMode="CanResize"
         ShowInTaskbar="False">
   <Window.Resources>
-    <Style TargetType="TabItem">
-      <Setter Property="Padding" Value="8,2" />
-    </Style>
   </Window.Resources>
 
   <Grid Margin="12">
@@ -26,9 +23,12 @@
         <ColumnDefinition Width="*" />
       </Grid.ColumnDefinitions>
 
-      <Border Grid.Column="0" BorderBrush="#C0C0C0" BorderThickness="1" Margin="0,0,8,0" ClipToBounds="True">
-        <Canvas x:Name="quoteCanvas" Background="{DynamicResource ToolWindowBackground}" Width="220" Height="320">
-          <TextBlock x:Name="aboutImage" Width="220" Height="320"
+      <Border Grid.Column="0" BorderBrush="{DynamicResource Border}" BorderThickness="1" Margin="0,0,8,0"
+              Background="{DynamicResource ToolWindowBackground}" ClipToBounds="True">
+        <Canvas x:Name="quoteCanvas">
+          <TextBlock x:Name="aboutImage"
+                     Width="{Binding ActualWidth, ElementName=quoteCanvas}"
+                     Height="{Binding ActualHeight, ElementName=quoteCanvas}"
                      Text="OpenDevelop" FontSize="28" FontWeight="Bold"
                      TextAlignment="Center" VerticalAlignment="Center"
                      Foreground="#E0E0E0" />
@@ -42,9 +42,9 @@
               <RowDefinition Height="Auto" />
               <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Margin="0,0,0,4" TextWrapping="Wrap">
-              OpenDevelop is a modernized fork of SharpDevelop for .NET on WPF.
-            </TextBlock>
+            <TextBlock Grid.Row="0" Margin="0,0,0,4" TextWrapping="Wrap"
+                       Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
+                       Text="{core:Localize AboutDialog.Description}" />
             <TextBox Grid.Row="1"
                      x:Name="VersionInfoBox"
                      IsReadOnly="True"
@@ -80,11 +80,11 @@
     </Grid>
 
     <StackPanel Grid.Row="1" Margin="0,8,0,4">
-      <TextBlock x:Name="VersionText" FontSize="12" />
-      <TextBlock x:Name="CopyrightText" FontSize="12" />
+      <TextBlock x:Name="VersionText" FontSize="12" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
+      <TextBlock x:Name="CopyrightText" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}" />
     </StackPanel>
 
-    <Button Grid.Row="2" Content="OK" Width="75" Height="24"
+    <Button Grid.Row="2" Content="{core:Localize Global.OKButtonText}" Width="75" Height="24"
             HorizontalAlignment="Right" Click="OnOkClick" IsDefault="True" />
   </Grid>
 </Window>

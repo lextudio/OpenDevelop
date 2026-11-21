@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ICSharpCode.Core;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -42,7 +43,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			var build = RevisionClass.Build;
 			var revision = RevisionClass.Revision;
 
-			VersionText.Text = $"Version {major}.{minor}.{build} (rev {revision})";
+			VersionText.Text = string.Format(CultureInfo.CurrentCulture, ResourceService.GetString("AboutDialog.VersionLine"), major, minor, build, revision);
 
 			// One notice for the whole product (ProductCopyright): this is the same string the Start
 			// Page footer prints, so the two surfaces cannot disagree, and the year ranges are not
@@ -120,23 +121,50 @@ namespace ICSharpCode.SharpDevelop.Gui
 
 		static string BuildVersionInformation(Assembly assembly, FileVersionInfo fileVersion)
 		{
-			var sb = new StringBuilder();
+			var rows = new List<KeyValuePair<string, string>>();
 
 			var infoVersion = assembly
 				.GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), false)
 				.OfType<AssemblyInformationalVersionAttribute>()
 				.FirstOrDefault();
 			if (infoVersion is not null)
-				sb.AppendLine($"OpenDevelop Version : {infoVersion.InformationalVersion}");
+				rows.Add(Row("AboutDialog.OpenDevelopVersion", infoVersion.InformationalVersion));
 
-			sb.AppendLine($".NET Version         : {RuntimeInformation.FrameworkDescription}");
-			sb.AppendLine($"OS Version           : {Environment.OSVersion}");
-			sb.AppendLine($"Current culture      : {CultureInfo.CurrentCulture.EnglishName} ({CultureInfo.CurrentCulture.Name})");
-			sb.AppendLine($"Running as           : {(IntPtr.Size * 8)}-bit process");
-			sb.AppendLine($"Working Set Memory   : {Environment.WorkingSet / 1024} kb");
-			sb.AppendLine($"GC Heap Memory       : {GC.GetTotalMemory(false) / 1024} kb");
+			rows.Add(Row("AboutDialog.DotNetVersion", RuntimeInformation.FrameworkDescription));
+			rows.Add(Row("AboutDialog.OsVersion", Environment.OSVersion.ToString()));
+			rows.Add(Row("AboutDialog.CurrentCulture", $"{CultureInfo.CurrentCulture.EnglishName} ({CultureInfo.CurrentCulture.Name})"));
+			rows.Add(Row("AboutDialog.RunningAs", Format("AboutDialog.BitProcess", IntPtr.Size * 8)));
+			rows.Add(Row("AboutDialog.WorkingSetMemory", Format("AboutDialog.KiloBytes", Environment.WorkingSet / 1024)));
+			rows.Add(Row("AboutDialog.GcHeapMemory", Format("AboutDialog.KiloBytes", GC.GetTotalMemory(false) / 1024)));
 
+			// The values line up in a monospaced box, so pad by display width: CJK labels are two cells per character.
+			int labelWidth = rows.Max(r => DisplayWidth(r.Key));
+			var sb = new StringBuilder();
+			foreach (var row in rows)
+				sb.Append(row.Key).Append(' ', labelWidth - DisplayWidth(row.Key)).Append(" : ").AppendLine(row.Value);
 			return sb.ToString();
+		}
+
+		static KeyValuePair<string, string> Row(string labelKey, string value)
+		{
+			return new KeyValuePair<string, string>(ResourceService.GetString(labelKey), value);
+		}
+
+		static string Format(string templateKey, object value)
+		{
+			return string.Format(CultureInfo.CurrentCulture, ResourceService.GetString(templateKey), value);
+		}
+
+		static int DisplayWidth(string text)
+		{
+			int width = 0;
+			foreach (char c in text) {
+				bool wide = (c >= 0x1100 && c <= 0x115F) || (c >= 0x2E80 && c <= 0xA4CF) || (c >= 0xAC00 && c <= 0xD7A3)
+					|| (c >= 0xF900 && c <= 0xFAFF) || (c >= 0xFE30 && c <= 0xFE6F) || (c >= 0xFF00 && c <= 0xFF60)
+					|| (c >= 0xFFE0 && c <= 0xFFE6);
+				width += wide ? 2 : 1;
+			}
+			return width;
 		}
 
 		static List<AssemblyInfo> LoadAssemblyList()

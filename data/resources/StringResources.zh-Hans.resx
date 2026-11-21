@@ -9229,6 +9229,39 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="AboutDialog.Copy" xml:space="preserve">
     <value>复制</value>
   </data>
+  <data name="AboutDialog.Description" xml:space="preserve">
+    <value>OpenDevelop 是 SharpDevelop 的现代化分支，面向 .NET 并基于 WPF。</value>
+  </data>
+  <data name="AboutDialog.OpenDevelopVersion" xml:space="preserve">
+    <value>OpenDevelop 版本</value>
+  </data>
+  <data name="AboutDialog.DotNetVersion" xml:space="preserve">
+    <value>.NET 版本</value>
+  </data>
+  <data name="AboutDialog.OsVersion" xml:space="preserve">
+    <value>操作系统版本</value>
+  </data>
+  <data name="AboutDialog.CurrentCulture" xml:space="preserve">
+    <value>当前区域性</value>
+  </data>
+  <data name="AboutDialog.RunningAs" xml:space="preserve">
+    <value>运行方式</value>
+  </data>
+  <data name="AboutDialog.WorkingSetMemory" xml:space="preserve">
+    <value>工作集内存</value>
+  </data>
+  <data name="AboutDialog.GcHeapMemory" xml:space="preserve">
+    <value>GC 堆内存</value>
+  </data>
+  <data name="AboutDialog.VersionLine" xml:space="preserve">
+    <value>版本 {0}.{1}.{2}（修订 {3}）</value>
+  </data>
+  <data name="AboutDialog.BitProcess" xml:space="preserve">
+    <value>{0} 位进程</value>
+  </data>
+  <data name="AboutDialog.KiloBytes" xml:space="preserve">
+    <value>{0} KB</value>
+  </data>
   <data name="BreakpointEditor.Break" xml:space="preserve">
     <value>中断</value>
   </data>

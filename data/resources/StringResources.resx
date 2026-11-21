@@ -9646,6 +9646,39 @@ Press Esc to cancel this operation.</value>
   <data name="AboutDialog.Copy" xml:space="preserve">
     <value>Copy</value>
   </data>
+  <data name="AboutDialog.VersionLine" xml:space="preserve">
+    <value>Version {0}.{1}.{2} (rev {3})</value>
+  </data>
+  <data name="AboutDialog.BitProcess" xml:space="preserve">
+    <value>{0}-bit process</value>
+  </data>
+  <data name="AboutDialog.KiloBytes" xml:space="preserve">
+    <value>{0} KB</value>
+  </data>
+  <data name="AboutDialog.Description" xml:space="preserve">
+    <value>OpenDevelop is a modernized fork of SharpDevelop for .NET on WPF.</value>
+  </data>
+  <data name="AboutDialog.OpenDevelopVersion" xml:space="preserve">
+    <value>OpenDevelop Version</value>
+  </data>
+  <data name="AboutDialog.DotNetVersion" xml:space="preserve">
+    <value>.NET Version</value>
+  </data>
+  <data name="AboutDialog.OsVersion" xml:space="preserve">
+    <value>OS Version</value>
+  </data>
+  <data name="AboutDialog.CurrentCulture" xml:space="preserve">
+    <value>Current culture</value>
+  </data>
+  <data name="AboutDialog.RunningAs" xml:space="preserve">
+    <value>Running as</value>
+  </data>
+  <data name="AboutDialog.WorkingSetMemory" xml:space="preserve">
+    <value>Working Set Memory</value>
+  </data>
+  <data name="AboutDialog.GcHeapMemory" xml:space="preserve">
+    <value>GC Heap Memory</value>
+  </data>
   <data name="BreakpointEditor.Break" xml:space="preserve">
     <value>Break</value>
   </data>
