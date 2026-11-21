@@ -44,6 +44,8 @@ namespace ICSharpCode.AndroidDeviceManager
 
 		async System.Threading.Tasks.Task InitializeAsync()
 		{
+			busyIndicator.IsBusy = true;
+			saveButton.IsEnabled = false;
 			try {
 				var devices = await service.ListDeviceDefinitionsAsync(sdkRoot);
 				baseDeviceComboBox.ItemsSource = devices;
@@ -52,6 +54,9 @@ namespace ICSharpCode.AndroidDeviceManager
 				systemImageComboBox.ItemsSource = images;
 			} catch (Exception ex) {
 				MessageBox.Show(this, ex.Message, ResourceService.GetString("AndroidDeviceManager.Title"), MessageBoxButton.OK, MessageBoxImage.Warning);
+			} finally {
+				busyIndicator.IsBusy = false;
+				saveButton.IsEnabled = true;
 			}
 
 			if (existingAvd != null) {

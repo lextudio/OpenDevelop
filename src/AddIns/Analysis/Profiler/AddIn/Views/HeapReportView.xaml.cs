@@ -106,6 +106,7 @@ public partial class HeapReportView : UserControl
 	// shown at once with the sizes pending and filled in when the computation finishes.
 	async Task LoadRetainedSizesAsync(HeapGraph graph)
 	{
+		busyIndicator.IsBusy = true;
 		try
 		{
 			var (retained, retainers, handlers) = await Task.Run(() => (
@@ -122,6 +123,7 @@ public partial class HeapReportView : UserControl
 		}
 		finally
 		{
+			busyIndicator.IsBusy = false;
 			retainedReady.TrySetResult();
 		}
 	}

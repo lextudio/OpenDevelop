@@ -10216,6 +10216,15 @@ Press Esc to cancel this operation.</value>
   <data name="DotNetSdk.Description" xml:space="preserve">
     <value>Choose which installed .NET SDK is used to compile, debug, and run tests for project files. The default is the system-installed SDK. Automatic discovery stops at .NET SDK 11; to use .NET SDK 12 or newer, add its folder with Add Custom Path.</value>
   </data>
+  <data name="DotNetSdk.Loading" xml:space="preserve">
+    <value>Discovering .NET SDKs…</value>
+  </data>
+  <data name="Global.LoadingOptionPanel" xml:space="preserve">
+    <value>Loading…</value>
+  </data>
+  <data name="AvdEditor.Loading" xml:space="preserve">
+    <value>Loading devices and system images…</value>
+  </data>
   <data name="DotNetSdk.AddCustomPath" xml:space="preserve">
     <value>Add Custom Path...</value>
   </data>
@@ -10542,6 +10551,15 @@ Press Esc to cancel this operation.</value>
   </data>
   <data name="AddIns.Profiler.Attach.Refresh" xml:space="preserve">
     <value>Refresh</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.LoadingProcesses" xml:space="preserve">
+    <value>Loading processes…</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Computing" xml:space="preserve">
+    <value>Computing the report…</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ComputingSizes" xml:space="preserve">
+    <value>Computing retained sizes…</value>
   </data>
   <data name="AddIns.Profiler.Attach.StartSampling" xml:space="preserve">
     <value>Start Sampling</value>

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 using OpenDevelop.Profiler.Collection;
 
 namespace OpenDevelop.Profiler.AddIn.Dialogs;
@@ -56,13 +57,20 @@ public partial class ProcessPickerWindow : Window
 		return window.ShowDialog() == true ? window.SelectedProcess : null;
 	}
 
+		/// <summary>Keeps one busy indicator honest while a refresh can be started again before the previous one finishes.</summary>
+		readonly LoadTracker loadTracker = new LoadTracker();
+
 	async Task RefreshAsync()
 	{
+		int run = loadTracker.Begin();
+		busyIndicator.IsBusy = true;
 		refreshButton.IsEnabled = false;
 		try
 		{
 			// Asking each process for its diagnostic port can be slow on a busy machine.
 			var processes = await Task.Run(ProcessTargets.ListManagedProcesses);
+			if (!loadTracker.IsCurrent(run))
+				return;
 			processList.ItemsSource = processes;
 			if (processes.Count == 0)
 				prompt.Text += Environment.NewLine + StringParser.Parse("${res:AddIns.Profiler.Attach.NoProcesses}");
@@ -73,7 +81,12 @@ public partial class ProcessPickerWindow : Window
 		}
 		finally
 		{
-			refreshButton.IsEnabled = true;
+			// Only the last run still in flight clears the indicator.
+			if (loadTracker.End(run))
+			{
+				busyIndicator.IsBusy = false;
+				refreshButton.IsEnabled = true;
+			}
 		}
 	}
 

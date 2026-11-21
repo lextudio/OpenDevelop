@@ -3,6 +3,7 @@
 	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
+	xmlns:xctk="clr-namespace:Xceed.Wpf.Toolkit;assembly=Xceed.Wpf.Toolkit"
 	Title="{core:Localize AddIns.Profiler.Attach.Title}"
 	WindowStartupLocation="CenterOwner"
 	WindowStyle="ToolWindow"
@@ -21,9 +22,13 @@
 			Grid.Row="0"
 			Margin="0,0,0,6"
 			TextWrapping="Wrap" />
+		<xctk:BusyIndicator
+			x:Name="busyIndicator"
+			Grid.Row="1"
+			IsBusy="False"
+			BusyContent="{core:Localize AddIns.Profiler.Attach.LoadingProcesses}">
 		<ListView
 			x:Name="processList"
-			Grid.Row="1"
 			SelectionMode="Single"
 			MouseDoubleClick="ProcessList_MouseDoubleClick"
 			SelectionChanged="ProcessList_SelectionChanged">
@@ -40,6 +45,7 @@
 				</GridView>
 			</ListView.View>
 		</ListView>
+		</xctk:BusyIndicator>
 		<TextBlock
 			x:Name="warning"
 			Grid.Row="2"

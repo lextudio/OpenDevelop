@@ -233,6 +233,7 @@ namespace ICSharpCode.SharpDevelop.Gui
 			if (node != activeNode || !IsLoaded)
 				return;
 			var stopwatch = Stopwatch.StartNew();
+			busyIndicator.IsBusy = true;
 			try {
 				var content = await node.GetContentAsync(lifetimeCancellation.Token);
 				if (node == activeNode && IsLoaded) {
@@ -245,6 +246,9 @@ namespace ICSharpCode.SharpDevelop.Gui
 				MessageService.ShowException(ex);
 			} finally {
 				stopwatch.Stop();
+				// A newer selection may already be loading; only the current generation clears the indicator.
+				if (generation == loadGeneration)
+					busyIndicator.IsBusy = false;
 				if (generation == loadGeneration && IsLoaded)
 					okButton.IsEnabled = true;
 				LoggingService.Debug($"Options panel '{node.ID}' loaded in {stopwatch.ElapsedMilliseconds} ms.");

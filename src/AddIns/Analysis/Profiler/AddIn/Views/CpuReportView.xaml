@@ -4,6 +4,7 @@
 	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
 	xmlns:core="http://icsharpcode.net/sharpdevelop/core"
 	xmlns:local="clr-namespace:OpenDevelop.Profiler.AddIn.Views"
+	xmlns:xctk="clr-namespace:Xceed.Wpf.Toolkit;assembly=Xceed.Wpf.Toolkit"
 	PreviewKeyDown="Report_PreviewKeyDown">
 	<DockPanel>
 		<ToolBarTray DockPanel.Dock="Top" IsLocked="True">
@@ -103,6 +104,8 @@
 			Margin="4,4,4,4"
 			RangeSelected="Timeline_RangeSelected" />
 
+		<xctk:BusyIndicator x:Name="busyIndicator" IsBusy="False"
+			BusyContent="{core:Localize AddIns.Profiler.Report.Computing}">
 		<Grid Margin="4,0,4,0">
 			<local:CallTreeView x:Name="callTree" ShowCallerCalleeRequested="ShowCallerCalleeRequested" GoToSourceRequested="GoToSourceRequested" />
 			<local:FunctionsView x:Name="functions" Visibility="Collapsed" ShowCallerCalleeRequested="ShowCallerCalleeRequested" GoToSourceRequested="GoToSourceRequested" />
@@ -122,5 +125,6 @@
 			<local:RingDiagramControl x:Name="ringDiagram" Visibility="Collapsed" FrameActivated="ShowCallerCalleeRequested" />
 			<local:FindOverlay x:Name="findOverlay" FindRequested="FindOverlay_FindRequested" Closed="FindOverlay_Closed" />
 		</Grid>
+		</xctk:BusyIndicator>
 	</DockPanel>
 </UserControl>

@@ -1,5 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:core="http://icsharpcode.net/sharpdevelop/core" xmlns:widgets="http://icsharpcode.net/sharpdevelop/widgets"
+        xmlns:xctk="clr-namespace:Xceed.Wpf.Toolkit;assembly=Xceed.Wpf.Toolkit"
         x:Class="ICSharpCode.SharpDevelop.Gui.TreeViewOptionsDialog"
         Height="540"
         Width="760"
@@ -61,7 +62,10 @@
 							</LinearGradientBrush>
 						</TextBlock.Background>
 					</TextBlock>
+					<xctk:BusyIndicator Name="busyIndicator" IsBusy="False"
+					                    BusyContent="{core:Localize Global.LoadingOptionPanel}">
 					<ContentPresenter Name="optionPanelContent" />
+					</xctk:BusyIndicator>
 				</DockPanel>
 			</ScrollViewer>
 		</Grid>

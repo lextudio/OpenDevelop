@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Project.Sdk;
 
 namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
@@ -21,14 +22,26 @@ namespace ICSharpCode.SharpDevelop.Gui.OptionPanels
 			ApplyDiscoveredSdks(DotNetSdkService.DiscoverSdks());
 		}
 
+		/// <summary>Keeps one busy indicator honest while a refresh can overtake a scan that is still running.</summary>
+		readonly LoadTracker loadTracker = new LoadTracker();
+
 		public override async Task LoadOptionsAsync(CancellationToken cancellationToken)
 		{
 			// PropertyService is UI-owned; snapshot its values before moving filesystem scans
 			// to a worker thread.
 			var customRoots = DotNetSdkService.CustomRoots.ToArray();
-			var discovered = await Task.Run(() => DotNetSdkService.DiscoverSdks(customRoots), cancellationToken);
-			cancellationToken.ThrowIfCancellationRequested();
-			ApplyDiscoveredSdks(discovered);
+			int run = loadTracker.Begin();
+			busyIndicator.IsBusy = true;
+			try {
+				var discovered = await Task.Run(() => DotNetSdkService.DiscoverSdks(customRoots), cancellationToken);
+				cancellationToken.ThrowIfCancellationRequested();
+				// The Refresh button can start another scan before this one finishes; only the newest result is shown.
+				if (loadTracker.IsCurrent(run))
+					ApplyDiscoveredSdks(discovered);
+			} finally {
+				if (loadTracker.End(run))
+					busyIndicator.IsBusy = false;
+			}
 		}
 
 		public override bool SaveOptions()

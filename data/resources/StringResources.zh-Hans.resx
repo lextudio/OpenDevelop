@@ -9799,6 +9799,15 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   <data name="DotNetSdk.Description" xml:space="preserve">
     <value>选择用于编译、调试和运行项目文件测试的已安装 .NET SDK。默认使用系统安装的 SDK。自动发现只到 .NET SDK 11；要使用 .NET SDK 12 或更高版本，请用“添加自定义路径”添加其文件夹。</value>
   </data>
+  <data name="DotNetSdk.Loading" xml:space="preserve">
+    <value>正在发现 .NET SDK…</value>
+  </data>
+  <data name="Global.LoadingOptionPanel" xml:space="preserve">
+    <value>正在加载…</value>
+  </data>
+  <data name="AvdEditor.Loading" xml:space="preserve">
+    <value>正在加载设备定义和系统映像…</value>
+  </data>
   <data name="DotNetSdk.AddCustomPath" xml:space="preserve">
     <value>添加自定义路径...</value>
   </data>
@@ -10125,6 +10134,15 @@ SharpDevelop 2 编译资源的方式有所不同：资源名称不只是文件�
   </data>
   <data name="AddIns.Profiler.Attach.Refresh" xml:space="preserve">
     <value>刷新</value>
+  </data>
+  <data name="AddIns.Profiler.Attach.LoadingProcesses" xml:space="preserve">
+    <value>正在加载进程…</value>
+  </data>
+  <data name="AddIns.Profiler.Report.Computing" xml:space="preserve">
+    <value>正在计算报告…</value>
+  </data>
+  <data name="AddIns.Profiler.Report.ComputingSizes" xml:space="preserve">
+    <value>正在计算保留大小…</value>
   </data>
   <data name="AddIns.Profiler.Attach.StartSampling" xml:space="preserve">
     <value>开始采样</value>

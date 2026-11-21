@@ -107,6 +107,9 @@ public partial class CpuReportView : UserControl
 	Task settled = Task.CompletedTask;
 	int refreshVersion;
 
+		/// <summary>Keeps one busy indicator honest while a newer refresh can overtake a running one.</summary>
+		readonly LoadTracker loadTracker = new LoadTracker();
+
 	/// <summary>Completes once the view reflects the latest filter and mode (immediately for a small capture).</summary>
 	internal Task Settled => settled;
 
@@ -139,8 +142,11 @@ public partial class CpuReportView : UserControl
 
 		async Task<T> Compute<T>(Func<T> work) => background ? await Task.Run(work) : work();
 
-		if (background)
+		int run = loadTracker.Begin();
+		if (background) {
 			Cursor = Cursors.Wait;
+			busyIndicator.IsBusy = true;
+		}
 		try
 		{
 			switch (mode)
@@ -196,8 +202,12 @@ public partial class CpuReportView : UserControl
 		}
 		finally
 		{
-			if (background && version == refreshVersion)
+			// A newer refresh may already be running: it owns the wait cursor and the indicator from now on.
+			if (background && loadTracker.IsCurrent(run))
 				Cursor = null;
+			// Only the last refresh still in flight clears the indicator.
+			if (loadTracker.End(run))
+				busyIndicator.IsBusy = false;
 		}
 	}
 
