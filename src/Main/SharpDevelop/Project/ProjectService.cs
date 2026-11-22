@@ -211,23 +211,36 @@ namespace ICSharpCode.SharpDevelop.Project
 			BeginSolutionOpen();
 			ResolveProjectBindings();
 			LoadingSolution = fileName;
-			Solution solution = null;
+			int load = ++loadingSolutionGeneration;
+			Solution solution;
 			try {
 				solution = await solutionBuilder.BuildAsync(
 					progress => BuildSolution(fileName, progress),
 					token => SD.StatusBar.CreateProgressMonitor(token),
 					cancellationToken).ConfigureAwait(false);
-			} finally {
-				// Explicitly back on the UI thread: the caller may have no SynchronizationContext (startup).
+			} catch (Exception ex) {
+				// Same reporting as the synchronous open: ObservedLoad informs about I/O-type errors
+				// ("error while loading") and lets anything else propagate to the caller.
 				SD.MainThread.InvokeIfRequired(() => {
-					// A newer open may already have replaced the marker with its own file.
-					if (LoadingSolution == fileName)
-						LoadingSolution = null;
+					EndLoadingSolution(load);
+					FileUtility.ObservedLoad(() => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex).Throw(), fileName);
 				});
+				return false;
 			}
-			if (solution == null)
-				return false; // cancelled or superseded
-			return SD.MainThread.InvokeIfRequired(() => CompleteSolutionOpen(solution, fileName));
+			// Explicitly back on the UI thread: the caller may have no SynchronizationContext (startup).
+			return SD.MainThread.InvokeIfRequired(() => {
+				EndLoadingSolution(load);
+				return solution != null && CompleteSolutionOpen(solution, fileName); // null: cancelled or superseded
+			});
+		}
+		
+		/// <summary>Counts background loads, so a superseded load cannot clear a newer one's marker (same file or not).</summary>
+		int loadingSolutionGeneration;
+		
+		void EndLoadingSolution(int load)
+		{
+			if (load == loadingSolutionGeneration)
+				LoadingSolution = null;
 		}
 		
 		/// <summary>Publishes a finished build on the UI thread, which takes the model over.</summary>
