@@ -21,8 +21,11 @@ namespace ICSharpCode.UnitTesting
 			= new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
 		DateTime? lastBuildTime;
 		bool discoveryInProgress;
-		/// <summary>Bumped (on the UI thread) whenever <see cref="discoveredNodesByTargetFramework"/> is replaced.</summary>
-		int treeRevision;
+		/// <summary>Bumped (on the UI thread) when an MTP discovery replaces the tree: approximate scans started
+		/// before that are stale.</summary>
+		int authoritativeRevision;
+		/// <summary>Approximate scans started / the newest one applied (UI thread): an older scan never overwrites a newer one.</summary>
+		int approximateScansStarted, approximateScanApplied;
 		Task approximateScan = Task.CompletedTask;
 		int suppressBuildDiscoveryCount;
 		bool disposed;
@@ -94,7 +97,8 @@ namespace ICSharpCode.UnitTesting
 		async Task PopulateApproxTreeFromRoslynAsync()
 		{
 			try {
-				int revision = treeRevision;
+				int revision = authoritativeRevision;
+				int scan = ++approximateScansStarted;
 				var sourceFiles = GetCompileSourceFiles();
 				var targetFrameworks = GetTargetFrameworks();
 				var approx = await Task.Run(() => {
@@ -109,9 +113,10 @@ namespace ICSharpCode.UnitTesting
 				if (approx == null)
 					return;
 				await SD.MainThread.InvokeAsync(() => {
-					if (disposed || revision != treeRevision)
-						return; // superseded by a newer result
-					ReplaceDiscoveredNodes(approx);
+					if (disposed || revision != authoritativeRevision || scan < approximateScanApplied)
+						return; // superseded by an MTP discovery or a newer scan
+					approximateScanApplied = scan;
+					ReplaceDiscoveredNodes(approx, authoritative: false);
 				});
 			} catch (Exception ex) {
 				SD.Log.Warn("Roslyn approximate test scan failed: " + ex.Message);
@@ -119,10 +124,11 @@ namespace ICSharpCode.UnitTesting
 		}
 
 		/// <summary>Replaces the discovered tests and refreshes the tree. UI thread only.</summary>
-		void ReplaceDiscoveredNodes(IReadOnlyDictionary<string, IReadOnlyList<MtpTestNode>> nodesByTargetFramework)
+		void ReplaceDiscoveredNodes(IReadOnlyDictionary<string, IReadOnlyList<MtpTestNode>> nodesByTargetFramework, bool authoritative)
 		{
 			discoveredNodesByTargetFramework = nodesByTargetFramework;
-			treeRevision++;
+			if (authoritative)
+				authoritativeRevision++;
 			PopulateTree();
 		}
 
@@ -211,6 +217,9 @@ namespace ICSharpCode.UnitTesting
 			// Start with the approximate tree. Each successful MTP result replaces its TFM, while
 			// an unavailable runtime or unbuilt target keeps the stable Roslyn fallback. Clearing a
 			// failed TFM here used to remove its expanded tree node underneath WPF input handling.
+			// The approximate scan started with the tree runs in the background: wait for it, so its candidates
+			// are the fallback for target frameworks MTP cannot discover.
+			await approximateScan;
 			var discovered = new Dictionary<string, IReadOnlyList<MtpTestNode>>(
 				discoveredNodesByTargetFramework,
 				StringComparer.OrdinalIgnoreCase);
@@ -238,7 +247,7 @@ namespace ICSharpCode.UnitTesting
 				// than reporting a failure for something they asked to stop.
 			} finally {
 				if (hasMtpResult)
-					await SD.MainThread.InvokeAsync(() => ReplaceDiscoveredNodes(discovered));
+					await SD.MainThread.InvokeAsync(() => ReplaceDiscoveredNodes(discovered, authoritative: true));
 				discoveryInProgress = false;
 			}
 		}
