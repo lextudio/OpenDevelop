@@ -170,6 +170,21 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		Task<WorkspaceStatus> RoslynStatusAsync(CancellationToken cancellationToken);
 
 		/// <summary>
+		/// Captures the baseline of the PE the IDE selected for a launch. The host owns the matching
+		/// solution compilation, so generated source and live editor text stay in the same workspace.
+		/// </summary>
+		Task<HotReloadDeltaResponse> RoslynHotReloadCaptureBaselineAsync(
+			HotReloadBaselineRequest request, CancellationToken cancellationToken) =>
+			Task.FromResult(new HotReloadDeltaResponse(HotReloadDeltaStatus.Failed, null,
+				"Hot Reload deltas are unavailable in this language service."));
+
+		/// <summary>Produces one metadata/IL/PDB delta against the baseline captured at launch.</summary>
+		Task<HotReloadDeltaResponse> RoslynHotReloadProduceDeltaAsync(
+			HotReloadDeltaRequest request, CancellationToken cancellationToken) =>
+			Task.FromResult(new HotReloadDeltaResponse(HotReloadDeltaStatus.Failed, null,
+				"Hot Reload deltas are unavailable in this language service."));
+
+		/// <summary>
 		/// <c>roslyn/lens/document</c>: every lens anchor and count for a document in one call.
 		/// See §6 - the batched form is the whole point, for correctness as much as for speed.
 		/// </summary>

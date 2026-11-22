@@ -68,13 +68,20 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Host
 			// it and receive the parent-owned project graph over roslyn/project/load. The remaining
 			// csproj split is still needed to make that independence mechanical and UI-free.
 			var languageService = new Lazy<Roslyn.CSharpVBLanguageService>(CreateLanguageService);
+			var hotReloadProducer = new Lazy<Roslyn.HotReloadDeltaProducer>(() => new Roslyn.HotReloadDeltaProducer(languageService.Value));
 			var protocol = new Lazy<IRoslynLanguageProtocol>(() =>
 				new InProcessRoslynLanguageProtocol(
 					languageService.Value,
 					projectLoad: languageService.Value.LoadProjectAsync,
 					projectsLoad: languageService.Value.LoadProjectsAsync,
-					solutionClosed: languageService.Value.CloseSolutionAsync,
-					workspaceStatusProvider: languageService.Value.GetWorkspaceStatus));
+				solutionClosed: async cancellationToken => {
+					if (hotReloadProducer.IsValueCreated)
+						hotReloadProducer.Value.Clear();
+					await languageService.Value.CloseSolutionAsync(cancellationToken).ConfigureAwait(false);
+				},
+					workspaceStatusProvider: languageService.Value.GetWorkspaceStatus,
+					hotReloadCaptureBaseline: hotReloadProducer.Value.CaptureBaselineAsync,
+					hotReloadProduceDelta: hotReloadProducer.Value.ProduceAsync));
 			var dispatcher = new Lazy<RoslynProtocolDispatcher>(() =>
 				new RoslynProtocolDispatcher(protocol.Value));
 
@@ -144,6 +151,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Host
 			public bool renameOverloads { get; set; }
 			public bool renameInStrings { get; set; }
 			public bool renameInComments { get; set; }
+			public HotReloadBaselineRequest? hotReloadBaselineRequest { get; set; }
+			public HotReloadDeltaRequest? hotReloadDeltaRequest { get; set; }
 
 			TextDocumentIdentifier IRoslynProtocolArguments.Document() =>
 				document ?? throw new InvalidOperationException("Request is missing 'document'.");
@@ -167,6 +176,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Host
 			bool IRoslynProtocolArguments.RenameOverloads() => renameOverloads;
 			bool IRoslynProtocolArguments.RenameInStrings() => renameInStrings;
 			bool IRoslynProtocolArguments.RenameInComments() => renameInComments;
+			HotReloadBaselineRequest IRoslynProtocolArguments.HotReloadBaselineRequest() =>
+				hotReloadBaselineRequest ?? throw new InvalidOperationException("Request is missing 'hotReloadBaselineRequest'.");
+			HotReloadDeltaRequest IRoslynProtocolArguments.HotReloadDeltaRequest() =>
+				hotReloadDeltaRequest ?? throw new InvalidOperationException("Request is missing 'hotReloadDeltaRequest'.");
 		}
 	}
 }

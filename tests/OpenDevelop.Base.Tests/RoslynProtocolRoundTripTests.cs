@@ -72,6 +72,8 @@ public class RoslynProtocolRoundTripTests
         public bool RenameOverloads() => Get<bool>("renameOverloads");
         public bool RenameInStrings() => Get<bool>("renameInStrings");
         public bool RenameInComments() => Get<bool>("renameInComments");
+        public HotReloadBaselineRequest HotReloadBaselineRequest() => Get<HotReloadBaselineRequest>("hotReloadBaselineRequest");
+        public HotReloadDeltaRequest HotReloadDeltaRequest() => Get<HotReloadDeltaRequest>("hotReloadDeltaRequest");
     }
 
     static (IRoslynLanguageProtocol Client, LoopbackTransport Transport) CreatePair()
@@ -93,6 +95,10 @@ public class RoslynProtocolRoundTripTests
         await client.TextDocumentDefinitionAsync(Document, 3, token);
         await client.RoslynLensDocumentAsync(Document, token);
         await client.RoslynStatusAsync(token);
+		await client.RoslynHotReloadCaptureBaselineAsync(new HotReloadBaselineRequest(
+			new HotReloadProjectId("/tmp/RoundTrip.csproj", "net10.0"), new byte[] { 1 }, new byte[] { 2 }), token);
+		await client.RoslynHotReloadProduceDeltaAsync(new HotReloadDeltaRequest(
+			new HotReloadProjectId("/tmp/RoundTrip.csproj", "net10.0")), token);
         await client.RoslynProjectLoadAsync(new LanguageServiceProjectSnapshot(
             "/tmp/RoundTrip.csproj", "C#", Array.Empty<string>(), Array.Empty<string>(),
             Array.Empty<string>(), Array.Empty<string>(), null, null), token);
@@ -105,6 +111,7 @@ public class RoslynProtocolRoundTripTests
 
         Assert.Equal(new[] {
             "textDocument/didChange", "textDocument/definition", "roslyn/lens/document", "roslyn/status",
+            "roslyn/hotReload/captureBaseline", "roslyn/hotReload/produceDelta",
             "roslyn/project/load", "roslyn/projects/load", "roslyn/solution/closed", "roslyn/findMember", "roslyn/extractInterface/apply"
         }, transport.Calls);
     }
@@ -190,6 +197,10 @@ public class RoslynProtocolRoundTripTests
         public Task RoslynProjectLoadAsync(LanguageServiceProjectSnapshot snapshot, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task RoslynSolutionClosedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<WorkspaceStatus> RoslynStatusAsync(CancellationToken cancellationToken) => Task.FromResult(new WorkspaceStatus(Array.Empty<ProjectStatus>()));
+        public Task<HotReloadDeltaResponse> RoslynHotReloadCaptureBaselineAsync(HotReloadBaselineRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HotReloadDeltaResponse(HotReloadDeltaStatus.Failed, null, "not used"));
+        public Task<HotReloadDeltaResponse> RoslynHotReloadProduceDeltaAsync(HotReloadDeltaRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HotReloadDeltaResponse(HotReloadDeltaStatus.Failed, null, "not used"));
         public Task<LensDocumentResult> RoslynLensDocumentAsync(TextDocumentIdentifier document, CancellationToken cancellationToken) => Task.FromResult(new LensDocumentResult(DocumentReadiness.Ready, Array.Empty<LensAnchorResult>()));
         public Task<ProtocolResult<IReadOnlyList<NavigationTarget>>> RoslynFindMemberAsync(string typeFullName, string methodName, int? parameterCount, CancellationToken cancellationToken) => Task.FromResult(ProtocolResult<IReadOnlyList<NavigationTarget>>.Ready(Array.Empty<NavigationTarget>()));
         public Task<ProtocolResult<string?>> RoslynHelpKeywordAsync(TextDocumentIdentifier document, int offset, CancellationToken cancellationToken) => Task.FromResult(ProtocolResult<string?>.Ready(null));

@@ -47,13 +47,17 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		readonly Func<IReadOnlyList<LanguageServiceProjectSnapshot>, CancellationToken, Task>? projectsLoad;
 		readonly Func<CancellationToken, Task>? solutionClosed;
 		readonly Func<WorkspaceStatus>? workspaceStatusProvider;
+		readonly Func<HotReloadBaselineRequest, CancellationToken, Task<HotReloadDeltaResponse>>? hotReloadCaptureBaseline;
+		readonly Func<HotReloadDeltaRequest, CancellationToken, Task<HotReloadDeltaResponse>>? hotReloadProduceDelta;
 
 		public InProcessRoslynLanguageProtocol(ILanguageService service,
 			Func<IReadOnlyList<ProjectStatus>>? projectStatusProvider = null,
 			Func<LanguageServiceProjectSnapshot, CancellationToken, Task>? projectLoad = null,
 			Func<IReadOnlyList<LanguageServiceProjectSnapshot>, CancellationToken, Task>? projectsLoad = null,
 			Func<CancellationToken, Task>? solutionClosed = null,
-			Func<WorkspaceStatus>? workspaceStatusProvider = null)
+			Func<WorkspaceStatus>? workspaceStatusProvider = null,
+			Func<HotReloadBaselineRequest, CancellationToken, Task<HotReloadDeltaResponse>>? hotReloadCaptureBaseline = null,
+			Func<HotReloadDeltaRequest, CancellationToken, Task<HotReloadDeltaResponse>>? hotReloadProduceDelta = null)
 		{
 			this.service = service ?? throw new ArgumentNullException(nameof(service));
 			this.projectStatusProvider = projectStatusProvider;
@@ -61,6 +65,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 			this.projectsLoad = projectsLoad;
 			this.solutionClosed = solutionClosed;
 			this.workspaceStatusProvider = workspaceStatusProvider;
+			this.hotReloadCaptureBaseline = hotReloadCaptureBaseline;
+			this.hotReloadProduceDelta = hotReloadProduceDelta;
 		}
 
 		DocumentReadiness ReadinessOf(TextDocumentIdentifier document) =>
@@ -161,6 +167,16 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		public Task<WorkspaceStatus> RoslynStatusAsync(CancellationToken cancellationToken) =>
 			Task.FromResult(workspaceStatusProvider?.Invoke()
 				?? new WorkspaceStatus(projectStatusProvider?.Invoke() ?? Array.Empty<ProjectStatus>()));
+
+		public Task<HotReloadDeltaResponse> RoslynHotReloadCaptureBaselineAsync(HotReloadBaselineRequest request, CancellationToken cancellationToken) =>
+			hotReloadCaptureBaseline is not null
+				? hotReloadCaptureBaseline(request, cancellationToken)
+				: Task.FromResult(new HotReloadDeltaResponse(HotReloadDeltaStatus.Failed, null, "Hot Reload deltas are unavailable in this language service."));
+
+		public Task<HotReloadDeltaResponse> RoslynHotReloadProduceDeltaAsync(HotReloadDeltaRequest request, CancellationToken cancellationToken) =>
+			hotReloadProduceDelta is not null
+				? hotReloadProduceDelta(request, cancellationToken)
+				: Task.FromResult(new HotReloadDeltaResponse(HotReloadDeltaStatus.Failed, null, "Hot Reload deltas are unavailable in this language service."));
 
 		public Task<LensDocumentResult> RoslynLensDocumentAsync(TextDocumentIdentifier document, CancellationToken cancellationToken) =>
 			service.GetLensDocumentAsync(document.ToDocumentId(), cancellationToken);

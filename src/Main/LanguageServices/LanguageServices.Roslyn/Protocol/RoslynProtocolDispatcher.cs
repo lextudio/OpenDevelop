@@ -73,6 +73,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 			RoslynProtocolMethods.ProjectsLoad,
 			RoslynProtocolMethods.SolutionClosed,
 			RoslynProtocolMethods.Status,
+			RoslynProtocolMethods.HotReloadCaptureBaseline,
+			RoslynProtocolMethods.HotReloadProduceDelta,
 			RoslynProtocolMethods.LensDocument,
 			RoslynProtocolMethods.FindMember,
 			RoslynProtocolMethods.HelpKeyword,
@@ -144,6 +146,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 					return null;
 				case RoslynProtocolMethods.Status:
 					return await protocol.RoslynStatusAsync(cancellationToken).ConfigureAwait(false);
+				case RoslynProtocolMethods.HotReloadCaptureBaseline:
+					return await protocol.RoslynHotReloadCaptureBaselineAsync(arguments.HotReloadBaselineRequest(), cancellationToken).ConfigureAwait(false);
+				case RoslynProtocolMethods.HotReloadProduceDelta:
+					return await protocol.RoslynHotReloadProduceDeltaAsync(arguments.HotReloadDeltaRequest(), cancellationToken).ConfigureAwait(false);
 				case RoslynProtocolMethods.LensDocument:
 					return await protocol.RoslynLensDocumentAsync(arguments.Document(), cancellationToken).ConfigureAwait(false);
 				case RoslynProtocolMethods.FindMember:
@@ -189,5 +195,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		bool RenameOverloads();
 		bool RenameInStrings();
 		bool RenameInComments();
+		HotReloadBaselineRequest HotReloadBaselineRequest();
+		HotReloadDeltaRequest HotReloadDeltaRequest();
 	}
 }

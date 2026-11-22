@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
@@ -136,6 +137,27 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 return _activeTargetFrameworkByProjectFileName.TryGetValue(projectFileName, out var targetFramework) ? targetFramework : null;
             }
         }
+
+		/// <summary>
+		/// Gets the compilation owned by this host for one evaluated project slice. Consumers that
+		/// need an EnC delta must use this rather than reconstructing a second workspace in the IDE:
+		/// source generators, unsaved buffers and project references are already represented here.
+		/// </summary>
+		public async Task<Compilation?> GetProjectCompilationAsync(string projectFileName, string? targetFramework,
+			CancellationToken cancellationToken)
+		{
+			RoslynProjectId? projectId;
+			lock (_documentLock)
+			{
+				var effectiveTargetFramework = targetFramework ?? GetActiveTargetFramework(projectFileName);
+				if (!_projectsByKey.TryGetValue(ProjectKey(projectFileName, effectiveTargetFramework), out var id)
+					&& !_projectsByKey.TryGetValue(ProjectKey(projectFileName, null), out id))
+					return null;
+				projectId = id;
+			}
+			var project = _workspace.CurrentSolution.GetProject(projectId);
+			return project is null ? null : await project.GetCompilationAsync(cancellationToken).ConfigureAwait(false);
+		}
 
         public void SetActiveTargetFramework(string projectFileName, string targetFramework)
         {
@@ -464,7 +486,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
             documentId = new DocumentId(documentId.FileName);
 
             cancellationToken.ThrowIfCancellationRequested();
-            var sourceText = SourceText.From(text);
+			// EnC emits a PDB delta, which requires an encoding on changed source text.
+			var sourceText = SourceText.From(text, Encoding.UTF8);
             bool hasVariants;
             lock (_documentLock)
             {
@@ -1613,7 +1636,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
 
         void AddDocumentCore(RoslynProjectId projectId, string projectFileName, DocumentId documentId, string text, string tfmKey)
         {
-            var sourceText = SourceText.From(text);
+			// Keep editor-backed project documents emit-ready for EnC PDB deltas.
+			var sourceText = SourceText.From(text, Encoding.UTF8);
             // The solution's file-path index, not a scan of every document of every project: that
             // scan ran once per added document, so loading a solution cost (documents)^2 string
             // compares - most of the ~45 s cold push of OpenDevelop.Mvp (doc/technotes/fast-mode.md).

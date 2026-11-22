@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 
 using ICSharpCode.Core;
 using ICSharpCode.ILSpy.Util;
+using ICSharpCode.SharpDevelop.LanguageServices;
+using ICSharpCode.SharpDevelop.LanguageServices.Protocol;
+using ProtocolHotReloadDeltaStatus = ICSharpCode.SharpDevelop.LanguageServices.Protocol.HotReloadDeltaStatus;
 
 namespace ICSharpCode.SharpDevelop.Project.HotReload
 {
@@ -128,6 +131,10 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 				}
 
 				CurrentSession = session;
+				if (!TryCaptureLaunchSnapshot(project, startInfo.FileName, out var protocol, out var request, out var snapshotDiagnostic))
+					LoggingService.Warn("Hot Reload: EnC baseline was not captured: " + snapshotDiagnostic);
+				else
+					SendLaunchBaselineAsync(protocol!, request!, project.Name).FireAndForget();
 				CurrentSessionChanged?.Invoke(null, EventArgs.Empty);
 				LoggingService.Info($"Hot Reload: session started for {adapter.Framework}.");
 				// The launch has only been CONFIGURED at this point; the application starts after
@@ -140,6 +147,44 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 				LoggingService.Warn($"Hot Reload was not enabled: {ex.Message}");
 				return false;
 			}
+		}
+
+		// The host already owns the evaluated project graph. The IDE supplies only the PE/PDB which
+		// this launch will load, preventing a later build from changing the EnC baseline underneath
+		// a live target. Delta application remains deliberately separate (E1/E3).
+		static bool TryCaptureLaunchSnapshot(IProject project, string launchModulePath,
+			out IRoslynLanguageProtocol? protocol, out HotReloadBaselineRequest? request, out string diagnostic)
+		{
+			protocol = null;
+			request = null;
+			diagnostic = string.Empty;
+			if (project is null || (!string.Equals(project.Language, "C#", StringComparison.OrdinalIgnoreCase)
+				&& !string.Equals(project.Language, "VB", StringComparison.OrdinalIgnoreCase)))
+				return false;
+			try {
+				var registry = SD.GetService<LanguageServiceRegistry>();
+				var languageExtension = string.Equals(project.Language, "VB", StringComparison.OrdinalIgnoreCase) ? ".vb" : ".cs";
+				if (registry == null || !registry.TryGetProtocol(languageExtension, out protocol)) {
+					diagnostic = "No Roslyn language host is available.";
+					return false;
+				}
+				var key = new HotReloadProjectId(project.FileName.ToString(),
+					ProjectTargetFrameworkService.GetActiveTargetFramework(project));
+				return HotReloadLaunchBaseline.TrySnapshot(key, launchModulePath, out request, out diagnostic);
+			} catch (Exception ex) {
+				diagnostic = ex.Message;
+				return false;
+			}
+		}
+
+		static async Task SendLaunchBaselineAsync(IRoslynLanguageProtocol protocol, HotReloadBaselineRequest request, string projectName)
+		{
+			try {
+				var result = await HotReloadLaunchBaseline.SendAsync(protocol, request, CancellationToken.None).ConfigureAwait(false);
+				if (result.Status != ProtocolHotReloadDeltaStatus.Applied)
+					LoggingService.Warn("Hot Reload: EnC baseline was not captured: " + result.Diagnostic);
+				else LoggingService.Info("Hot Reload: EnC baseline captured for " + projectName + ".");
+			} catch (Exception ex) { LoggingService.Warn("Hot Reload: EnC baseline capture failed: " + ex.Message); }
 		}
 
 		static async Task ObserveReadinessAsync(IHotReloadSession session)

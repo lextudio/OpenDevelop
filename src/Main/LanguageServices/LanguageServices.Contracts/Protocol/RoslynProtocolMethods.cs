@@ -48,6 +48,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		public const string Subtypes = "typeHierarchy/subtypes";
 
 		public const string Status = "roslyn/status";
+		public const string HotReloadCaptureBaseline = "roslyn/hotReload/captureBaseline";
+		public const string HotReloadProduceDelta = "roslyn/hotReload/produceDelta";
 		public const string LensDocument = "roslyn/lens/document";
 		public const string FindMember = "roslyn/findMember";
 		public const string HelpKeyword = "roslyn/helpKeyword";

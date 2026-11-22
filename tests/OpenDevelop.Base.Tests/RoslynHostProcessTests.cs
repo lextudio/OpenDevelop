@@ -1,5 +1,8 @@
 using ICSharpCode.SharpDevelop.LanguageServices;
 using ICSharpCode.SharpDevelop.LanguageServices.Protocol;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+using System.Reflection.PortableExecutable;
 using Xunit;
 
 namespace OpenDevelop.Base.Tests;
@@ -17,6 +20,68 @@ namespace OpenDevelop.Base.Tests;
 /// </summary>
 public class RoslynHostProcessTests
 {
+	[Fact]
+	public async Task HotReloadDelta_UsesTheHostProjectAndLaunchModuleBaseline()
+	{
+		var token = TestContext.Current.CancellationToken;
+		using var transport = new RoslynHostProcessTransport(TryLocateHost(), TimeSpan.FromSeconds(60));
+		var protocol = new RemoteRoslynLanguageProtocol(transport);
+		var directory = Directory.CreateTempSubdirectory("RoslynHotReload-");
+		try {
+			var sourcePath = Path.Combine(directory.FullName, "View.cs");
+			var projectPath = Path.Combine(directory.FullName, "HotReload.csproj");
+			// Capture a method without EnC local/lambda data, then add both in the live edit. This
+			// exercises the baseline's deferred PDB callbacks. Updating Nested also verifies its
+			// CLR `Outer+Nested` identity maps to the initial PE TypeDef token.
+			const string before = "public class View<T> { public string Text() => \"before\"; public string Text(string input) => input; } public class Container { public class Nested { public string Text() => \"before\"; } }";
+			const string after = "public class View<T> { public string Text() { var value = \"after\"; System.Func<string> getter = () => value; return getter(); } public string Text(string input) => input; } public class Container { public class Nested { public string Text() => \"after\"; } }";
+			const string afterStaticConstructor = "public class View<T> { static View() { } public string Text() { var value = \"after\"; System.Func<string> getter = () => value; return getter(); } public string Text(string input) => input; } public class Container { public class Nested { public string Text() => \"after\"; } }";
+			const string afterEvent = "public class View<T> { public event System.EventHandler Changed; public string Text() { var value = \"after\"; System.Func<string> getter = () => value; return getter(); } public string Text(string input) => input; } public class Container { public class Nested { public string Text() => \"after\"; } }";
+			await File.WriteAllTextAsync(sourcePath, before, token);
+			var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+				.Select(path => Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(path));
+			var compiler = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("HotReload",
+				new[] { Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
+					Microsoft.CodeAnalysis.Text.SourceText.From(before, System.Text.Encoding.UTF8)) }, references,
+				new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
+			using var image = new MemoryStream();
+			using var symbols = new MemoryStream();
+			var emitted = compiler.Emit(image, symbols,
+				options: new Microsoft.CodeAnalysis.Emit.EmitOptions(debugInformationFormat: Microsoft.CodeAnalysis.Emit.DebugInformationFormat.PortablePdb));
+			Assert.True(emitted.Success, string.Join(Environment.NewLine, emitted.Diagnostics));
+			var project = new HotReloadProjectId(projectPath, null);
+			await protocol.RoslynProjectLoadAsync(new LanguageServiceProjectSnapshot(projectPath, "C#", new[] { sourcePath },
+				references.Select(reference => ((Microsoft.CodeAnalysis.PortableExecutableReference)reference).FilePath!).ToArray(),
+				Array.Empty<string>(), Array.Empty<string>(), null, null), token);
+
+			var captured = await protocol.RoslynHotReloadCaptureBaselineAsync(
+				new HotReloadBaselineRequest(project, image.ToArray(), symbols.ToArray()), token);
+			Assert.Equal(HotReloadDeltaStatus.Applied, captured.Status);
+			await protocol.TextDocumentDidChangeAsync(new TextDocumentIdentifier(sourcePath), after, token);
+			var delta = await protocol.RoslynHotReloadProduceDeltaAsync(new HotReloadDeltaRequest(project), token);
+
+			Assert.True(delta.Status == HotReloadDeltaStatus.Applied, delta.Status + ": " + delta.Diagnostic);
+			Assert.NotNull(delta.Delta);
+			Assert.NotEmpty(delta.Delta!.Metadata);
+			Assert.NotEmpty(delta.Delta.IL);
+			Assert.NotEmpty(delta.Delta.Pdb);
+			Assert.NotEmpty(delta.Delta.UpdatedTypeTokens);
+			using var peReader = new PEReader(new MemoryStream(image.ToArray(), writable: false));
+			var reader = peReader.GetMetadataReader();
+			var nested = reader.TypeDefinitions.Single(handle =>
+				reader.GetString(reader.GetTypeDefinition(handle).Name) == "Nested");
+			Assert.Contains(MetadataTokens.GetToken(nested), delta.Delta.UpdatedTypeTokens);
+			await protocol.TextDocumentDidChangeAsync(new TextDocumentIdentifier(sourcePath), afterStaticConstructor, token);
+			var staticConstructorEdit = await protocol.RoslynHotReloadProduceDeltaAsync(new HotReloadDeltaRequest(project), token);
+			Assert.Equal(HotReloadDeltaStatus.RudeEdit, staticConstructorEdit.Status);
+			Assert.Contains("static constructor", staticConstructorEdit.Diagnostic, StringComparison.OrdinalIgnoreCase);
+			await protocol.TextDocumentDidChangeAsync(new TextDocumentIdentifier(sourcePath), afterEvent, token);
+			var eventEdit = await protocol.RoslynHotReloadProduceDeltaAsync(new HotReloadDeltaRequest(project), token);
+			Assert.Equal(HotReloadDeltaStatus.RudeEdit, eventEdit.Status);
+			Assert.Contains("Adding", eventEdit.Diagnostic);
+		} finally { directory.Delete(true); }
+	}
+
     [Fact]
     public async Task DocumentStatus_ReturnsRealReferencesAndOptInDiagnosticSamples()
     {

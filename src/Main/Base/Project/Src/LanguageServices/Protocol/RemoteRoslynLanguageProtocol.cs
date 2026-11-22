@@ -165,6 +165,14 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		public Task<WorkspaceStatus> RoslynStatusAsync(CancellationToken cancellationToken) =>
 			InvokeAsync<WorkspaceStatus>(RoslynProtocolMethods.Status, new { }, cancellationToken);
 
+		public Task<HotReloadDeltaResponse> RoslynHotReloadCaptureBaselineAsync(HotReloadBaselineRequest request, CancellationToken cancellationToken) =>
+			InvokeAsync<HotReloadDeltaResponse>(RoslynProtocolMethods.HotReloadCaptureBaseline,
+				new { hotReloadBaselineRequest = request }, cancellationToken);
+
+		public Task<HotReloadDeltaResponse> RoslynHotReloadProduceDeltaAsync(HotReloadDeltaRequest request, CancellationToken cancellationToken) =>
+			InvokeAsync<HotReloadDeltaResponse>(RoslynProtocolMethods.HotReloadProduceDelta,
+				new { hotReloadDeltaRequest = request }, cancellationToken);
+
 		public Task<LensDocumentResult> RoslynLensDocumentAsync(TextDocumentIdentifier document, CancellationToken cancellationToken) =>
 			InvokeAsync<LensDocumentResult>(RoslynProtocolMethods.LensDocument, new { document }, cancellationToken);
 
