@@ -211,21 +211,29 @@ namespace ICSharpCode.SharpDevelop.Project
 			BeginSolutionOpen();
 			ResolveProjectBindings();
 			LoadingSolution = fileName;
-			Solution solution;
+			Solution solution = null;
 			try {
 				solution = await solutionBuilder.BuildAsync(
 					progress => BuildSolution(fileName, progress),
 					token => SD.StatusBar.CreateProgressMonitor(token),
-					cancellationToken);
+					cancellationToken).ConfigureAwait(false);
 			} finally {
-				// Resumed on the UI thread (the caller's dispatcher context), which now owns the model.
-				// A newer open may already have replaced the marker with its own file.
-				if (LoadingSolution == fileName)
-					LoadingSolution = null;
+				// Explicitly back on the UI thread: the caller may have no SynchronizationContext (startup).
+				SD.MainThread.InvokeIfRequired(() => {
+					// A newer open may already have replaced the marker with its own file.
+					if (LoadingSolution == fileName)
+						LoadingSolution = null;
+				});
 			}
-			SD.MainThread.VerifyAccess();
 			if (solution == null)
 				return false; // cancelled or superseded
+			return SD.MainThread.InvokeIfRequired(() => CompleteSolutionOpen(solution, fileName));
+		}
+		
+		/// <summary>Publishes a finished build on the UI thread, which takes the model over.</summary>
+		bool CompleteSolutionOpen(Solution solution, FileName fileName)
+		{
+			solution.ThreadAffinity.TransferOwnershipToCurrentThread();
 			if (currentSolution != null) {
 				solution.Dispose(); // something else was opened meanwhile (synchronous path)
 				return false;
