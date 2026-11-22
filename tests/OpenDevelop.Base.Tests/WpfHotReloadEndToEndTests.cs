@@ -100,6 +100,90 @@ public sealed class WpfHotReloadEndToEndTests
 		} finally { directory.Delete(true); }
 	}
 
+	/// <summary>
+	/// A merge that throws after it already changed the live tree must not leave the window as a mix
+	/// of two texts: the agent re-applies the last text that applied, or the text the IDE says the
+	/// application started from. The failure is injected (WPF_HOTRELOAD_TEST_FAULT_AFTER_MERGE) after
+	/// a complete merge, so the new text is on screen when the failure happens.
+	/// </summary>
+	[Fact]
+	public async Task FailedMerge_RestoresTheLastAppliedState()
+	{
+		const string faultMarker = "HR_FAULT_AFTER_MERGE";
+		var fixture = LocateFixtureExecutable();
+		Assert.True(File.Exists(fixture), $"The WPF Hot Reload fixture must be built before this test; expected '{fixture}'.");
+		Environment.SetEnvironmentVariable("OD_WPF_HOTRELOAD_AGENT", LocateAgentForTest());
+		var adapter = new WpfApplicationHotReloadAdapter();
+		var startInfo = new ProcessStartInfo(fixture) { UseShellExecute = false };
+		if (OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.Arm64
+			&& Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet") {
+			startInfo.Arguments = "\"" + Path.ChangeExtension(fixture, ".dll") + "\"";
+			startInfo.FileName = Environment.ProcessPath!;
+		}
+		var session = await adapter.StartAsync(
+			new HotReloadLaunchContext(project: null, withDebugger: false), startInfo, CancellationToken.None);
+		await using (session) {
+			startInfo.Environment["WPF_HOTRELOAD_TEST_FAULT_AFTER_MERGE"] = faultMarker;
+			var pipeName = startInfo.Environment["WPF_HOTRELOAD_PIPE"];
+			using var app = Process.Start(startInfo);
+			Assert.NotNull(app);
+			try {
+				Assert.True(await session.WaitForReadyAsync(TimeSpan.FromSeconds(60), CancellationToken.None),
+					$"The agent never became ready (state {session.State}, exited {app.HasExited}).");
+				var xamlPath = Path.Combine(RepositoryRoot(), "tests", "fixtures", "WpfHotReloadFixture", "SamplePane.xaml");
+				var original = await File.ReadAllTextAsync(xamlPath);
+				string Faulty(string text) => text.Replace("Text=\"Sample pane\"", "Text=\"Broken\"") + "<!-- " + faultMarker + " -->";
+				Task<HotReloadApplyResult> Apply(string previous, string current, int version) => session.ApplyAsync(
+					new HotReloadDocumentChange(xamlPath, previous, current, version, HotReloadChangeKind.FullDocument),
+					CancellationToken.None);
+
+				// Nothing applied yet: the rollback target is the text the application started from.
+				var first = await Apply(original, Faulty(original), 1);
+				Assert.False(first.IsSuccess, first.Message);
+				Assert.Contains("restored the last applied state", first.Message);
+				Assert.Equal("Sample pane", await QueryAgentAsync(pipeName, "PaneTitle.Text"));
+				// A second failure before any complete apply, sent with the failed edit as "previous":
+				// the restored launch text, not that edit, is what the agent must return to.
+				var again = await Apply(Faulty(original), Faulty(original).Replace("Broken", "Broken again"), 2);
+				Assert.False(again.IsSuccess, again.Message);
+				Assert.Contains("restored the last applied state", again.Message);
+				Assert.Equal("Sample pane", await QueryAgentAsync(pipeName, "PaneTitle.Text"));
+
+				var good = original.Replace("Text=\"Sample pane\"", "Text=\"Hot reloaded\"");
+				var applied = await Apply(original, good, 2);
+				Assert.True(applied.IsSuccess, applied.Message);
+				Assert.Equal("Hot reloaded", await QueryAgentAsync(pipeName, "PaneTitle.Text"));
+
+				// After a successful apply, that text is the rollback target.
+				var second = await Apply(good, Faulty(original), 3);
+				Assert.False(second.IsSuccess, second.Message);
+				Assert.Contains("restored the last applied state", second.Message);
+				Assert.Equal("Hot reloaded", await QueryAgentAsync(pipeName, "PaneTitle.Text"));
+
+				// Text only the XML fallback could apply ("ok ... | full apply skipped") is not a state to
+				// roll back to: the next failure must still restore the last complete apply.
+				// "{}" escapes a literal brace; the fallback must drop it like the XAML parser does.
+				var partial = good.Replace("Text=\"Hot reloaded\"", "Text=\"{}{Partly applied}\"")
+					.Replace("</UserControl>", "<nope:Missing xmlns:nope=\"clr-namespace:Nope.Missing\" /></UserControl>");
+				Assert.NotEqual(good, partial);
+				var fallback = await Apply(good, partial, 4);
+				Assert.True(fallback.IsSuccess, fallback.Message);
+				Assert.Contains("full apply", fallback.Message);
+				Assert.Equal("{Partly applied}", await QueryAgentAsync(pipeName, "PaneTitle.Text"));
+				var third = await Apply(partial, Faulty(original), 5);
+				Assert.False(third.IsSuccess, third.Message);
+				Assert.Contains("restored the last applied state", third.Message);
+				Assert.Equal("Hot reloaded", await QueryAgentAsync(pipeName, "PaneTitle.Text"));
+				Assert.False(app.HasExited);
+			} finally {
+				if (!app.HasExited) {
+					app.Kill(entireProcessTree: true);
+					app.WaitForExit(10_000);
+				}
+			}
+		}
+	}
+
 	[Fact]
 	public async Task AppliedXaml_ChangesTheLiveApplication()
 	{

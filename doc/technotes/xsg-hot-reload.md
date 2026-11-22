@@ -92,7 +92,7 @@ Route T stays the fast path (unsaved buffer, no build). Route D is the slow path
 | 0b | A real LibreWPF app with a live window under XSG, Route D | OpenDevelop + openavalon | **done locally** with the OpenDevelop producer instead of `dotnet watch`: `XsgHotReloadEndToEndTests` (see below) |
 | 1 | Generator hot-reload ready in Debug: typed `x:Name` fields, event wiring, DynamicResource via `SetResourceReference`, `[MetadataUpdateHandler]` + weak registry | openavalon | done in the working tree (not committed); typed fields, events, `SetResourceReference`, idempotence, `#line` were already in `f6cf29056` |
 | 2 | `HotReloadWorkflow.Classify` from a real XAML parse diff: Route T / `BuildRequired` (`{cs:}`, events) / `RestartRequired` (`x:Name` removed, `x:Class` changed) | OpenDevelop | done, and only for projects that opted in to XSG (`UseLibreWpfXamlSourceGenerator` in the project file, or the `LIBREWPF_USE_XSG` environment switch; a value set in Directory.Build.props is not seen); BAML and WinUI keep the text path. Event-handler edits are not recognised (text alone cannot tell an event from a property), they still take Route T |
-| 3 | Agent: only start in the target app; atomic apply, last-known-good, serialized queue | WpfHotReload.Runtime | target-process guard committed (`9f5f214`, not pushed). Serialized queue already holds: the pipe server has one instance and handles each request synchronously on the dispatcher. Last-known-good: committed (`be2ba81`, not pushed). A merge that throws re-applies the last text that applied, or the IDE's `previousXamlText` before any; covered by `WpfHotReloadEndToEndTests.FailedMerge_RestoresTheLastAppliedState` through the test-only `WPF_HOTRELOAD_TEST_FAULT_AFTER_MERGE` marker. Atomicity beyond that (a restore that itself fails) reports "restart the application" |
+| 3 | Agent: only start in the target app; atomic apply, last-known-good, serialized queue | WpfHotReload.Runtime | target-process guard published (`9f5f214`). Serialized queue already holds: the pipe server has one instance and handles each request synchronously on the dispatcher. Last-known-good: published (`be2ba81`, `0.1.0-ci.2`). A merge that throws re-applies the last text that applied, or the IDE's `previousXamlText` before any; covered by `WpfHotReloadEndToEndTests.FailedMerge_RestoresTheLastAppliedState` through the test-only `WPF_HOTRELOAD_TEST_FAULT_AFTER_MERGE` marker. Atomicity beyond that (a restore that itself fails) reports "restart the application" |
 | 5 | Route D without `dotnet watch`: delta producer (E0), agent `applyDelta` (E1), SharpDbg `sharpdbg/applyDeltas` (E3a), debug-state follow-up (E3b) | OpenDevelop + sharpdbg | E2 done; E0 done locally (host producer, launch DLL/PDB capture, EnC PDB maps); schedule in `sharpdbg-enc.md` |
 | 4 | Convergence tests (apply, revert, compare) and an XSG journey beside `WpfHotReloadJourneyTests` | OpenDevelop | Base-level XSG journey done (`XsgHotReloadEndToEndTests`), including convergence for Route D (edit, second edit, revert reaches the launch text, agent and SharpDbg) and Route T rollback; IDE (DevFlow) journey done locally (`XsgProject_CsExpressionEdit_AppliesAsACodeDelta`) |
 
@@ -125,8 +125,8 @@ so it is not a valid minimal XSG fixture.
 
 Phase 3 guard: `StartupHook.Initialize` returns unless `PresentationFramework` resolves, so inherited
 `DOTNET_STARTUP_HOOKS` in `dotnet watch` and build hosts no longer start a listener on the app's pipe.
-Not yet exercised against a real `dotnet watch` run (phase 0b). OpenDevelop only gets it, and `applyDelta`, once
-WpfHotReload.Runtime is pushed and the `0.1.0-ci.1` pin moves (see `sharpdbg-enc.md`, Status).
+Not yet exercised against a real `dotnet watch` run (phase 0b). Published in `WpfHotReload.Runtime 0.1.0-ci.2`, which
+OpenDevelop pins (see `sharpdbg-enc.md`, Status).
 
 ## Route D end to end (2026-11-22, local)
 
@@ -190,21 +190,18 @@ loaded the SDK's CA analyzers: MSBuild reports them as `.../Sdks/Microsoft.NET.S
 the filter only matched after normalising the path. The milestone covers loading projects into the host, not running
 the generators: those run lazily, when a compilation is first needed.
 
-## Local iteration (nothing published yet)
+## Local iteration
 
-Packages under test are packed with unique versions into `artifacts/openavalon-feed` and the pins are moved locally,
-not committed:
+The agent and SharpDbg are published and pinned (`WpfHotReload.Runtime 0.1.0-ci.2`, `LeXtudio.SharpDbg.*
+1.0.0-lextudio.45065133674.1`). The XAML source generator is not: `tests/fixtures/XsgLocalFeedFixture` references a
+local-only `LibreWPF.Xaml.SourceGenerator 0.1.0-local.2` packed from `../openavalon/LibreWPF/src/LibreWPF.Xaml.SourceGenerator`
+(`dotnet pack -p:Version=...` into `artifacts/openavalon-feed`), so the XSG tests skip wherever it is not built.
 
-| Package | Local version | Source |
-|---|---|---|
-| `WpfHotReload.Runtime` | `0.1.0-dev.7` | `../WpfHotReload.Runtime`, `dotnet pack -p:Version=...` |
-| `LeXtudio.SharpDbg.Cli` | `1.0.0-lextudio.dev.2` (`SharpDbgCliVersion`) | `../sharpdbg/iac/pack-opendevelop-cli.ps1`; run pwsh with `-NoProfile` and `/usr/local/share/dotnet` first on `PATH`, because the profile puts Homebrew's dotnet first |
-| `LibreWPF.Xaml.SourceGenerator` | `0.1.0-local.2` (fixture only) | `../openavalon/LibreWPF/src/LibreWPF.Xaml.SourceGenerator`, `dotnet pack` |
-
-Bump the version on every repack (NuGet caches a version forever). `sync-openavalon-feed.ps1` refuses a pin that
-GitHub Packages does not have; write `<package>.nupkg.verified` (two lines: id, version) beside a local package so the
-sync skips it and still fetches everything else. Before pushing, publish in dependency order and
-replace the local pins with published ones.
+To iterate on an unpublished package, pack it with a new unique version into `artifacts/openavalon-feed`, move the pin
+locally, and bump the version on every repack (NuGet caches a version forever). `sync-openavalon-feed.ps1` refuses a
+pin that GitHub Packages does not have; write `<package>.nupkg.verified` (two lines: id, version) beside a local package
+so the sync skips it and still fetches everything else. SharpDbg's `iac/pack-opendevelop-cli.ps1` must run under
+`pwsh -NoProfile` with `/usr/local/share/dotnet` first on `PATH`, because the profile puts Homebrew's dotnet first.
 
 ## Open questions
 

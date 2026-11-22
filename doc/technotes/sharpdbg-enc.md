@@ -1,24 +1,18 @@
 # Edit and Continue (EnC) / code-delta Hot Reload for OpenDevelop and SharpDbg
 
-Status (2026-11-22): E0, E1 and E3a are committed in every repository involved, but **nothing is pushed or
-published**, so OpenDevelop `master` does not yet run them:
+Status (2026-11-22): E0, E1 and E3a are committed and published. OpenDevelop pins `WpfHotReload.Runtime 0.1.0-ci.2`
+(lextudio/WpfHotReload.Runtime run 45065130341, commit `be2ba81`) and SharpDbg `1.0.0-lextudio.45065133674.1`
+(lextudio/sharpdbg run 45065133674, `main` at `158e240`):
 
-| Repository | Commits (local, not pushed) | What |
+| Repository | Commits | What |
 |---|---|---|
-| OpenDevelop | `59366a11e4` E0, `bc6b3839bd` E1+E3a client, `70d3f22794` updated method tokens, `08d12ee36d` host global usings/analyzers/AdditionalFiles, `e498565ea8` delta generations, XAML text, debugger applier, classification, apphost baseline | producer, agent pipe payload, `DapSession.ApplyDeltasAsync` |
-| WpfHotReload.Runtime | `6f2be2d` `applyDelta`, `502377a` handler callbacks, `9f5f214` startup guard, `be2ba81` restore-on-failure, `runUpdateHandlers`, property query | Tier 1 applier in the agent |
-| sharpdbg (`rebase/upstream-2026-11`) | `e0407f8` E2, `e22b991` `sharpdbg/applyDeltas`, `1d01991` attach opt-in, `739eaac` PDB delta symbol fidelity (E3b part), `158e240` apply while running | Tier 2 applier |
-| openavalon/LibreWPF (`codex/crossdesktop-native-package-closure-clean`) | `f5df03025` EnC-safe generator, `b66539625` x:Name Name/NameScope | XAML source generator |
+| OpenDevelop (local, not pushed) | `59366a11e4` E0, `bc6b3839bd` E1+E3a client, `70d3f22794` updated method tokens, `08d12ee36d` host global usings/analyzers/AdditionalFiles, `e498565ea8` delta generations, XAML text, debugger applier, classification, apphost baseline, `504182e9fd` XSG end-to-end tests and docs | producer, agent pipe payload, `DapSession.ApplyDeltasAsync` |
+| WpfHotReload.Runtime (pushed) | `6f2be2d` `applyDelta`, `502377a` handler callbacks, `9f5f214` startup guard, `be2ba81` restore-on-failure, `runUpdateHandlers`, property query | Tier 1 applier in the agent |
+| sharpdbg (pushed to `main`) | `e0407f8` E2, `e22b991` `sharpdbg/applyDeltas`, `1d01991` attach opt-in, `739eaac` PDB delta symbol fidelity (E3b part), `158e240` apply while running | Tier 2 applier |
+| openavalon/LibreWPF (local, not pushed) | `f5df03025` EnC-safe generator, `b66539625` x:Name Name/NameScope | XAML source generator; the XSG fixture still uses the local-only `LibreWPF.Xaml.SourceGenerator 0.1.0-local.2`, so its tests skip in CI |
 
-Not yet committed in OpenDevelop, because they need the published packages: `XsgHotReloadEndToEndTests`, the XSG
-fixture, the end-to-end additions in `WpfHotReloadEndToEndTests`, the XSG IDE journey, both technotes and the
-package pins (locally `WpfHotReload.Runtime 0.1.0-dev.7`, `LeXtudio.SharpDbg.Cli 1.0.0-lextudio.dev.2`).
-
-**Blocker [verified 2026-11-22]:** `Directory.Packages.props` pins `WpfHotReload.Runtime` `0.1.0-ci.1`, which predates
-`applyDelta`. With it, `WpfHotReloadEndToEndTests.ApplyDelta_UpdatesALiveWpfAssemblyAndRunsItsMetadataHandler` fails
-(`error: invalid request`); the XAML test still passes. Push WpfHotReload.Runtime (its workflow publishes
-`0.1.0-ci.<run>`), move the pin, run `sync-openavalon-feed.ps1`. The same applies to SharpDbg
-(`SharpDbgCliVersion`) before E3a can run in the IDE.
+With the old `0.1.0-ci.1` pin, `WpfHotReloadEndToEndTests.ApplyDelta_UpdatesALiveWpfAssemblyAndRunsItsMetadataHandler`
+failed (`error: invalid request`); with the published packages it passes.
 
 Tags: **[verified]** run or read in this tree, **[docs]** from published sources, **[open]** unknown, needs an experiment.
 
@@ -162,9 +156,9 @@ Status: **done** / **next** / todo. "Done" means committed locally and tested.
 | Phase | Content | Status | Risk |
 |---|---|---|---|
 | E2 | Tier 2 spike: `ApplyChanges` under SharpDbg on macOS arm64 | **done** (`sharpdbg` e0407f8; `EditAndContinueTests`; full suite 182/185, the 1 failure predates it) | high |
-| E0 | Producer protocol in the Roslyn host with tests: method-body edit, add field, rude edits, compile error; capture the actual launch PE/PDB and produce from the host-owned project/TFM compilation. Read PDB slot/lambda maps; move to the Features service if broader rude-edit detection needs it. | **done locally** (`59366a11e4`, not pushed) | medium |
-| E1 | Tier 1: agent `applyDelta` pipe message, `MetadataUpdater.ApplyUpdate`, explicit `[MetadataUpdateHandler]` invocation, `IHotReloadDeltaApplier`, WPF adapter reports `CodeDelta`, `TryConfigureLaunch` sets `DOTNET_MODIFIABLE_ASSEMBLIES=debug`. Cross-platform. | committed (OpenDevelop `bc6b3839bd`, agent `6f2be2d`/`502377a`); blocked on publishing the agent (see Status) | low |
-| E3a | SharpDbg DAP request `sharpdbg/applyDeltas` (takes `DapRequestAndRuntimeEventLock`, wraps COM failures, stops and resumes the process), plus `DapSession.ApplyDeltasAsync` and the launch flag that turns `EnableEditAndContinue` on. | committed (sharpdbg `e22b991`/`1d01991`, OpenDevelop `bc6b3839bd`/`70d3f22794`); **real journey passes locally** (`XsgHotReloadEndToEndTests.CsExpressionEdit_UnderSharpDbg_ReachesTheLiveWindow`, see below); not yet committed: running-debuggee apply, `SharpDbgDeltaApplier`, `runUpdateHandlers` | medium |
+| E0 | Producer protocol in the Roslyn host with tests: method-body edit, add field, rude edits, compile error; capture the actual launch PE/PDB and produce from the host-owned project/TFM compilation. Read PDB slot/lambda maps; move to the Features service if broader rude-edit detection needs it. | done (`59366a11e4`) | medium |
+| E1 | Tier 1: agent `applyDelta` pipe message, `MetadataUpdater.ApplyUpdate`, explicit `[MetadataUpdateHandler]` invocation, `IHotReloadDeltaApplier`, WPF adapter reports `CodeDelta`, `TryConfigureLaunch` sets `DOTNET_MODIFIABLE_ASSEMBLIES=debug`. Cross-platform. | done and published (OpenDevelop `bc6b3839bd`, agent `6f2be2d`/`502377a`, pinned `0.1.0-ci.2`) | low |
+| E3a | SharpDbg DAP request `sharpdbg/applyDeltas` (takes `DapRequestAndRuntimeEventLock`, wraps COM failures, stops and resumes the process), plus `DapSession.ApplyDeltasAsync` and the launch flag that turns `EnableEditAndContinue` on. | done and published (sharpdbg `e22b991`/`1d01991`/`158e240`, OpenDevelop `bc6b3839bd`/`70d3f22794`/`e498565ea8`); **real journey passes** (`XsgHotReloadEndToEndTests.CsExpressionEdit_UnderSharpDbg_ReachesTheLiveWindow`, see below) | medium |
 | E3b | SharpDbg state after an edit: PDB delta merge into `ModuleMetadataReader`, breakpoint rebind, `EditAndContinueRemap`/active statements, stepping state, handler invocation (X2). | partial, committed as sharpdbg `739eaac`: portable-PDB `EncMap` overlay and source-breakpoint rebind are verified in a real debuggee; active-frame remap, stepping-state handling and handler invocation remain | high |
 | E4 | OpenDevelop classification: text push vs delta per edit, rude edit -> `RestartRequired`, compile error -> `BuildRequired`, UI state. | todo | low |
 
@@ -186,7 +180,7 @@ Review follow-ups from the e0407f8 review (non-blocking): document or take `DapR
 - **X5** Where `Microsoft.CodeAnalysis.ExternalAccess.HotReload` is published and whether OpenDevelop may reference it.
 - **X6** Partly answered: launched under SharpDbg with `DOTNET_MODIFIABLE_ASSEMBLIES=debug` (the adapter sets it for every launch), `ApplyChanges` works. Attaching later is untested.
 
-## E3a journey (2026-11-22, local)
+## E3a journey (2026-11-22)
 
 The XSG fixture runs under the real SharpDbg (`DapSession`, `EnableEditAndContinue`, the adapter's launch environment),
 the Roslyn host produces the delta for a `{cs:}` edit, `SharpDbgDeltaApplier` sends `sharpdbg/applyDeltas`, and the
@@ -198,7 +192,7 @@ live window shows the new text, with the application never paused. Two changes m
   `SharpDbgDeltaApplier` only requires a live session. SharpDbg test: `ApplyDelta_WhileRunning_TakesEffectWithoutAStop`.
 - **Handlers (X2)**, as above.
 
-## Delta generations (2026-11-22, local)
+## Delta generations (2026-11-22)
 
 Deltas are a chain: each names the generation it builds on (`EncBaseId`). The producer used to diff every edit
 against the launch baseline, so the second delta of a session claimed to build on generation 0 while the application
