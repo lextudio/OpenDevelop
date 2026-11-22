@@ -242,7 +242,19 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            var analyzers = project.GetItemsOfType(new ItemType("Analyzer"))
+            // Declared <Analyzer> items plus what reference resolution resolved (package analyzers and
+            // source generators exist only after ResolvePackageAssets), minus the SDK's code-quality rules.
+            var analyzers = ResolvedAnalyzerPaths.Filter(project.GetItemsOfType(new ItemType("Analyzer"))
+                    .Select(item => item.FileName?.ToString())
+                    .Concat(ResolvedAnalyzerPaths.TryGet(projectFileName) ?? Array.Empty<string>())
+                    .Where(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                    .Cast<string>())
+                .ToArray();
+
+            // Source-generator inputs (XAML for the XAML source generator). Without them the host's
+            // generators produce nothing, so its compilation lacks every generated member and a
+            // Hot Reload delta for an edited XAML file cannot be computed.
+            var additionalFiles = project.GetItemsOfType(new ItemType("AdditionalFiles"))
                 .Select(item => item.FileName?.ToString())
                 .Where(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path))
                 .Cast<string>()
@@ -259,8 +271,31 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                 NullIfEmpty(msbuildProject?.GetEvaluatedProperty("LangVersion")),
                 NullIfEmpty(msbuildProject?.GetEvaluatedProperty("Nullable")),
                 NullIfEmpty(targetFramework),
-                analyzers);
+                analyzers,
+                additionalFiles)
+            {
+                GlobalUsings = msbuildProject is null ? Array.Empty<string>()
+                    : GlobalUsingDirectives(msbuildProject.GetEvaluatedProjectItems()
+                        .Where(item => string.Equals(item.ItemType, "Using", StringComparison.OrdinalIgnoreCase))
+                        .Select(item => (item.EvaluatedInclude, item.GetMetadata("Alias"), item.GetMetadata("Static")))),
+            };
         }
+
+        /// <summary>
+        /// The C# global using directives the SDK's GenerateGlobalUsings target would write for the
+        /// evaluated <c>Using</c> items (ImplicitUsings and explicit ones). That target never runs for the
+        /// language service, and without it an ImplicitUsings project does not compile in the host.
+        /// </summary>
+        public static string[] GlobalUsingDirectives(IEnumerable<(string Include, string? Alias, string? Static)> usings)
+            => usings
+                .Where(item => !string.IsNullOrWhiteSpace(item.Include))
+                .Select(item => !string.IsNullOrWhiteSpace(item.Alias)
+                    ? item.Alias!.Trim() + " = global::" + item.Include.Trim()
+                    : string.Equals(item.Static?.Trim(), "true", StringComparison.OrdinalIgnoreCase)
+                        ? "static global::" + item.Include.Trim()
+                        : "global::" + item.Include.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
 
         static LanguageServiceProjectSnapshot? TryEvaluateForTargetFramework(IProject project, string projectFileName, string language, string targetFramework)
         {
@@ -298,11 +333,30 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray();
 
-                var analyzers = evaluated.GetItems("Analyzer")
+                // Declared Analyzer items plus this slice's resolved ones (package analyzers and source
+                // generators exist only after ResolvePackageAssets, per TFM); cached with the slice below.
+                var analyzerResolver = SD.GetService<IMSBuildEngine>() as ITargetFrameworkAnalyzerResolver;
+                var resolvedAnalyzers = project is MSBuildBasedProject msbuildSlice && analyzerResolver is not null
+                    ? analyzerResolver.ResolveAnalyzers(msbuildSlice, targetFramework)
+                    : Array.Empty<string>();
+                // A slice whose resolution failed (an unrestored project, typically) is not cached: its
+                // missing generators would otherwise outlive the restore, which touches no project file.
+                var sliceResolved = analyzerResolver is null || !ResolvedAnalyzerPaths.Enabled
+                    || ResolvedAnalyzerPaths.TryGet(projectFileName, targetFramework) is not null;
+                var analyzers = ResolvedAnalyzerPaths.Filter(evaluated.GetItems("Analyzer")
+                        .Select(item => ResolveFullPath(projectDirectory, item.EvaluatedInclude))
+                        .Concat(resolvedAnalyzers)
+                        .Where(File.Exists))
+                    .ToArray();
+
+                var additionalFiles = evaluated.GetItems("AdditionalFiles")
                     .Select(item => ResolveFullPath(projectDirectory, item.EvaluatedInclude))
                     .Where(File.Exists)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToArray();
+
+                var globalUsings = GlobalUsingDirectives(evaluated.GetItems("Using")
+                    .Select(item => (item.EvaluatedInclude, (string?)item.GetMetadataValue("Alias"), (string?)item.GetMetadataValue("Static"))));
 
                 var snapshot = new LanguageServiceProjectSnapshot(
                     projectFileName,
@@ -314,9 +368,14 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                     NullIfEmpty(evaluated.GetPropertyValue("LangVersion")),
                     NullIfEmpty(evaluated.GetPropertyValue("Nullable")),
                     targetFramework,
-                    analyzers);
+                    analyzers,
+                    additionalFiles)
+                {
+                    GlobalUsings = globalUsings,
+                };
 
-                TfmEvaluationCache.Save(projectFileName, targetFramework, snapshot);
+                if (sliceResolved)
+                    TfmEvaluationCache.Save(projectFileName, targetFramework, snapshot);
                 return snapshot;
             }
             catch (Exception ex)
@@ -474,6 +533,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
             {
                 public string Fingerprint { get; set; } = "";
                 public string?[] ReferencePaths { get; set; } = Array.Empty<string?>();
+                // Null in an entry written before analyzers were recorded: resolve again rather than
+                // serve references whose source generators would be missing.
+                public string[]? AnalyzerPaths { get; set; }
             }
 
             public static string? Fingerprint(MSBuildBasedProject project)
@@ -494,7 +556,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                     var text = new StringBuilder();
                     // A null SDK (no supported .NET 10+ install) still has to yield a stable
                     // fingerprint, so an empty slot stands in rather than throwing here.
-                    text.Append("v1|").Append(sdk?.Sdk?.DotnetExecutablePath ?? string.Empty).Append('|').Append(sdk?.Version ?? string.Empty).Append('\n');
+                    // The analyzer switch changes what an entry holds (OD_RESOLVE_ANALYZERS).
+                    text.Append(ResolvedAnalyzerPaths.Enabled ? "v1|" : "v1-noanalyzers|").Append(sdk?.Sdk?.DotnetExecutablePath ?? string.Empty).Append('|').Append(sdk?.Version ?? string.Empty).Append('\n');
                     foreach (var input in inputs.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
                     {
                         text.Append(input).Append('|');
@@ -526,7 +589,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                     if (path is null || !File.Exists(path))
                         return null;
                     var entry = JsonSerializer.Deserialize<Entry>(File.ReadAllText(path));
-                    return entry is not null && entry.Fingerprint == fingerprint ? entry.ReferencePaths : null;
+                    return entry is not null && entry.Fingerprint == fingerprint && entry.AnalyzerPaths is not null ? entry.ReferencePaths : null;
                 }
                 catch
                 {
@@ -542,9 +605,10 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                     if (path is not null && File.Exists(path))
                     {
                         var entry = JsonSerializer.Deserialize<Entry>(File.ReadAllText(path));
-                        if (entry is not null && entry.Fingerprint == fingerprint)
+                        if (entry is not null && entry.Fingerprint == fingerprint && entry.AnalyzerPaths is not null)
                         {
                             System.Threading.Interlocked.Increment(ref Hits);
+                            ResolvedAnalyzerPaths.Record(project.FileName.ToString(), entry.AnalyzerPaths);
                             return entry.ReferencePaths;
                         }
                     }
@@ -572,7 +636,15 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                     var temporary = path + ".tmp";
-                    File.WriteAllText(temporary, JsonSerializer.Serialize(new Entry { Fingerprint = fingerprint, ReferencePaths = referencePaths }));
+                    // Only a resolution that recorded its analyzers is complete enough to serve later.
+                    if (ResolvedAnalyzerPaths.TryGet(project.FileName.ToString()) is not { } analyzers)
+                        return;
+                    File.WriteAllText(temporary, JsonSerializer.Serialize(new Entry
+                    {
+                        Fingerprint = fingerprint,
+                        ReferencePaths = referencePaths,
+                        AnalyzerPaths = analyzers.ToArray(),
+                    }));
                     File.Move(temporary, path, overwrite: true);
                 }
                 catch (Exception ex)
@@ -629,6 +701,12 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                 public string? LanguageVersion { get; set; }
                 public string? NullableContext { get; set; }
                 public string[] AnalyzerAssemblyFileNames { get; set; } = Array.Empty<string>();
+                // Null in an entry written before AdditionalFiles were recorded: re-evaluate it
+                // rather than serve a snapshot whose source generators silently see no inputs.
+                public string[]? AdditionalFileNames { get; set; }
+                public string[]? GlobalUsings { get; set; }
+                // Whether the entry's analyzers include resolved ones (OD_RESOLVE_ANALYZERS).
+                public bool AnalyzersResolved { get; set; }
             }
 
             public static LanguageServiceProjectSnapshot? TryLoad(string projectFileName, string targetFramework)
@@ -640,7 +718,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                 try
                 {
                     var entry = JsonSerializer.Deserialize<Entry>(File.ReadAllText(path));
-                    if (entry is null)
+                    if (entry is null || entry.AdditionalFileNames is null || entry.GlobalUsings is null
+                        || entry.AnalyzersResolved != ResolvedAnalyzerPaths.Enabled)
                         return null;
                     if (File.GetLastWriteTimeUtc(projectFileName).Ticks != entry.ProjectFileWriteTimeUtcTicks)
                         return null;
@@ -684,7 +763,11 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                         entry.LanguageVersion,
                         entry.NullableContext,
                         targetFramework,
-                        entry.AnalyzerAssemblyFileNames);
+                        entry.AnalyzerAssemblyFileNames,
+                        entry.AdditionalFileNames)
+                    {
+                        GlobalUsings = entry.GlobalUsings,
+                    };
                 }
                 catch (Exception ex)
                 {
@@ -712,6 +795,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                         LanguageVersion = snapshot.LanguageVersion,
                         NullableContext = snapshot.NullableContext,
                         AnalyzerAssemblyFileNames = snapshot.AnalyzerAssemblyFileNames.ToArray(),
+                        AdditionalFileNames = snapshot.AdditionalFileNames.ToArray(),
+                        GlobalUsings = snapshot.GlobalUsings.ToArray(),
+                        AnalyzersResolved = ResolvedAnalyzerPaths.Enabled,
                     };
                     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                     File.WriteAllText(path, JsonSerializer.Serialize(entry));

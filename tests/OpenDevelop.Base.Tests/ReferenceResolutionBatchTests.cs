@@ -142,6 +142,91 @@ public class ReferenceResolutionBatchTests
         Assert.Contains("Lib.dll", appReferences); // the project reference's output, attributed to App
     }
 
+    [Fact]
+    public void CreateResolveReferencesTraversal_WithAnalyzers_InjectsTheCollectorAndKeepsTheProjectsOwnHook()
+    {
+        var xml = ReferenceResolutionBatch.CreateResolveReferencesTraversal(
+            new[] { ("/src/Lib/Lib.csproj", (string?)null, (string?)"/custom/After.targets") }, "/scratch/od.analyzers.targets");
+
+        Assert.Contains("CustomAfterMicrosoftCommonTargets=/scratch/od.analyzers.targets", xml);
+        Assert.Contains("ODOriginalCustomAfterMicrosoftCommonTargets=/custom/After.targets", xml);
+        Assert.Contains("Targets=\"ODResolveAnalyzers\"", xml);
+        Assert.Contains("<ODAnalyzerPath Include=\"@(_A0)\" ODProject=\"/src/Lib/Lib.csproj\" />", xml);
+        Assert.Contains("ODOriginalCustomAfterMicrosoftCommonTargets", ReferenceResolutionBatch.AnalyzersTargetsContent);
+    }
+
+    [Fact]
+    public void ResolvedAnalyzerPaths_DropsOnlyTheSdksCodeQualityAnalyzers()
+    {
+        var kept = ResolvedAnalyzerPaths.Filter(new[] {
+            "/usr/local/share/dotnet/sdk/11.0.100/Sdks/Microsoft.NET.Sdk/analyzers/Microsoft.CodeAnalysis.NetAnalyzers.dll",
+            // As MSBuild actually reports them.
+            "/usr/local/share/dotnet/sdk/11.0.100/Sdks/Microsoft.NET.Sdk/targets/../analyzers/Microsoft.CodeAnalysis.NetAnalyzers.dll",
+            @"C:\Program Files\dotnet\sdk\11.0.100\Sdks\Microsoft.NET.Sdk\analyzers\Microsoft.CodeAnalysis.CSharp.NetAnalyzers.dll",
+            "/usr/local/share/dotnet/packs/Microsoft.NETCore.App.Ref/10.0.0/analyzers/dotnet/cs/System.Text.RegularExpressions.Generator.dll",
+            "/nuget/librewpf.xaml.sourcegenerator/0.1.0/analyzers/dotnet/cs/LibreWPF.Xaml.SourceGenerator.dll",
+            "/nuget/librewpf.xaml.sourcegenerator/0.1.0/analyzers/dotnet/cs/LibreWPF.Xaml.SourceGenerator.dll",
+        }).ToArray();
+
+        Assert.Equal(new[] {
+            "/usr/local/share/dotnet/packs/Microsoft.NETCore.App.Ref/10.0.0/analyzers/dotnet/cs/System.Text.RegularExpressions.Generator.dll",
+            "/nuget/librewpf.xaml.sourcegenerator/0.1.0/analyzers/dotnet/cs/LibreWPF.Xaml.SourceGenerator.dll",
+        }, kept);
+    }
+
+    [Fact]
+    public void ResolvedAnalyzerPaths_KeepsEachTargetFrameworkSliceApart()
+    {
+        // A multi-targeted project resolves each TFM on its own; one slice must never see another's list.
+        var project = "/src/Multi/" + Guid.NewGuid().ToString("N") + ".csproj";
+        ResolvedAnalyzerPaths.Record(project, "net8.0", new[] { "/packs/8/Gen.dll" });
+        ResolvedAnalyzerPaths.Record(project, "net10.0", new[] { "/packs/10/Gen.dll" });
+        ResolvedAnalyzerPaths.Record(project, new[] { "/packs/default/Gen.dll" });
+
+        Assert.Equal(new[] { "/packs/8/Gen.dll" }, ResolvedAnalyzerPaths.TryGet(project, "net8.0"));
+        Assert.Equal(new[] { "/packs/10/Gen.dll" }, ResolvedAnalyzerPaths.TryGet(project, "net10.0"));
+        Assert.Equal(new[] { "/packs/default/Gen.dll" }, ResolvedAnalyzerPaths.TryGet(project));
+        Assert.Null(ResolvedAnalyzerPaths.TryGet(project, "net9.0"));
+    }
+
+    [Fact]
+    public void RealMSBuild_CollectsEachProjectsSourceGenerators()
+    {
+        // The targeting pack's own generators (Regex, LibraryImport) need no package download.
+        using var tree = new TempTree();
+        var lib = tree.File("Lib/Lib.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+            </Project>
+            """);
+        Assert.Equal(0, Dotnet(tree.Root, "restore", lib).ExitCode);
+        var analyzersTargets = tree.File("od.analyzers.targets", ReferenceResolutionBatch.AnalyzersTargetsContent);
+        var traversal = tree.File("resolve.proj", ReferenceResolutionBatch.CreateResolveReferencesTraversal(
+            new[] { (lib, (string?)null, (string?)null) }, analyzersTargets));
+
+        var run = Dotnet(tree.Root, "msbuild", traversal, "-nologo", "-t:Resolve", "-getItem:ODReferencePath", "-getItem:ODAnalyzerPath");
+        var references = ReferenceResolutionBatch.ParseLabelledReferencePaths(run.Output);
+        var analyzers = ReferenceResolutionBatch.ParseLabelledItems(run.Output, "ODAnalyzerPath");
+
+        Assert.True(references != null && analyzers != null, run.Output);
+        Assert.Contains("System.Runtime.dll", references![lib].Select(Path.GetFileName));
+        Assert.Contains("System.Text.RegularExpressions.Generator.dll", analyzers![lib].Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public void GlobalUsingDirectives_FollowTheSdksGeneratedFile()
+    {
+        var directives = ICSharpCode.SharpDevelop.LanguageServices.LanguageServiceProjectSnapshotFactory.GlobalUsingDirectives(new[] {
+            ("System", (string?)null, (string?)null),
+            ("System.Math", (string?)null, (string?)"true"),
+            ("System.Text.StringBuilder", (string?)"Builder", (string?)null),
+            ("System", (string?)null, (string?)null),
+            ("", (string?)null, (string?)null),
+        });
+
+        Assert.Equal(new[] { "global::System", "static global::System.Math", "Builder = global::System.Text.StringBuilder" }, directives);
+    }
+
     static (int ExitCode, string Output) Dotnet(string directory, params string[] args)
     {
         var start = new ProcessStartInfo("dotnet") { WorkingDirectory = directory, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };

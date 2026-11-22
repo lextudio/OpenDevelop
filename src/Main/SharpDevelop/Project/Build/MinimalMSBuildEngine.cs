@@ -42,7 +42,7 @@ using ICSharpCode.SharpDevelop.Project.Sdk;
 
 namespace ICSharpCode.SharpDevelop.Project
 {
-	sealed class MinimalMSBuildEngine : IMSBuildEngine, IBatchAssemblyReferenceResolver
+	sealed class MinimalMSBuildEngine : IMSBuildEngine, IBatchAssemblyReferenceResolver, ITargetFrameworkAnalyzerResolver
 	{
 		public ISet<string> CompileTaskNames { get; } = new HashSet<string> { "Csc", "Vbc", "CoreCompile" };
 
@@ -370,14 +370,20 @@ namespace ICSharpCode.SharpDevelop.Project
 			string scratch = globalJsonDirectory != null ? Path.Combine(globalJsonDirectory, ".od") : Path.GetTempPath();
 			bool createdScratch = !Directory.Exists(scratch);
 			string traversal = Path.Combine(scratch, "resolve-references-" + Guid.NewGuid().ToString("N") + ".proj");
+			string analyzersTargets = Path.ChangeExtension(traversal, ".analyzers.targets");
 			try {
 				Directory.CreateDirectory(scratch);
 				// One process means one SDK. A batch with a project that needs another one (net11.0 on a
 				// pre-release SDK 11) is resolved one by one instead, each project with its own SDK.
 				if (projects.Any(project => DotNetSdkService.ResolveSdkForProject(project) is { IsDefault: false }))
 					return null;
-				var requests = projects.Select(project => (Project: project, File: project.FileName.ToString(), TargetFramework: InnerBuildTargetFramework(project))).ToList();
-				File.WriteAllText(traversal, ReferenceResolutionBatch.CreateResolveReferencesTraversal(requests.Select(r => (r.File, r.TargetFramework)).ToList()));
+				var requests = projects.Select(project => (Project: project, File: project.FileName.ToString(), TargetFramework: InnerBuildTargetFramework(project),
+					OriginalCustomAfter: project.GetEvaluatedProperty("CustomAfterMicrosoftCommonTargets"))).ToList();
+				if (ResolvedAnalyzerPaths.Enabled)
+					File.WriteAllText(analyzersTargets, ReferenceResolutionBatch.AnalyzersTargetsContent);
+				File.WriteAllText(traversal, ReferenceResolutionBatch.CreateResolveReferencesTraversal(
+					requests.Select(r => (r.File, r.TargetFramework, r.OriginalCustomAfter)).ToList(),
+					ResolvedAnalyzerPaths.Enabled ? analyzersTargets : null));
 
 				var psi = CreateDotnetChildStartInfo();
 				psi.ArgumentList.Add("msbuild");
@@ -386,6 +392,8 @@ namespace ICSharpCode.SharpDevelop.Project
 				psi.ArgumentList.Add("-m:" + ResolveNodeCount());
 				psi.ArgumentList.Add("-t:Resolve");
 				psi.ArgumentList.Add("-getItem:ODReferencePath");
+				if (ResolvedAnalyzerPaths.Enabled)
+					psi.ArgumentList.Add("-getItem:ODAnalyzerPath");
 				using var process = Process.Start(psi);
 				if (process == null)
 					return null;
@@ -404,6 +412,7 @@ namespace ICSharpCode.SharpDevelop.Project
 						+ FirstLine(stderr.Length > 0 ? stderr : stdout));
 					return null;
 				}
+				var analyzers = ReferenceResolutionBatch.ParseLabelledItems(stdout, "ODAnalyzerPath");
 				string diagnostics = stdout + "\n" + stderr;
 				foreach (var request in requests) {
 					items.TryGetValue(request.File, out var paths);
@@ -415,6 +424,9 @@ namespace ICSharpCode.SharpDevelop.Project
 					} else {
 						ReferenceResolutionDiagnostics.Succeeded(request.File);
 						result[request.Project] = (IReadOnlyList<string>)paths ?? Array.Empty<string>();
+						if (analyzers != null || !ResolvedAnalyzerPaths.Enabled)
+							ResolvedAnalyzerPaths.Record(request.File,
+								analyzers != null && analyzers.TryGetValue(request.File, out var projectAnalyzers) ? projectAnalyzers : new List<string>());
 					}
 				}
 				return result;
@@ -424,6 +436,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			} finally {
 				try {
 					File.Delete(traversal);
+					File.Delete(analyzersTargets);
 					if (createdScratch && !Directory.EnumerateFileSystemEntries(scratch).Any())
 						Directory.Delete(scratch);
 				} catch { }
@@ -446,7 +459,25 @@ namespace ICSharpCode.SharpDevelop.Project
 			return string.Join("\n", lines);
 		}
 
-		static IEnumerable<string> RunResolveReferences(string projectFileName, string targetFramework, bool logErrorsToOutputPad, DotNetSdkService.SdkChoice sdk = null)
+		/// <summary>One slice of a multi-targeted project: ResolveReferences pinned to that TFM.</summary>
+		public IReadOnlyList<string> ResolveAnalyzers(MSBuildBasedProject project, string targetFramework)
+		{
+			if (project == null || string.IsNullOrEmpty(targetFramework) || !ResolvedAnalyzerPaths.Enabled)
+				return Array.Empty<string>();
+			var file = project.FileName.ToString();
+			try {
+				RunResolveReferences(file, targetFramework, logErrorsToOutputPad: false, DotNetSdkService.ResolveSdkForProject(project),
+					recordTargetFramework: targetFramework);
+			} catch (Exception ex) {
+				LoggingService.Warn("Analyzer resolution failed for " + file + " (" + targetFramework + "): " + ex.Message);
+			}
+			return ResolvedAnalyzerPaths.TryGet(file, targetFramework) ?? (IReadOnlyList<string>)Array.Empty<string>();
+		}
+
+		/// <param name="recordTargetFramework">The slice the resolved analyzers are recorded for: null when the
+		/// caller asked for the project as a whole (whatever inner TFM <paramref name="targetFramework"/> pins).</param>
+		static IEnumerable<string> RunResolveReferences(string projectFileName, string targetFramework, bool logErrorsToOutputPad, DotNetSdkService.SdkChoice sdk = null,
+			string recordTargetFramework = null)
 		{
 			var psi = CreateDotnetChildStartInfo(sdk);
 			psi.ArgumentList.Add("msbuild");
@@ -460,6 +491,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			// -getItem makes MSBuild print the requested item list as JSON on stdout and suppresses
 			// normal build output, so no log parsing is involved.
 			psi.ArgumentList.Add("-getItem:ReferencePath");
+			// The same run resolves the analyzers and source generators (ResolvePackageAssets,
+			// ResolveTargetingPackAssets); evaluation never has them. Recorded for the language service.
+			if (ResolvedAnalyzerPaths.Enabled)
+				psi.ArgumentList.Add("-getItem:Analyzer");
 
 			using var process = Process.Start(psi);
 			if (process == null)
@@ -513,6 +548,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				return Array.Empty<string>();
 			}
 			ReferenceResolutionDiagnostics.Succeeded(projectFileName);
+			ResolvedAnalyzerPaths.Record(projectFileName, recordTargetFramework, MSBuildGetItemOutput.ParseItemIdentities(stdout, "Analyzer"));
 			return MSBuildGetItemOutput.ParseItemIdentities(stdout, "ReferencePath");
 		}
 

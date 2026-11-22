@@ -15,7 +15,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 			string projectFileName, string language, IReadOnlyList<string> documentFileNames,
 			IReadOnlyList<string> metadataReferenceFileNames, IReadOnlyList<string> projectReferenceFileNames,
 			IReadOnlyList<string> preprocessorSymbols, string? languageVersion, string? nullableContext,
-			string? targetFramework = null, IReadOnlyList<string>? analyzerAssemblyFileNames = null)
+			string? targetFramework = null, IReadOnlyList<string>? analyzerAssemblyFileNames = null,
+			IReadOnlyList<string>? additionalFileNames = null)
 		{
 			ProjectFileName = projectFileName ?? throw new ArgumentNullException(nameof(projectFileName));
 			Language = language ?? throw new ArgumentNullException(nameof(language));
@@ -27,6 +28,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 			NullableContext = nullableContext;
 			TargetFramework = targetFramework;
 			AnalyzerAssemblyFileNames = analyzerAssemblyFileNames ?? Array.Empty<string>();
+			AdditionalFileNames = additionalFileNames ?? Array.Empty<string>();
 		}
 
 		public string ProjectFileName { get; }
@@ -39,9 +41,18 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 		public string? NullableContext { get; }
 		public string? TargetFramework { get; }
 		public IReadOnlyList<string> AnalyzerAssemblyFileNames { get; }
+		/// <summary>MSBuild AdditionalFiles: inputs of source generators (XAML for the XAML source generator).</summary>
+		public IReadOnlyList<string> AdditionalFileNames { get; }
 		public string? SolutionDirectory { get; init; }
+		/// <summary>
+		/// C# global using directive bodies (<c>global::System</c>, <c>static global::X</c>,
+		/// <c>A = global::B</c>) from the evaluated <c>Using</c> items: what the SDK's generated
+		/// GlobalUsings.g.cs would hold.
+		/// </summary>
+		public IReadOnlyList<string> GlobalUsings { get; init; } = Array.Empty<string>();
 		public LanguageServiceProjectSnapshot WithSolutionDirectory(string? directory) =>
 			new(ProjectFileName, Language, DocumentFileNames, MetadataReferenceFileNames, ProjectReferenceFileNames,
-				PreprocessorSymbols, LanguageVersion, NullableContext, TargetFramework, AnalyzerAssemblyFileNames) { SolutionDirectory = directory };
+				PreprocessorSymbols, LanguageVersion, NullableContext, TargetFramework, AnalyzerAssemblyFileNames,
+				AdditionalFileNames) { SolutionDirectory = directory, GlobalUsings = GlobalUsings };
 	}
 }

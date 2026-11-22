@@ -67,23 +67,53 @@ namespace ICSharpCode.SharpDevelop.Project
 		}
 
 		public static string CreateResolveReferencesTraversal(IReadOnlyList<(string File, string TargetFramework)> projects)
+			=> CreateResolveReferencesTraversal(projects.Select(project => (project.File, project.TargetFramework, (string)null)).ToList(), null);
+
+		/// <summary>
+		/// The target file <see cref="CreateResolveReferencesTraversal(IReadOnlyList{ValueTuple{string, string, string}}, string)"/>
+		/// injects through <c>CustomAfterMicrosoftCommonTargets</c> to read each project's resolved
+		/// <c>Analyzer</c> items (package analyzers and source generators only exist after
+		/// ResolvePackageAssets/ResolveTargetingPackAssets, and no SDK target returns them). It imports the
+		/// project's own CustomAfterMicrosoftCommonTargets first, so overriding the property loses nothing.
+		/// </summary>
+		public const string AnalyzersTargetsContent = @"<Project>
+  <Import Project=""$(ODOriginalCustomAfterMicrosoftCommonTargets)"" Condition=""'$(ODOriginalCustomAfterMicrosoftCommonTargets)' != '' And Exists('$(ODOriginalCustomAfterMicrosoftCommonTargets)')"" />
+  <Target Name=""ODResolveAnalyzers"" DependsOnTargets=""ResolveReferences"" Returns=""@(Analyzer)"" />
+</Project>
+";
+
+		/// <summary>
+		/// The traversal, also collecting each project's <c>Analyzer</c> items as <c>ODAnalyzerPath</c> when
+		/// <paramref name="analyzersTargetsFile"/> (a file holding <see cref="AnalyzersTargetsContent"/>) is
+		/// given. <c>OriginalCustomAfter</c> is the project's evaluated CustomAfterMicrosoftCommonTargets.
+		/// </summary>
+		public static string CreateResolveReferencesTraversal(IReadOnlyList<(string File, string TargetFramework, string OriginalCustomAfter)> projects,
+			string analyzersTargetsFile)
 		{
 			string Escape(string value) => System.Security.SecurityElement.Escape(value);
-			string PropertiesFor(string targetFramework) =>
-				"BuildingInsideVisualStudio=true" + (string.IsNullOrEmpty(targetFramework) ? "" : ";TargetFramework=" + targetFramework);
+			string PropertiesFor(string targetFramework, string originalCustomAfter) =>
+				"BuildingInsideVisualStudio=true" + (string.IsNullOrEmpty(targetFramework) ? "" : ";TargetFramework=" + targetFramework)
+				+ (analyzersTargetsFile == null ? "" : ";CustomAfterMicrosoftCommonTargets=" + analyzersTargetsFile
+					+ ";ODOriginalCustomAfterMicrosoftCommonTargets=" + originalCustomAfter);
 			var text = new StringBuilder();
 			text.AppendLine("<Project>");
 			text.AppendLine("  <ItemGroup>");
 			foreach (var project in projects)
-				text.AppendLine("    <ODProject Include=\"" + Escape(project.File) + "\" Properties=\"" + Escape(PropertiesFor(project.TargetFramework)) + "\" />");
+				text.AppendLine("    <ODProject Include=\"" + Escape(project.File) + "\" Properties=\"" + Escape(PropertiesFor(project.TargetFramework, project.OriginalCustomAfter)) + "\" />");
 			text.AppendLine("  </ItemGroup>");
 			var calls = new List<string>();
 			for (int i = 0; i < projects.Count; i++) {
 				// Same global properties as the parallel pass, so this is a results-cache hit.
 				text.AppendLine("  <Target Name=\"R" + i + "\">");
-				text.AppendLine("    <MSBuild Projects=\"" + Escape(projects[i].File) + "\" Targets=\"ResolveReferences\" Properties=\"" + Escape(PropertiesFor(projects[i].TargetFramework))
+				var properties = Escape(PropertiesFor(projects[i].TargetFramework, projects[i].OriginalCustomAfter));
+				text.AppendLine("    <MSBuild Projects=\"" + Escape(projects[i].File) + "\" Targets=\"ResolveReferences\" Properties=\"" + properties
 					+ "\" SkipNonexistentTargets=\"true\" ContinueOnError=\"WarnAndContinue\"><Output TaskParameter=\"TargetOutputs\" ItemName=\"_R" + i + "\" /></MSBuild>");
 				text.AppendLine("    <ItemGroup><ODReferencePath Include=\"@(_R" + i + ")\" ODProject=\"" + Escape(projects[i].File) + "\" /></ItemGroup>");
+				if (analyzersTargetsFile != null) {
+					text.AppendLine("    <MSBuild Projects=\"" + Escape(projects[i].File) + "\" Targets=\"ODResolveAnalyzers\" Properties=\"" + properties
+						+ "\" SkipNonexistentTargets=\"true\" ContinueOnError=\"WarnAndContinue\"><Output TaskParameter=\"TargetOutputs\" ItemName=\"_A" + i + "\" /></MSBuild>");
+					text.AppendLine("    <ItemGroup><ODAnalyzerPath Include=\"@(_A" + i + ")\" ODProject=\"" + Escape(projects[i].File) + "\" /></ItemGroup>");
+				}
 				text.AppendLine("  </Target>");
 				calls.Add("R" + i);
 			}
@@ -98,6 +128,10 @@ namespace ICSharpCode.SharpDevelop.Project
 
 		/// <summary>The -getItem JSON's ODReferencePath items grouped by ODProject, or null if absent.</summary>
 		public static Dictionary<string, List<string>> ParseLabelledReferencePaths(string stdout)
+			=> ParseLabelledItems(stdout, "ODReferencePath");
+
+		/// <summary>The -getItem JSON's <paramref name="itemName"/> items grouped by ODProject, or null if absent.</summary>
+		public static Dictionary<string, List<string>> ParseLabelledItems(string stdout, string itemName)
 		{
 			int start = stdout.IndexOf('{');
 			if (start < 0)
@@ -105,7 +139,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			try {
 				using var document = System.Text.Json.JsonDocument.Parse(stdout.Substring(start));
 				if (!document.RootElement.TryGetProperty("Items", out var itemsElement)
-				    || !itemsElement.TryGetProperty("ODReferencePath", out var list))
+				    || !itemsElement.TryGetProperty(itemName, out var list))
 					return null;
 				var grouped = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 				foreach (var item in list.EnumerateArray()) {
