@@ -809,7 +809,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 	void EnsureSession(string candidate) => documents.ValidateSession(candidate);
 	DocumentSession GetOrCreate(string documentId) => documents.GetOrAdd(sessionId, documentId, () => new DocumentSession(documentId));
 	DocumentSession Get(string documentId) => documents.Get(sessionId, documentId);
-	static void EnsureVersion(DocumentSession session, long candidate) { if (candidate != session.Version) throw new InvalidOperationException($"Stale version {candidate}; current is {session.Version}."); }
+	static void EnsureVersion(DocumentSession session, long candidate) { if (candidate != session.Version) throw new DesignerStaleVersionException(candidate, session.Version); }
 	[JsonRpcMethod("ping")] public object Ping() => new();
 	[JsonRpcMethod("shutdown")] public object Shutdown()
 	{

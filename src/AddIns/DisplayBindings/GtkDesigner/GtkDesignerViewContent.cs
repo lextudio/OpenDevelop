@@ -703,7 +703,24 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	// unsaved designer edits; it only redraws the current source model and retains its history.
 	public void RefreshDesign() => RefreshPreview();
 	// A stylesheet affects only the native snapshot, never the GtkBuilder source model.
-	void RefreshPreview() { if (host == null) return; state = host.RenderAsync(state.Version).GetAwaiter().GetResult(); Rebuild(); }
+	void RefreshPreview()
+	{
+		if (host == null) return;
+		var renderingHost = host;
+		var version = state.Version;
+		try {
+			var rendered = renderingHost.RenderAsync(version).GetAwaiter().GetResult();
+			// A CSS watcher refresh is advisory. A source mutation may have won the race while
+			// its request was in flight, so never overwrite the newer state with this preview.
+			if (host != renderingHost || state.Version != version || rendered.Version != version) return;
+			state = rendered;
+			Rebuild();
+		} catch (Exception ex) when (DesignerHostRpcErrors.IsStaleVersion(ex)) {
+			// The source mutation that advanced the host already queued its accepted-version render.
+			// Do not replace it with this rejected refresh version, and do not let a normal
+			// optimistic-concurrency refusal escape a DispatcherTimer tick.
+		}
+	}
 	public void SetPreviewTheme(string theme) { if (host == null) return; state = host.SetThemeAsync(state.Version, theme).GetAwaiter().GetResult(); canvas.SetTheme(theme); Rebuild(); }
 	void ConfigureCssWatcher(string uiPath)
 	{

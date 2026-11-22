@@ -57,7 +57,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				using var tcp = new TcpClient();
 				tcp.Connect(IPAddress.Loopback, portNumber);
 				afterConnect?.Invoke();
-				using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(tcp.GetStream(), tcp.GetStream(), DesignerJsonRpc.CreateFormatter()));
+				using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(tcp.GetStream(), tcp.GetStream(), DesignerJsonRpc.CreateFormatter())) { ExceptionStrategy = ExceptionProcessing.CommonErrorData };
 				DesignerJsonRpc.AttachDiagnosticTracing(rpc);
 				registerMethods(rpc, token);
 				rpc.StartListening();
@@ -114,7 +114,7 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 			using var tcp = new TcpClient();
 			tcp.Connect(IPAddress.Loopback, portNumber);
 			var service = createService(token);
-			using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(tcp.GetStream(), tcp.GetStream(), DesignerJsonRpc.CreateFormatter()));
+			using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(tcp.GetStream(), tcp.GetStream(), DesignerJsonRpc.CreateFormatter())) { ExceptionStrategy = ExceptionProcessing.CommonErrorData };
 			DesignerJsonRpc.AttachDiagnosticTracing(rpc);
 			rpc.AddLocalRpcTarget(service);
 			// Must be assigned before StartListening: StreamJsonRpc captures it when it begins

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
 using ICSharpCode.SharpDevelop.Designer.Remote;
+using StreamJsonRpc;
+using StreamJsonRpc.Protocol;
 using Xunit;
 
 namespace ICSharpCode.FormsDesigner.Host.Tests;
@@ -44,7 +46,32 @@ public sealed class DesignerChildHostTests
 		Assert.True(service.WaitCompleted);
 	}
 
-	sealed class NeverExplicitlyShutdownService : IDesignerChildService
+	[Fact]
+	public async Task Run_SerializesStaleVersionTypeAcrossTheDesignerRpcBoundary()
+	{
+		using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+		using var listener = new TcpListener(IPAddress.Loopback, 0);
+		listener.Start();
+		var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+		var service = new StaleVersionService();
+		var child = Task.Run(() => DesignerChildHost.Run(
+			new[] { "--port", port.ToString(), "--token", "test-token" },
+			"DesignerChildHostTests", _ => service));
+		using var parentConnection = await listener.AcceptTcpClientAsync(timeout.Token);
+		using var rpc = new JsonRpc(new HeaderDelimitedMessageHandler(parentConnection.GetStream(), parentConnection.GetStream(), DesignerJsonRpc.CreateFormatter()));
+		rpc.StartListening();
+
+		var failure = await Assert.ThrowsAsync<RemoteInvocationException>(() => rpc.InvokeAsync("test/stale-version"));
+		var error = Assert.IsType<CommonErrorData>(failure.DeserializedErrorData);
+		Assert.Equal(typeof(DesignerStaleVersionException).FullName, error.TypeName);
+
+		rpc.Dispose();
+		parentConnection.Dispose();
+		Assert.Equal(0, await child.WaitAsync(timeout.Token));
+		Assert.True(service.WaitCompleted);
+	}
+
+	class NeverExplicitlyShutdownService : IDesignerChildService
 	{
 		readonly ManualResetEventSlim shutdown = new(false);
 		public bool WaitCompleted { get; private set; }
@@ -56,5 +83,11 @@ public sealed class DesignerChildHostTests
 		}
 
 		public void OnParentDisconnected() => shutdown.Set();
+	}
+
+	sealed class StaleVersionService : NeverExplicitlyShutdownService
+	{
+		[JsonRpcMethod("test/stale-version")]
+		public void ThrowStaleVersion() => throw new DesignerStaleVersionException(2, 3);
 	}
 }

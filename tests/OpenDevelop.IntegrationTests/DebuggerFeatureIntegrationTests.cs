@@ -585,6 +585,7 @@ public sealed class DebuggerFeatureIntegrationTests
             {
                 var point = await _app.InvokeAsync("od.editor.icon-bar-line-point", line);
                 Assert.True(point.GetProperty("success").GetBoolean(), point.ToString());
+				Assert.Equal(line, point.GetProperty("mappedLine").GetInt32());
                 return (point.GetProperty("x").GetDouble(), point.GetProperty("y").GetDouble());
             }
 

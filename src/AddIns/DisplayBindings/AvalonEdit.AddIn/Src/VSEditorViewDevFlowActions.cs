@@ -16,6 +16,7 @@ using System.Windows.Media;
 
 using ICSharpCode.AvalonEdit.Editing;
 using ICSharpCode.AvalonEdit.Folding;
+using ICSharpCode.AvalonEdit.Rendering;
 using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Editor;
 using LeXtudio.DevFlow.Agent.Core;
@@ -134,11 +135,16 @@ namespace ICSharpCode.AvalonEdit.AddIn
 			if (visualLine == null || !margin.IsVisible || margin.ActualWidth <= 0)
 				return JsonSerializer.Serialize(new { success = false, reason = "line or Icon Bar not laid out" });
 
-			// The Icon Bar shares the TextView's vertical coordinates (it maps the pointer to a line
-			// the same way), so the line's visual top minus the scroll offset is its y in the margin.
-			double y = visualLine.VisualTop - textView.ScrollOffset.Y + visualLine.Height / 2;
-			var screen = margin.PointToScreen(new System.Windows.Point(margin.ActualWidth / 2, y));
-			return JsonSerializer.Serialize(new { success = true, line, x = screen.X, y = screen.Y });
+			// Let AvalonEdit calculate the visual line's actual middle, then transform it from the
+			// TextView into the margin. The two siblings normally share a Y origin, but assuming
+			// that breaks with a DPI/layout transform and makes a real pointer click hit a different
+			// line (or no Icon Bar at all) on Windows x64 runners.
+			var position = textView.GetVisualPosition(new TextViewPosition(line, 1), VisualYPosition.LineMiddle) - textView.ScrollOffset;
+			var inMargin = textView.TranslatePoint(position, margin);
+			var screen = margin.PointToScreen(new System.Windows.Point(margin.ActualWidth / 2, inMargin.Y));
+			var backInTextView = margin.TranslatePoint(inMargin, textView);
+			var mappedLine = textView.GetVisualLineFromVisualTop(backInTextView.Y + textView.ScrollOffset.Y)?.FirstDocumentLine.LineNumber;
+			return JsonSerializer.Serialize(new { success = true, line, mappedLine, x = screen.X, y = screen.Y });
 		}
 
 		[DevFlowAction("od.vseditor.fold-and-geometry", Description = "Fold a document span (via AvalonEdit's FoldingManager) then report ITextViewLine geometry, to verify a folded VisualLine (FirstDocumentLine != LastDocumentLine) still maps to the correct combined Extent")]
