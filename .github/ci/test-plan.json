@@ -470,6 +470,7 @@
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.SdkSelectedAtStartupIntegrationTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe" },
       "note": "Each of SDK 10 and SDK 11 selected before startup, via a root that holds only that SDK: the project loads with items and builds. Nothing is downloaded. Skips a major the machine has no stable SDK for. macOS ARM64: 2 passed in 67 seconds. Starts as observe."
     },
@@ -483,6 +484,7 @@
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.Net11ProjectIntegrationTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe" },
       "note": "net11.0 projects: build fails with NETSDK1045 under an SDK 10 only root, and builds, runs and debugs under an SDK 11 only root. macOS ARM64: 3 passed in 76 seconds. Starts as observe."
     },
