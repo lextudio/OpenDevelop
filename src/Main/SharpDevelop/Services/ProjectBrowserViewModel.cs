@@ -72,6 +72,7 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         solutionOpenedSubscription = MessageBus<SolutionOpenedMessageEventArgs>.Subscribe(ProjectServiceChanged);
         solutionClosedSubscription = MessageBus<SolutionClosedMessageEventArgs>.Subscribe(ProjectServiceChanged);
         SD.ProjectService.ProjectItemAdded += ProjectServiceChanged;
+        SD.ProjectService.LoadingSolutionChanged += ProjectServiceLoadingSolutionChanged;
         SD.ProjectService.ProjectItemRemoved += ProjectServiceChanged;
         ProjectTargetFrameworkService.ActiveTargetFrameworkChanged += ProjectTargetFrameworkChanged;
 		ProjectFileNestingProviderRegistry.Changed += ProjectFileNestingProviderChanged;
@@ -221,6 +222,7 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         solutionClosedSubscription.Dispose();
         SD.ProjectService.ProjectItemAdded -= ProjectServiceChanged;
         SD.ProjectService.ProjectItemRemoved -= ProjectServiceChanged;
+        SD.ProjectService.LoadingSolutionChanged -= ProjectServiceLoadingSolutionChanged;
         ProjectTargetFrameworkService.ActiveTargetFrameworkChanged -= ProjectTargetFrameworkChanged;
 		ProjectFileNestingProviderRegistry.Changed -= ProjectFileNestingProviderChanged;
         if (overlayService != null) {
@@ -371,6 +373,17 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
     private void ProjectServiceChanged(object sender, EventArgs e)
     {
         RefreshSolutionTree();
+    }
+
+    /// <summary>
+    /// A solution loading in the background is not the current solution yet: show the loading placeholder
+    /// meanwhile. Once it is published, SolutionOpened rebuilds the tree, which owns IsLoading from then on.
+    /// </summary>
+    private void ProjectServiceLoadingSolutionChanged(object sender, EventArgs e)
+    {
+        if (disposed || SD.ProjectService.CurrentSolution != null)
+            return;
+        IsLoading = SD.ProjectService.LoadingSolution != null;
     }
 
     private void ProjectBrowserOverlayInvalidated(object sender, ProjectBrowserOverlayInvalidatedEventArgs e)

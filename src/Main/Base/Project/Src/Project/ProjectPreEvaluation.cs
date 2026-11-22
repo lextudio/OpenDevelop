@@ -67,12 +67,13 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// Evaluates <paramref name="requests"/> concurrently in <paramref name="projectCollection"/> and keeps
 		/// the results for <see cref="Take"/> until the returned instance is disposed.
 		/// </summary>
-		public static ProjectPreEvaluation Run(ProjectCollection projectCollection, IReadOnlyList<Request> requests, CancellationToken cancellationToken)
+		/// <param name="progress">Optional: receives the fraction of projects evaluated and the most recent one's name.</param>
+		public static ProjectPreEvaluation Run(ProjectCollection projectCollection, IReadOnlyList<Request> requests, IProgressMonitor progress, CancellationToken cancellationToken)
 		{
 			var preEvaluation = new ProjectPreEvaluation(projectCollection);
 			active.AddOrUpdate(projectCollection, preEvaluation);
 			try {
-				preEvaluation.EvaluateAll(requests, cancellationToken);
+				preEvaluation.EvaluateAll(requests, progress, cancellationToken);
 			} catch {
 				preEvaluation.Dispose(); // cancelled: unload what was evaluated so far
 				throw;
@@ -93,10 +94,23 @@ namespace ICSharpCode.SharpDevelop.Project
 				: null;
 		}
 
-		void EvaluateAll(IReadOnlyList<Request> requests, CancellationToken cancellationToken)
+		void EvaluateAll(IReadOnlyList<Request> requests, IProgressMonitor progress, CancellationToken cancellationToken)
 		{
 			if (requests.Count == 0)
 				return;
+			int evaluated = 0;
+			var progressGate = new object(); // the workers report concurrently; a monitor's TaskName is not thread-safe
+			void ReportEvaluated(Request request)
+			{
+				if (progress == null)
+					return;
+				lock (progressGate) {
+					evaluated++;
+					progress.Progress = (double)evaluated / requests.Count;
+					progress.TaskName = "Evaluating projects " + evaluated + "/" + requests.Count + ": "
+						+ System.IO.Path.GetFileNameWithoutExtension(request.FileName);
+				}
+			}
 			MSBuildInternals.InitializeMSBuildEnvironment();
 			var context = MSBuildInternals.SharedEvaluationContext;
 			var options = new ParallelOptions { MaxDegreeOfParallelism = DegreeOfParallelism, CancellationToken = cancellationToken };
@@ -116,6 +130,7 @@ namespace ICSharpCode.SharpDevelop.Project
 					// Missing file, invalid XML, unresolvable SDK, ...: the project's constructor reports it.
 					LoggingService.Debug("Pre-evaluation skipped " + request.FileName + ": " + ex.Message);
 				}
+				ReportEvaluated(request);
 			});
 		}
 

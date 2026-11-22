@@ -149,7 +149,8 @@ namespace ICSharpCode.SharpDevelop.Project
 			var projectEntries = solutionEntries.Where(e => e.TypeGuid != ProjectTypeGuids.SolutionFolder).ToList();
 			foreach (var projectInfo in projectEntries)
 				projectInfo.ActiveProjectConfiguration = projectInfo.ConfigurationMapping.GetProjectConfiguration(solution.ActiveConfiguration);
-			using var preEvaluation = SolutionPreEvaluation.Begin(solution, projectEntries, progress.CancellationToken);
+			using var preEvaluation = SolutionPreEvaluation.Begin(solution, projectEntries, progress);
+			double constructionStart = progress.Progress; // what evaluation already reported
 			foreach (var projectInfo in solutionEntries) {
 				// Make copy of IdGuid just in case the project binding writes to projectInfo.IdGuid
 				Guid idGuid = projectInfo.IdGuid;
@@ -160,7 +161,7 @@ namespace ICSharpCode.SharpDevelop.Project
 					// Load project:
 					projectInfo.ActiveProjectConfiguration = projectInfo.ConfigurationMapping.GetProjectConfiguration(solution.ActiveConfiguration);
 					progress.TaskName = "Loading " + projectInfo.ProjectName;
-					using (projectInfo.ProgressMonitor = progress.CreateSubTask(1.0 / projectCount)) {
+					using (projectInfo.ProgressMonitor = progress.CreateSubTask((1 - constructionStart) / projectCount)) {
 						solutionItem = LoadProjectWithErrorHandling(projectInfo);
 					}
 					if (solutionItem.IdGuid != idGuid) {
@@ -181,7 +182,7 @@ namespace ICSharpCode.SharpDevelop.Project
 						fixedGuidConflicts = true;
 					}
 					projectsLoaded++;
-					progress.Progress = (double)projectsLoaded / projectCount;
+					progress.Progress = constructionStart + (1 - constructionStart) * projectsLoaded / projectCount;
 				}
 				// Add solutionItem to solution:
 				SolutionFolder folder;

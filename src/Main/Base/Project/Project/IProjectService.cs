@@ -110,6 +110,16 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// how to add it to a solution) still loads synchronously.
 		/// </remarks>
 		System.Threading.Tasks.Task<bool> OpenSolutionOrProjectAsync(FileName fileName, System.Threading.CancellationToken cancellationToken = default);
+		
+		/// <summary>
+		/// The solution being opened by <see cref="OpenSolutionOrProjectAsync"/>, or null when no background
+		/// load is in progress. Lets views show that a solution is loading before it becomes
+		/// <see cref="CurrentSolution"/>. Changes only on the main thread.
+		/// </summary>
+		FileName LoadingSolution { get; }
+		
+		/// <summary>Raised on the main thread when <see cref="LoadingSolution"/> changes.</summary>
+		event EventHandler LoadingSolutionChanged;
 
 		/// <summary>
 		/// Reports, once per session, whether this machine has a .NET SDK the IDE can actually use

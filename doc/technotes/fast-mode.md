@@ -148,6 +148,9 @@ rather than by relaxing checks:
   concurrently before construction; `MSBuildBasedProject.OpenConfiguration` takes a matching evaluation
   instead of making one. On the 2-core test machine it only saves ~10%: evaluation is CPU- and
   allocation-bound and does not scale past the physical cores.
+- *Progress.* Pre-evaluation reports "Evaluating projects n/N: <project>" on the status bar (80% of the
+  bar; construction fills the rest). While a background load runs, `IProjectService.LoadingSolution` is
+  set: the workbench brings the Projects pad forward and Solution Explorer shows its loading placeholder.
 - *Switches.* `OD_ASYNC_SOLUTION_LOAD=0` (synchronous open), `OD_PARALLEL_EVALUATION=0`,
   `OD_PARALLEL_EVALUATION_DOP=<n>`; see `SolutionLoadOptions`.
 
