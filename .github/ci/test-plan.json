@@ -382,6 +382,32 @@
       "note": "Trust, install and update an add-in against a fake GitHub release feed in an isolated IDE. Self-contained (no network); it existed without a CI entry. Starts as observe."
     },
     {
+      "id": "startup-tests",
+      "batch": 5,
+      "lane": "integration-stable",
+      "measuredSeconds": 20,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.StartupTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe",
+        "linux-x64": "observe",
+        "linux-arm64": "observe"
+      },
+      "buildArgs": [
+        "-p:BuildIntegrationFixtures=false"
+      ],
+      "note": "The empty-startup journey (Start Page add-in loaded, Start Page is the active view). It shares WorkbenchTests.cs with the workbench-tests entry, whose -class filter does not select it, so it never ran in CI. It needs a fresh application, hence its own entry. Starts as observe."
+    },
+    {
       "id": "workbench-tests",
       "batch": 3,
       "lane": "integration-stable",
