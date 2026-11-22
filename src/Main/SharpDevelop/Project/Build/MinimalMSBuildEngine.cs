@@ -394,6 +394,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				psi.ArgumentList.Add("-getItem:ODReferencePath");
 				if (ResolvedAnalyzerPaths.Enabled)
 					psi.ArgumentList.Add("-getItem:ODAnalyzerPath");
+				MakeEphemeral(psi);
 				using var process = Process.Start(psi);
 				if (process == null)
 					return null;
@@ -441,6 +442,20 @@ namespace ICSharpCode.SharpDevelop.Project
 						Directory.Delete(scratch);
 				} catch { }
 			}
+		}
+
+		/// <summary>
+		/// For a child that answers one question and exits (reference resolution): no MSBuild server and
+		/// no reusable worker nodes may outlive it. Both are designed to persist after the client exits,
+		/// and for dotnet/aspire's 471 projects the server kept 4 GB of caches alive after the IDE had
+		/// closed, which on a 7 GB machine ended in the kernel's OOM killer. User builds keep node reuse,
+		/// which makes the next build faster.
+		/// </summary>
+		static void MakeEphemeral(ProcessStartInfo psi)
+		{
+			psi.ArgumentList.Add("-nodeReuse:false");
+			psi.EnvironmentVariables["MSBUILDDISABLENODEREUSE"] = "1";
+			psi.EnvironmentVariables["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0";
 		}
 
 		static int ResolveNodeCount() =>
@@ -495,6 +510,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			// ResolveTargetingPackAssets); evaluation never has them. Recorded for the language service.
 			if (ResolvedAnalyzerPaths.Enabled)
 				psi.ArgumentList.Add("-getItem:Analyzer");
+			MakeEphemeral(psi);
 
 			using var process = Process.Start(psi);
 			if (process == null)

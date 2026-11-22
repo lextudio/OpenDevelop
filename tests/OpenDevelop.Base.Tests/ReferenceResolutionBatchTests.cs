@@ -108,6 +108,37 @@ public class ReferenceResolutionBatchTests
     }
 
     [Fact]
+    public void ResolveInGlobalJsonBatches_ResolvesAGroupInSequentialChunksAndAFailedChunkOnlyLosesItsOwnProjects()
+    {
+        using var tree = new TempTree();
+        File.WriteAllText(Path.Combine(tree.Dir("repo"), "global.json"), "{}");
+        int chunkSize = ReferenceResolutionBatch.ChunkSize;
+        var projects = Enumerable.Range(0, 2 * chunkSize + 1).Select(i => tree.File($"repo/P{i}/P{i}.csproj")).ToArray();
+        var chunks = new List<string[]>();
+        int running = 0, maxRunning = 0;
+
+        var resolved = ReferenceResolutionBatch.ResolveInGlobalJsonBatches(projects, file => file, (directory, batch) => {
+            maxRunning = Math.Max(maxRunning, Interlocked.Increment(ref running));
+            try {
+                lock (chunks)
+                    chunks.Add(batch.ToArray());
+                if (chunks.Count == 2)
+                    return null; // the second chunk's process failed
+                return batch.ToDictionary(project => project, project => (IReadOnlyList<string>)new[] { project + ".dll" });
+            } finally {
+                Interlocked.Decrement(ref running);
+            }
+        });
+
+        // One process per chunk, one after another (a chunk's process exits before the next starts).
+        Assert.Equal(new[] { chunkSize, chunkSize, 1 }, chunks.Select(chunk => chunk.Length));
+        Assert.Equal(projects, chunks.SelectMany(chunk => chunk));
+        Assert.Equal(1, maxRunning);
+        // The failed chunk's projects are missing - the caller resolves those one by one.
+        Assert.Equal(projects.Take(chunkSize).Concat(projects.Skip(2 * chunkSize)), resolved.Keys.OrderBy(p => Array.IndexOf(projects, p)));
+    }
+
+    [Fact]
     public void RealMSBuild_ResolvesEachProjectsOwnPackagesAndProjectReferences()
     {
         // Packages from the global package cache, so the restore does not need the network.
