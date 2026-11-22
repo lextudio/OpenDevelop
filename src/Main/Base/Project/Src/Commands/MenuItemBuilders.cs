@@ -196,8 +196,8 @@ namespace ICSharpCode.SharpDevelop.Commands
 					items[i] = new System.Windows.Controls.MenuItem() {
 						Header = accelaratorKeyPrefix + recentProject
 					};
-					items[i].Click += delegate {
-						SD.ProjectService.OpenSolutionOrProjectAsync(recentProject).FireAndForget();
+					items[i].Click += async delegate {
+						await SD.ProjectService.OpenSolutionOrProjectAsync(recentProject);
 					};
 				}
 				return items;

@@ -103,6 +103,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// and its projects are built (MSBuild-evaluated) on a background thread and published on the main
 		/// thread when complete, so <see cref="CurrentSolution"/> stays null until the returned task finishes.
 		/// A later open or <see cref="CloseSolution"/> cancels a load in progress (the task then returns false).
+		/// Errors are reported to the user by the service itself, so the task never faults: callers just await it.
 		/// </summary>
 		/// <remarks>
 		/// Must be called on the main thread. The solution is published on the main thread before the task

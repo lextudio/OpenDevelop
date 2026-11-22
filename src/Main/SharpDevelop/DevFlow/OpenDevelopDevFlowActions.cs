@@ -663,7 +663,9 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		public static string OpenSolutionBegin(string path)
 		{
 			try {
-				SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(path)).FireAndForget();
+				// Deliberately not awaited: returning before the load is the point of this action. The task
+				// never faults (the service reports its own errors), so nothing is left unobserved.
+				_ = SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(path));
 				return JsonSerializer.Serialize(new { success = true, started = true });
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });

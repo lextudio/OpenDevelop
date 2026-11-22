@@ -987,35 +987,34 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			return DragDropEffects.None;
 		}
 		
-		protected override void OnDrop(DragEventArgs e)
+		// An input override is this window's drop event handler: the whole body is guarded and the awaited
+		// open never faults (IProjectService reports its own errors), so async void cannot lose an exception.
+#pragma warning disable VSTHRD100
+		protected override async void OnDrop(DragEventArgs e)
+#pragma warning restore VSTHRD100
 		{
 			try {
 				base.OnDrop(e);
-				if (!e.Handled && e.Data != null && e.Data.GetDataPresent(DataFormats.FileDrop)) {
-					e.Handled = true;
-					string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
-					if (files == null)
-						return;
-					// Handle opening the files outside the drop event, so that the drag source doesn't think
-					// the operation is still in progress while we're showing a "file cannot be opened" error message.
-					_ = Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action<string[]>(HandleDrop), files);
+				if (e.Handled || e.Data == null || !e.Data.GetDataPresent(DataFormats.FileDrop))
+					return;
+				e.Handled = true;
+				string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+				if (files == null)
+					return;
+				// Open the files after the drop event has returned, so that the drag source doesn't think the
+				// operation is still in progress while we're showing a "file cannot be opened" error message.
+				await Dispatcher.Yield(DispatcherPriority.Normal);
+				foreach (string file in files) {
+					if (!File.Exists(file))
+						continue;
+					var fileName = FileName.Create(file);
+					if (SD.ProjectService.IsSolutionOrProjectFile(fileName))
+						await SD.ProjectService.OpenSolutionOrProjectAsync(fileName); // files dropped with it open afterwards
+					else
+						SD.FileService.OpenFile(fileName);
 				}
 			} catch (Exception ex) {
 				MessageService.ShowException(ex);
-			}
-		}
-		
-		void HandleDrop(string[] files)
-		{
-			foreach (string file in files) {
-				if (File.Exists(file)) {
-					var fileName = FileName.Create(file);
-					if (SD.ProjectService.IsSolutionOrProjectFile(fileName)) {
-						SD.ProjectService.OpenSolutionOrProjectAsync(fileName).FireAndForget();
-					} else {
-						SD.FileService.OpenFile(fileName);
-					}
-				}
 			}
 		}
 		

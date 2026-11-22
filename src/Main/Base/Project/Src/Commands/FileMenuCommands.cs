@@ -33,7 +33,7 @@ namespace ICSharpCode.SharpDevelop.Project.Commands
 	
 	public class LoadSolution : AbstractMenuCommand
 	{
-		public override void Run()
+		public override async void Run()
 		{
 			var fdiag = new Microsoft.Win32.OpenFileDialog {
 				AddExtension = true,
@@ -42,7 +42,7 @@ namespace ICSharpCode.SharpDevelop.Project.Commands
 				CheckFileExists = true
 			};
 			if (fdiag.ShowDialog() == true) {
-				SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(fdiag.FileName)).FireAndForget();
+				await SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(fdiag.FileName));
 			}
 		}
 	}

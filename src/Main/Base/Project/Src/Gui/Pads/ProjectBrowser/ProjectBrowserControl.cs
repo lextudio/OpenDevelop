@@ -107,7 +107,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			treeView.DragDrop += TreeViewDragDrop;
 		}
 		
-		void TreeViewDragDrop(object sender, DragEventArgs e)
+		async void TreeViewDragDrop(object sender, DragEventArgs e)
 		{
 			Point       clientcoordinate = PointToClient(new Point(e.X, e.Y));
 			ExtTreeNode node             = treeView.GetNodeAt(clientcoordinate) as ExtTreeNode;
@@ -119,7 +119,7 @@ namespace ICSharpCode.SharpDevelop.Project
 						try {
 							var fileName = FileName.Create(file);
 							if (SD.ProjectService.IsSolutionOrProjectFile(fileName))
-								SD.ProjectService.OpenSolutionOrProjectAsync(fileName).FireAndForget();
+								await SD.ProjectService.OpenSolutionOrProjectAsync(fileName);
 							else
 								FileService.OpenFile(fileName);
 						} catch (Exception ex) {
