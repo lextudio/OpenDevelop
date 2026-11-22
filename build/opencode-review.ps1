@@ -4,7 +4,7 @@
 
     pwsh build/opencode-review.ps1 -Action Launch -Name <unique> [-Directory <repo or submodule dir>]
     pwsh build/opencode-review.ps1 -Action Read   -Name <unique> [-Directory <the same directory>] [-MaxWaitSeconds 540]
-    pwsh build/opencode-review.ps1 -Action Commit -Name <unique> [-Directory <the same directory>]
+    pwsh build/opencode-review.ps1 -Action Commit -Name <unique> [-Directory <the same directory>] [-Author 'Name <email>']
 
   <unique> names one review target (for example `od-b1-agent-ci-source`). Everything lives in tmp/opencode:
     <unique>-prompt.txt          you write it first (intent, paths, tree hash, invariants, risks, tests and results)
@@ -30,7 +30,9 @@
 
   Commit refuses unless the staged tree still equals the reviewed tree, then has the OpenCode `build` agent run
   `git commit -F <unique>-message.txt` and checks that the new commit's tree equals the reviewed tree. The invoking agent never
-  writes or edits the message.
+  writes or edits the message. -Author 'Name <email>' commits another person's work under their name (a cherry-picked
+  contributor commit); the committer stays the local user, and the new commit's author is checked like its tree. Say so in
+  the review prompt, so the reviewer reviews the attribution too.
 #>
 [CmdletBinding()]
 param(
@@ -39,7 +41,12 @@ param(
     [string] $Directory = '.',
     [string] $PromptFile,
     [int] $MaxWaitSeconds = 540,
-    [string] $Model = 'opencode-go/deepseek-v4.1-flash#high'
+    [string] $Model = 'opencode-go/deepseek-v4.1-flash#high',
+    # Shell-safe (it is placed inside --author="...") and already in the form git keeps: git strips leading and
+    # trailing whitespace and .,:;<>"' from a name, and the post-commit author check must compare equal.
+    # Letters of any script are allowed (contributors are not all ASCII); an apostrophe only inside the name. \A..\z, not
+    # ^..$: .NET's $ also matches before a final newline.
+    [ValidatePattern('\A[\p{L}\p{N}_-](?:[\p{L}\p{M}\p{N} ._''-]*[\p{L}\p{M}\p{N}_-])? <[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]+>\z')] [string] $Author
 )
 
 $ErrorActionPreference = 'Stop'
@@ -254,7 +261,8 @@ switch ($Action) {
         if (-not $approved -or $approved.Trim() -ne $tree) { throw "Read has not approved tree $tree for $Name; run Launch and Read for this staged tree first." }
         $current = Get-StagedTree
         if ($current -ne $tree) { Write-Host "The staged tree is $current, not the reviewed $tree. Approval is void; nothing was committed."; exit 4 }
-        $instruction = "The files are already staged (tree $tree; run git write-tree and stop if it differs). Run only: git status --short, git commit -F `"$messageFile`", git log --oneline -1, git status --short. Do not stage or change anything else."
+        $commitCommand = if ($Author) { "git commit --author=`"$Author`" -F `"$messageFile`"" } else { "git commit -F `"$messageFile`"" }
+        $instruction = "The files are already staged (tree $tree; run git write-tree and stop if it differs). Run only: git status --short, $commitCommand, git log --oneline -1, git status --short. Do not stage or change anything else."
         Write-Host "Committing tree $tree in $target (stdout: $(Artifact '-commit.json'), log: $(Artifact '-commit.log'))"
         Push-Location $target
         try {
@@ -265,6 +273,10 @@ switch ($Action) {
         $headTree = Invoke-Git @('rev-parse', 'HEAD^{tree}')
         Write-Host (Invoke-Git @('log', '--oneline', '-1'))
         if ($headTree -ne $tree) { Write-Host "HEAD's tree is $headTree, not the reviewed ${tree}: the commit does not match the review. Report it; do not amend."; exit 4 }
+        if ($Author) {
+            $headAuthor = Invoke-Git @('log', '-1', '--format=%an <%ae>')
+            if ($headAuthor -ne $Author) { Write-Host "HEAD's author is '$headAuthor', not '$Author'. Report it; do not amend."; exit 4 }
+        }
         Write-Host 'Committed: HEAD has the reviewed tree. Check the message with: git show --stat HEAD'
         exit 0
     }
