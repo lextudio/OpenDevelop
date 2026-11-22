@@ -51,7 +51,29 @@ internal sealed partial class ProjectBrowserNodeModel : INotifyPropertyChanged
 
     public string? IncludeHint { get; }
 
-    public bool IsExpanded { get; }
+    private bool isExpanded;
+
+    /// <summary>
+    /// Whether the node is expanded. This is view state owned by the model (bound two-way): Solution
+    /// Explorer virtualizes and recycles its rows, so a row's container can show a different node at any time.
+    /// </summary>
+    public bool IsExpanded {
+        get => isExpanded;
+        set {
+            if (isExpanded == value)
+                return;
+            isExpanded = value;
+            NotifyPropertyChanged();
+        }
+    }
+
+    /// <summary>Sets <see cref="IsExpanded"/> on this node and all of its descendants.</summary>
+    public void SetExpandedRecursive(bool expanded)
+    {
+        IsExpanded = expanded;
+        foreach (var child in Children)
+            child.SetExpandedRecursive(expanded);
+    }
 
     public List<ProjectBrowserNodeModel> Children { get; } = new();
 

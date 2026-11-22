@@ -195,29 +195,12 @@ internal partial class StickyTreeView : UserControl
             scrollViewer!.ScrollToVerticalOffset(offset);
     }
 
-    public void ExpandAll()
-    {
-        Expand(tree);
-        ScheduleUpdateStickyHeaders();
-    }
-
     public void SelectAndBringIntoView(object item)
     {
         if (FindContainer(tree, item) is not TreeViewItem container)
             return;
         container.BringIntoView();
         container.IsSelected = true;
-    }
-
-    private static void Expand(ItemsControl parent)
-    {
-        foreach (var item in parent.Items) {
-            if (parent.ItemContainerGenerator.ContainerFromItem(item) is not TreeViewItem container)
-                continue;
-            container.IsExpanded = true;
-            container.UpdateLayout();
-            Expand(container);
-        }
     }
 
     private void StickyHeadersOnPreviewMouseWheel(object sender, MouseWheelEventArgs e)

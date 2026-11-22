@@ -28,22 +28,11 @@ internal partial class ProjectBrowserView : UserControl
         treeView.Tree.MouseDoubleClick += TreeViewOnMouseDoubleClick;
         treeView.Tree.PreviewMouseRightButtonDown += TreeViewOnPreviewMouseRightButtonDown;
         treeView.Tree.SelectedItemChanged += TreeViewOnSelectedItemChanged;
-        DataContextChanged += ProjectBrowserViewDataContextChanged;
     }
 
     internal Controls.StickyTreeView StickyTree => treeView;
     public object InitiallyFocusedControl => treeView.Tree;
     private ProjectBrowserViewModel ViewModel => (ProjectBrowserViewModel)DataContext;
-
-    private void ProjectBrowserViewDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
-    {
-        if (e.OldValue is ProjectBrowserViewModel oldViewModel)
-            oldViewModel.CollapseAllRequested -= ViewModelCollapseAllRequested;
-        if (e.NewValue is ProjectBrowserViewModel newViewModel)
-            newViewModel.CollapseAllRequested += ViewModelCollapseAllRequested;
-    }
-
-    private void ViewModelCollapseAllRequested(object sender, EventArgs e) => Collapse(treeView.Tree);
 
     private void TreeViewOnSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         => ViewModel.SelectedNode = e.NewValue as ProjectBrowserNodeModel;
@@ -74,13 +63,4 @@ internal partial class ProjectBrowserView : UserControl
         return null;
     }
 
-    private static void Collapse(ItemsControl parent)
-    {
-        foreach (var child in parent.Items) {
-            if (parent.ItemContainerGenerator.ContainerFromItem(child) is not TreeViewItem item)
-                continue;
-            item.IsExpanded = false;
-            Collapse(item);
-        }
-    }
 }

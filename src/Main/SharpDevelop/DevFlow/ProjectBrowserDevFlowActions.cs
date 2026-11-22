@@ -38,8 +38,10 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				if (viewModel.Content is not ProjectBrowserView view)
 					return JsonSerializer.Serialize(new { success = false, error = "The Project Browser view is not realized. Show ProjectBrowserPad first." });
 
-				if (expandAll)
-					view.StickyTree.ExpandAll();
+				if (expandAll) {
+					viewModel.ExpandAll();
+					view.StickyTree.UpdateLayout();
+				}
 				if (verticalOffset.HasValue)
 					view.StickyTree.ScrollToVerticalOffset(verticalOffset.Value);
 

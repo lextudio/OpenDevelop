@@ -64,7 +64,7 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
         ShowPropertiesCommand = new DelegateCommand(ShowProperties, () => SelectedNode != null);
         ShowAllFilesCommand = new DelegateCommand(ToggleShowAllFiles);
         RefreshCommand = new DelegateCommand(RefreshSolutionTree);
-        CollapseAllCommand = new DelegateCommand(() => CollapseAllRequested?.Invoke(this, EventArgs.Empty));
+        CollapseAllCommand = new DelegateCommand(CollapseAll);
         ShowAllFiles = SD.PropertyService.Get("ProjectBrowser.ShowAll", false);
 
         controller.BindHost(this);
@@ -83,8 +83,6 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
     }
 
     public ObservableCollection<ProjectBrowserNodeModel> RootNodes { get; } = new ObservableCollection<ProjectBrowserNodeModel>();
-    
-    public event EventHandler CollapseAllRequested;
     
     public ICommand ShowPropertiesCommand { get; }
     
@@ -174,7 +172,21 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
 
     void IProjectBrowserHost.CollapseAll()
     {
-        CollapseAllRequested?.Invoke(this, EventArgs.Empty);
+        CollapseAll();
+    }
+
+    /// <summary>Collapses every node, including rows that are not realized (scrolled out of view).</summary>
+    public void CollapseAll()
+    {
+        foreach (var root in RootNodes)
+            root.SetExpandedRecursive(false);
+    }
+
+    /// <summary>Expands every node, including rows that are not realized (scrolled out of view).</summary>
+    public void ExpandAll()
+    {
+        foreach (var root in RootNodes)
+            root.SetExpandedRecursive(true);
     }
 
     public void OpenSelected()
@@ -316,23 +328,25 @@ internal sealed class ProjectBrowserViewModel : ToolPaneModel, IProjectBrowserHo
                 if (refreshVersion != Volatile.Read(ref treeRefreshVersion) || disposed) {
                     return;
                 }
-                // Only external/file-system work runs in the background. SharpDevelop's project
-                // collections are UI-thread-affine and must not be walked from Task.Run.
-                await Task.Run(() => ProjectBrowserTreeBuilder.RefreshGitStatus(gitStatusRoots));
+                // Built entirely on the thread pool: the project model reads used here are thread-safe
+                // snapshots (ISolution.Projects/Items and IProject.Items.CreateSnapshot(),
+                // MSBuildBasedProject.GetEvaluatedProjectItems() all lock the project), and the node
+                // models create their images lazily when bound. Walking 471 projects on the UI thread
+                // froze it for ~11 s after opening dotnet/aspire.
+                var root = await Task.Run(() => {
+                    ProjectBrowserTreeBuilder.RefreshGitStatus(gitStatusRoots);
+                    if (refreshVersion != Volatile.Read(ref treeRefreshVersion) || disposed)
+                        return null; // superseded while waiting for Git
+                    return ProjectBrowserTreeBuilder.BuildSolutionTree(solution, includeAllFiles, refreshGitStatus: false);
+                });
 
                 // LibreWPF does not install a SynchronizationContext that guarantees an await
-                // continuation returns to the WPF dispatcher. Explicitly marshal both the native
-                // project-model walk and every ObservableCollection/property update.
+                // continuation returns to the WPF dispatcher: publish explicitly on it.
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     if (refreshVersion != Volatile.Read(ref treeRefreshVersion) || disposed) {
                         return;
                     }
-
-                    var root = ProjectBrowserTreeBuilder.BuildSolutionTree(
-                        solution,
-                        includeAllFiles,
-                        refreshGitStatus: false);
                     if (root != null) {
                         RootNodes.Add(root);
                     }

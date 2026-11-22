@@ -43,7 +43,7 @@
                                  ItemsSource="{Binding RootNodes}"
                                  StickyHeaderTemplate="{StaticResource ProjectBrowserNodeRow}">
             <controls:StickyTreeView.ItemContainerStyle>
-                <Style TargetType="TreeViewItem"><Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=OneWay}" /></Style>
+                <Style TargetType="TreeViewItem"><Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" /></Style>
             </controls:StickyTreeView.ItemContainerStyle>
         </controls:StickyTreeView>
         <TextBlock Grid.Row="1" Margin="12" HorizontalAlignment="Left" VerticalAlignment="Top"
