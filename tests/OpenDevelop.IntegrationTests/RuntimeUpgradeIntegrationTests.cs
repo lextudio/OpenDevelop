@@ -5,14 +5,14 @@ using Xunit;
 namespace OpenDevelop.IntegrationTests;
 
 /// <summary>
-/// Covers the "my project targets a runtime this machine does not have" story end to end: a project
-/// that compiles fine but cannot be launched, and the retarget that fixes it.
+/// Covers the "retarget my project to the next runtime" story end to end: a net10.0 project builds and
+/// debugs, and after its target framework is edited to net11.0 the same project builds and debugs again.
 /// </summary>
 /// <remarks>
 /// The retarget is done by rewriting the project file rather than through the IDE, because
 /// OpenDevelop has no target-framework UI for SDK-style projects: <c>TargetFramework</c> only models
 /// .NET Framework 2.0-4.8.1 and the inherited SharpDevelop upgrade view (Src/Project/Converter) is
-/// built on that same legacy list, so it cannot offer net6.0 -> net10.0. Editing the project file
+/// built on that same legacy list, so it cannot offer net10.0 -> net11.0. Editing the project file
 /// and reloading is what a user does today, and it is the build/debug behaviour on either side of
 /// that edit that this test is actually about.
 /// </remarks>
@@ -35,52 +35,21 @@ public sealed class RuntimeUpgradeIntegrationTests : IDisposable
     string ProgramPath => Path.Combine(_projectDir, "Program.cs");
 
     [Fact]
-    public async Task Net6ProjectBuildsButCannotDebug_AfterRetargetingToNet10ItBuildsAndDebugs()
+    public async Task Net10ProjectBuildsAndDebugs_AfterRetargetingToNet11ItStillBuildsAndDebugs()
     {
-        // The first half only means anything when the .NET 6 runtime really is missing. Rather than
-        // assume the agent machine's install set, check it: with .NET 6 present the app would launch
-        // and the "cannot debug" assertions below would be wrong rather than merely unmet.
-        if (IsRuntimeInstalled("6."))
-            Assert.Skip("A .NET 6 runtime is installed, so the missing-runtime half of this scenario cannot occur here.");
+        // The second half needs an SDK 11 and a runtime 11 to build and launch on; without them the
+        // retarget would fail for a reason that is not about this scenario.
+        if (!IsRuntimeInstalled("11."))
+            Assert.Skip("No .NET 11 runtime is installed, so the net11.0 half of this scenario cannot run here.");
 
         var breakpointLine = FindLine(ProgramPath, "var message = ComputeGreeting(\"Runtime\");");
 
-        // ---------- net6.0: compiles, but there is no runtime to launch it on ----------
-        Assert.Contains("<TargetFramework>net6.0</TargetFramework>", File.ReadAllText(ProjectPath));
-
+        // ---------- net10.0 ----------
+        Assert.Contains("<TargetFramework>net10.0</TargetFramework>", File.ReadAllText(ProjectPath));
         await _app.InvokeAsync("od.open-solution", ProjectPath);
+        await BuildAndDebugAsync(breakpointLine);
 
-        var net6Build = await _app.InvokeAsync("od.build-solution");
-        Assert.True(net6Build.GetProperty("success").GetBoolean(), net6Build.ToString());
-        if (net6Build.GetProperty("errorCount").GetInt32() != 0)
-            Assert.Fail(await _app.DescribeBuildAsync(net6Build));
-
-        await _app.InvokeAsync("od.open-file", ProgramPath);
-        await _app.InvokeAsync("od.debug.clear-breakpoints");
-        await _app.InvokeAsync("od.debug.set-breakpoint", ProgramPath, breakpointLine);
-
-        try
-        {
-            // Must report failure promptly - the same contract as
-            // DebugStart_WhenTargetMissing_FailsCleanlyInsteadOfHanging: no hang, no phantom
-            // "still debugging" state left behind.
-            var net6Start = await _app.InvokeAsync("od.debug.start", ProjectPath, true, 20);
-            Assert.False(net6Start.GetProperty("started").GetBoolean(), net6Start.ToString());
-            Assert.False(net6Start.GetProperty("isDebugging").GetBoolean(), net6Start.ToString());
-
-            var net6Info = await _app.InvokeAsync("od.debug.service-info");
-            Assert.False(net6Info.GetProperty("isDebugging").GetBoolean());
-            Assert.False(net6Info.GetProperty("isProcessRunning").GetBoolean());
-
-            var net6Output = await _app.InvokeAsync("od.debug.output");
-            Assert.Contains("ERROR", net6Output.GetProperty("text").GetString());
-        }
-        finally
-        {
-            await _app.InvokeAsync("od.debug.stop");
-        }
-
-        // ---------- retarget to net10.0 ----------
+        // ---------- retarget to net11.0 ----------
         // The project file is offered for editing straight from the project's context menu, so this
         // is an edit a user can actually make in the IDE rather than only from outside it.
         var contextMenu = await _app.InvokeAsync("od.project-context-menu", "RuntimeUpgradeApp");
@@ -92,18 +61,23 @@ public sealed class RuntimeUpgradeIntegrationTests : IDisposable
         File.WriteAllText(
             ProjectPath,
             File.ReadAllText(ProjectPath)
-                .Replace("<TargetFramework>net6.0</TargetFramework>", "<TargetFramework>net10.0</TargetFramework>"));
+                .Replace("<TargetFramework>net10.0</TargetFramework>", "<TargetFramework>net11.0</TargetFramework>"));
 
         // No explicit reopen: an SDK-style project file that changes is re-applied on its own. If it
         // instead put up the "solution was altered externally" prompt, that modal would block the
         // shared UI thread and the next action below would time out rather than quietly pass.
         await WaitForRetargetAsync();
 
-        // ---------- net10.0: builds and debugs ----------
-        var net10Build = await _app.InvokeAsync("od.build-solution");
-        Assert.True(net10Build.GetProperty("success").GetBoolean(), net10Build.ToString());
-        if (net10Build.GetProperty("errorCount").GetInt32() != 0)
-            Assert.Fail(await _app.DescribeBuildAsync(net10Build));
+        // ---------- net11.0 ----------
+        await BuildAndDebugAsync(breakpointLine);
+    }
+
+    async Task BuildAndDebugAsync(int breakpointLine)
+    {
+        var build = await _app.InvokeAsync("od.build-solution");
+        Assert.True(build.GetProperty("success").GetBoolean(), build.ToString());
+        if (build.GetProperty("errorCount").GetInt32() != 0)
+            Assert.Fail(await _app.DescribeBuildAsync(build));
 
         await _app.InvokeAsync("od.open-file", ProgramPath);
         await _app.InvokeAsync("od.debug.clear-breakpoints");
@@ -111,9 +85,9 @@ public sealed class RuntimeUpgradeIntegrationTests : IDisposable
 
         try
         {
-            var net10Start = await _app.InvokeAsync("od.debug.start", ProjectPath, true, 45);
-            Assert.True(net10Start.GetProperty("stopped").GetBoolean(), net10Start.ToString());
-            Assert.True(net10Start.GetProperty("isDebugging").GetBoolean(), net10Start.ToString());
+            var start = await _app.InvokeAsync("od.debug.start", ProjectPath, true, 45);
+            Assert.True(start.GetProperty("stopped").GetBoolean(), start.ToString());
+            Assert.True(start.GetProperty("isDebugging").GetBoolean(), start.ToString());
 
             // Stopped on the breakpoint we asked for, not merely "a debugger attached somewhere".
             var stack = await _app.InvokeAsync("od.debug.call-stack");
@@ -153,22 +127,20 @@ public sealed class RuntimeUpgradeIntegrationTests : IDisposable
             if (!properties.GetProperty("success").GetBoolean())
                 continue;
             lastSeen = properties.GetProperty("properties").GetProperty("TargetFramework").GetString();
-            if (lastSeen == "net10.0")
+            if (lastSeen == "net11.0")
                 return;
         }
 
         throw new InvalidOperationException(
-            $"The project file was retargeted to net10.0 but the loaded project model still reports '{lastSeen}'.");
+            $"The project file was retargeted to net11.0 but the loaded project model still reports '{lastSeen}'.");
     }
 
     /// <summary>Looks for an installed shared framework whose version starts with <paramref name="versionPrefix"/>.</summary>
     static bool IsRuntimeInstalled(string versionPrefix)
     {
-        // Path.GetDirectoryName of the host gives the dotnet root that this test process was started
-        // from, which is the same root the debuggee would be launched on.
-        var root = Path.GetDirectoryName(Environment.ProcessPath);
-        if (root == null)
-            return false;
+        // This process runs from <root>/shared/Microsoft.NETCore.App/<version>/, so the dotnet root is
+        // three levels up. (ProcessPath would be the test's own apphost, not the dotnet host.)
+        var root = Path.GetFullPath(Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", ".."));
         var sharedFramework = Path.Combine(root, "shared", "Microsoft.NETCore.App");
         if (!Directory.Exists(sharedFramework))
             return false;

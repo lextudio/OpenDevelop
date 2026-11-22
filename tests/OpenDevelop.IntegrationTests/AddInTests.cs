@@ -233,7 +233,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
 
         Assert.Equal("F#", activeView.GetProperty("syntaxHighlighting").GetString());
 
-        var preBuild = Path.Combine(Path.GetDirectoryName(_app.FSharpFixtureSolutionPath)!, "bin", "Debug", "net8.0", "FSharpFixture.dll");
+        var preBuild = Path.Combine(Path.GetDirectoryName(_app.FSharpFixtureSolutionPath)!, "bin", "Debug", "net10.0", "FSharpFixture.dll");
         if (File.Exists(preBuild))
             File.Delete(preBuild);
 
@@ -6263,7 +6263,7 @@ EndGlobal
         Directory.CreateDirectory(Path.Combine(work, "App"));
         WriteLocalFeedNuGetConfig(root);
         await File.WriteAllTextAsync(Path.Combine(work, "App", "App.csproj"),
-            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
             + TestPackageId + "\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n");
         await File.WriteAllTextAsync(Path.Combine(work, "App", "Program.cs"), "class Program { static void Main() { } }\n");
         await File.WriteAllTextAsync(Path.Combine(work, "Work.slnx"), "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n");
@@ -6302,7 +6302,7 @@ EndGlobal
         {
             Directory.CreateDirectory(Path.Combine(work, name));
             await File.WriteAllTextAsync(Path.Combine(work, name, name + ".csproj"),
-                "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
+                "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
                 + package + "\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n");
             await File.WriteAllTextAsync(Path.Combine(work, name, "Program.cs"), "class Program { static void Main() { } }\n");
             // The Packages node is built from the restored project, so restore each before opening the solution.
@@ -6424,7 +6424,7 @@ EndGlobal
         Directory.CreateDirectory(Path.Combine(work, "App"));
         WriteLocalFeedNuGetConfig(work);
         await File.WriteAllTextAsync(Path.Combine(work, "App", "App.csproj"),
-            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n"
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n"
             + string.Concat(references.Select(r => $"    <PackageReference Include=\"{r.Id}\" Version=\"{r.Version}\" />\n"))
             + "  </ItemGroup>\n</Project>\n");
         await File.WriteAllTextAsync(Path.Combine(work, "App", "Program.cs"), "class Program { static void Main() { } }\n");
@@ -6651,7 +6651,7 @@ EndGlobal
             "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageVersion Include=\"OpenDevelop.TypeProbe\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>\n");
         var csprojPath = Path.Combine(work, "App", "App.csproj");
         await File.WriteAllTextAsync(csprojPath,
-            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\"OpenDevelop.TypeProbe\" />\n  </ItemGroup>\n</Project>\n");
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\"OpenDevelop.TypeProbe\" />\n  </ItemGroup>\n</Project>\n");
         await File.WriteAllTextAsync(Path.Combine(work, "App", "Program.cs"), "class Program { static void Main() { } }\n");
         await File.WriteAllTextAsync(Path.Combine(work, "Work.slnx"), "<Solution>\n  <Project Path=\"App/App.csproj\" />\n</Solution>\n");
         var restore = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("dotnet")
@@ -6779,7 +6779,7 @@ EndGlobal
         {
             Directory.CreateDirectory(Path.Combine(_projectDir, probeProject));
             await File.WriteAllTextAsync(Path.Combine(_projectDir, probeProject, projectFileName),
-                "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n    <OutputType>Library</OutputType>\n  </PropertyGroup>\n</Project>\n");
+                "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <OutputType>Library</OutputType>\n  </PropertyGroup>\n</Project>\n");
         }
 
         await File.WriteAllTextAsync(probePath, source);
@@ -6794,7 +6794,7 @@ EndGlobal
         }
         Directory.CreateDirectory(Path.Combine(_projectDir, "ExistingApp"));
         await File.WriteAllTextAsync(Path.Combine(_projectDir, "ExistingApp", "ExistingApp.csproj"),
-            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net8.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n  </PropertyGroup>\n  <ItemGroup>\n    <PackageReference Include=\""
             + packageId + "\"" + (centralPackageVersions ? "" : $" Version=\"{existingAppVersion}\"") + " />\n  </ItemGroup>\n</Project>\n");
         // The fixture's own project stays in the solution; a Visual Basic probe is one more project.
         var solutionProjects = "  <Project Path=\"NuGetFixtureApp/NuGetFixtureApp.csproj\" />\n"

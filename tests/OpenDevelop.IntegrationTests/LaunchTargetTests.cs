@@ -178,7 +178,7 @@ public sealed class LaunchTargetTests : IAsyncDisposable
 
     // Several frameworks but none with a platform and no profiles: nothing to choose or add, so no empty drop-down.
     [Theory]
-    [InlineData("net10.0;net8.0")]
+    [InlineData("net10.0;net11.0")]
     [InlineData("net10.0")]
     public async Task LaunchTarget_IsHidden_WhenThereIsNothingToChooseOrAdd(string targetFrameworks)
     {

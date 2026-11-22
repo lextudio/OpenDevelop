@@ -12,33 +12,36 @@ namespace OpenDevelop.IntegrationTests;
 /// already persisted when OpenDevelop STARTS, so the IDE's in-process MSBuild is initialised from it
 /// once, early in startup, and then stays latched to that SDK for the whole session. The
 /// shared app instance of this suite is long running and its in-process MSBuild is already latched
-/// to SDK 10, so changing the selection there at run time (as
+/// to its own SDK, so changing the selection there at run time (as
 /// <see cref="NewProjectDialogIntegrationTests"/> does) never reaches that path.
 ///
 /// This test therefore starts its OWN IDE process, on its own DevFlow port and in its own config
-/// directory, with a REAL SDK 9 (installed by dotnetup, see <see cref="DotnetupSdkProvider"/>) already
-/// selected and discoverable - the exact state of the report. On the pre-fix code that instance
-/// evaluated net10.0 projects under SDK 9 and failed with "The imported project
-/// C:\Microsoft.CSharp.Core.targets was not found"; the fixed IDE must keep using SDK 10+.
+/// directory, with a root that holds exactly one SDK (<see cref="IsolatedSdkRoot"/>) already selected
+/// and discoverable. Only the supported majors, .NET 10 and 11, are covered: the IDE must load and
+/// build a net10.0 project under whichever of them was selected before startup, with its items
+/// evaluated and no missing Roslyn targets (the symptom of issue #19).
 ///
 /// <c>OD_IT_IDE_DLL</c> points the test at another build of the IDE (an <c>OpenDevelop.dll</c>, for
-/// example a build of the pre-fix commit) to confirm the test really detects the defect.
+/// example a build of an earlier commit) to confirm the test really detects a defect.
 /// </summary>
 // Its own named collection so it is ordered like every other class (collections sort by display name,
 // "90" after the "00".."60" ones); it starts its own IDE and does not touch the shared app's state.
 [Collection("90 SDK selected at startup (isolated IDE)")]
 public sealed class SdkSelectedAtStartupIntegrationTests
 {
-    [Fact]
-    public async Task ProjectLoadsAndBuilds_WhenAnUnusableSdk9WasSelectedBeforeStartup()
+    [Theory]
+    [InlineData(10)]
+    [InlineData(11)]
+    public async Task ProjectLoadsAndBuilds_WhenSdkIsSelectedBeforeStartup(int sdkMajor)
     {
-        string sdk9Root = await DotnetupSdkProvider.EnsureSdkAsync("9.0");
-
         string work = Path.Combine(Path.GetTempPath(), "opendevelop-sdk-at-startup-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(work);
         IsolatedIde? ide = null;
         try
         {
+            using var isolatedSdk = IsolatedSdkRoot.Create(sdkMajor, work);
+            string selectedRoot = isolatedSdk.Path;
+
             // A plain net10.0 console project in a solution, the shape File > New > Solution makes.
             string projectDir = Path.Combine(work, "project");
             Directory.CreateDirectory(projectDir);
@@ -49,41 +52,41 @@ public sealed class SdkSelectedAtStartupIntegrationTests
             string solution = Path.Combine(projectDir, "Repro.slnx");
             await File.WriteAllTextAsync(solution, "<Solution>\n  <Project Path=\"Repro.csproj\" />\n</Solution>\n");
 
-            // The persisted selection, in the properties file the IDE reads at startup. SDK 9 is made
+            // The persisted selection, in the properties file the IDE reads at startup. The SDK is made
             // discoverable as a CUSTOM root (what Tools > Options > .NET SDK stores), so the child's PATH
-            // and environment stay untouched and the machine's own SDK 10 keeps its normal discovery.
+            // and environment stay untouched and the machine's own SDKs keep their normal discovery.
             string configDir = Path.Combine(work, "config");
             Directory.CreateDirectory(configDir);
             await File.WriteAllTextAsync(Path.Combine(configDir, "OpenDevelopProperties.xml"),
                 "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Properties>\n" +
-                "  <Property key=\"SharpDevelop.Sdk.SelectedRootPath\">" + System.Security.SecurityElement.Escape(sdk9Root) + "</Property>\n" +
+                "  <Property key=\"SharpDevelop.Sdk.SelectedRootPath\">" + System.Security.SecurityElement.Escape(selectedRoot) + "</Property>\n" +
                 "  <Array key=\"SharpDevelop.Sdk.CustomRoots\">\n" +
-                "    <Element>" + System.Security.SecurityElement.Escape(sdk9Root) + "</Element>\n" +
+                "    <Element>" + System.Security.SecurityElement.Escape(selectedRoot) + "</Element>\n" +
                 "  </Array>\n" +
                 "</Properties>\n");
 
             ide = await IsolatedIde.StartAsync(configDir);
 
-            // The setup really is "unusable SDK selected and known": stored, and discovered as SDK 9.
+            // The setup really is "this SDK selected and known": stored, and discovered with that major.
             var list = await ide.InvokeAsync("od.sdk.list");
-            Assert.Equal(TrimRoot(sdk9Root), TrimRoot(list.GetProperty("selectedRootPath").GetString()));
+            Assert.Equal(TrimRoot(selectedRoot), TrimRoot(list.GetProperty("selectedRootPath").GetString()));
             Assert.Contains(list.GetProperty("sdks").EnumerateArray(), s =>
-                TrimRoot(s.GetProperty("RootPath").GetString()) == TrimRoot(sdk9Root)
-                && s.GetProperty("HighestSdkVersion").GetString()!.StartsWith("9."));
+                TrimRoot(s.GetProperty("RootPath").GetString()) == TrimRoot(selectedRoot)
+                && s.GetProperty("HighestSdkVersion").GetString()!.StartsWith(sdkMajor + "."));
 
             // The three behaviours that must hold are collected, not thrown one by one, so a single run
             // against a broken IDE reports every symptom (effective SDK, evaluation, build) at once.
             var failures = new List<string>();
 
-            // 1. The IDE must not use the unusable SDK.
+            // 1. The IDE must use the SDK that was selected.
             var effective = list.GetProperty("effective");
             string? effectiveVersion = effective.ValueKind == JsonValueKind.Object
                 ? effective.GetProperty("HighestSdkVersion").GetString()
                 : null;
             if (effective.ValueKind != JsonValueKind.Object)
-                failures.Add("A .NET 10+ SDK is installed on this machine, but the IDE reports no effective SDK.");
-            else if (!(int.TryParse(effectiveVersion?.Split('.')[0], out var major) && major >= 10))
-                failures.Add($"With SDK 9 selected at startup the IDE's effective SDK is {effectiveVersion}; it must be .NET 10 or newer.");
+                failures.Add($"SDK {sdkMajor} was selected at startup, but the IDE reports no effective SDK.");
+            else if (!(effectiveVersion?.StartsWith(sdkMajor + ".") ?? false))
+                failures.Add($"With SDK {sdkMajor} selected at startup the IDE's effective SDK is {effectiveVersion}.");
 
             // 2. The first evaluation latches in-process MSBuild: the project must load WITH its items.
             var open = await ide.InvokeAsync("od.open-solution", solution);
@@ -107,7 +110,7 @@ public sealed class SdkSelectedAtStartupIntegrationTests
             var buildPad = await ide.InvokeAsync("od.output-text", "Build");
             string buildPadText = buildPad.GetProperty("text").GetString() ?? "";
             if (System.Text.RegularExpressions.Regex.IsMatch(buildPadText, @"Microsoft\.CSharp(\.Core)?\.targets"))
-                failures.Add("Issue #19 is back: the Output pad's Build channel reports the project was evaluated under SDK 9 and its Roslyn targets were not found: "
+                failures.Add("Issue #19 is back: the Output pad's Build channel reports the project was evaluated under the wrong SDK and its Roslyn targets were not found: "
                     + Truncate(buildPadText, 1200));
             if (!evaluated)
                 failures.Add("The project loaded without any items (an evaluation failure). Solution tree: " + tree);

@@ -55,12 +55,9 @@ public sealed class NewProjectDialogIntegrationTests
     // targets path comes out empty. An unusable selection must never be used as an older SDK;
     // the project may be created, but its build must report the invalid explicit selection rather
     // than silently choosing a different SDK:
-    //  - dotnetup-sdk9: a REAL SDK 9, installed with dotnetup (see DotnetupSdkProvider), registered
-    //    as a custom root so the IDE discovers it, then selected;
     //  - fake-sdk9-root: the same shape with an empty SDK 9 folder, without the download;
     //  - 10.0: the bare version string the reporter had selected, which is not a root at all.
     [Theory]
-    [InlineData("dotnetup-sdk9")]
     [InlineData("fake-sdk9-root")]
     [InlineData("10.0")]
     public async Task NewSolutionDialog_StillCreatesAWorkingProject_WhenTheSelectedSdkIsUnusable(string selection)
@@ -76,10 +73,6 @@ public sealed class NewProjectDialogIntegrationTests
                 Directory.CreateDirectory(Path.Combine(fakeRoot, "sdk", "9.0.316"));
                 await File.WriteAllTextAsync(Path.Combine(fakeRoot, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet"), "");
                 selected = customRoot = fakeRoot;
-            }
-            else if (selection == "dotnetup-sdk9")
-            {
-                selected = customRoot = await DotnetupSdkProvider.EnsureSdkAsync("9.0");
             }
 
             if (customRoot is not null)

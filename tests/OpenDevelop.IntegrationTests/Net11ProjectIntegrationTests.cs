@@ -4,35 +4,28 @@ using Xunit;
 namespace OpenDevelop.IntegrationTests;
 
 /// <summary>
-/// A project that targets a framework no stable .NET SDK supports yet: net11.0, while .NET 11 is only
-/// a release candidate. Without an SDK 11 the project loads but its build fails with NETSDK1045; with
-/// a pre-release SDK 11 (installed by dotnetup, see <see cref="DotnetupSdkProvider"/>) OpenDevelop
-/// builds it with that SDK and starts it on that SDK's runtime, while the IDE itself keeps its stable
-/// SDK (DotNetSdkService.ResolveSdkForProject).
+/// A project that targets net11.0. With only an SDK 10 selected its build fails with NETSDK1045; with
+/// an SDK 11 selected OpenDevelop builds it with that SDK and starts it on that SDK's runtime.
+/// Each journey selects a root that holds exactly one SDK (<see cref="IsolatedSdkRoot"/>), so the
+/// outcome does not depend on which SDKs happen to be installed side by side.
 ///
-/// .NET 11 is never discovered automatically (DotNetSdkService.HighestAutomaticallyDiscoveredSdkMajor),
-/// so an installed SDK 11 is ignored unless its root is added with Add Custom Path; that is what the
-/// second test does with od.sdk.add-custom-root.
-///
-/// Each test starts its own IDE (<see cref="IsolatedIde"/>), so the custom SDK root it registers never
+/// Each test starts its own IDE (<see cref="IsolatedIde"/>), so the SDK selection it makes never
 /// reaches the shared app instance.
 /// </summary>
 [Collection("92 .NET 11 project (isolated IDE)")]
 public sealed class Net11ProjectIntegrationTests
 {
     [Fact]
-    public async Task Net11Project_LoadsButFailsToBuild_WhenNoRootHoldingSdk11IsAdded()
+    public async Task Net11Project_LoadsButFailsToBuild_WhenOnlySdk10IsSelected()
     {
         using var work = new WorkFolder();
+        using var sdk10 = IsolatedSdkRoot.Create(10, work.Path);
         string solution = await CreateNet11ConsoleSolutionAsync(work.Path);
         using var ide = await IsolatedIde.StartAsync(work.CreateConfigDirectory());
 
-        // Automatic discovery stops at .NET SDK 10, so an SDK 11 installed on this machine must not
-        // appear. A regression that exposed one must fail here, not skip: skipping would turn it into
-        // an untested path on exactly the machines that have .NET 11.
-        string? discoveredSdk11 = FindAnySdk11(await ide.InvokeAsync("od.sdk.list"));
-        Assert.True(discoveredSdk11 == null,
-            $"Automatic discovery exposed an SDK 11 ({discoveredSdk11}); SDK 11 roots must be added as a custom path.");
+        var added = await ide.InvokeAsync("od.sdk.add-custom-root", sdk10.Path);
+        Assert.True(added.GetProperty("success").GetBoolean(), added.ToString());
+        await SdkRootCandidates.SelectAsync(ide, sdk10.Path);
 
         await OpenAndWaitForItemsAsync(ide, solution);
 
@@ -44,29 +37,24 @@ public sealed class Net11ProjectIntegrationTests
     }
 
     [Fact]
-    public async Task Net11Project_BuildsAndRuns_WithADotnetupInstalledPreviewSdk11()
+    public async Task Net11Project_BuildsAndRuns_WhenSdk11IsSelected()
     {
-        string sdk11Root = await DotnetupSdkProvider.EnsureSdkAsync("11.0", allowPrerelease: true);
-        string sdk11Version = DotnetupSdkProvider.FindCompleteSdkVersion(sdk11Root, "11.0", allowPrerelease: true)!;
-
         using var work = new WorkFolder();
+        using var sdk11 = IsolatedSdkRoot.Create(11, work.Path);
+        string sdk11Root = sdk11.Path;
+        string sdk11Version = sdk11.SdkVersion;
         string solution = await CreateNet11ConsoleSolutionAsync(work.Path);
         using var ide = await IsolatedIde.StartAsync(work.CreateConfigDirectory());
 
         var added = await ide.InvokeAsync("od.sdk.add-custom-root", sdk11Root);
         Assert.True(added.GetProperty("success").GetBoolean(), added.ToString());
-
-        // The pre-release SDK is known, but it must not become the IDE's own SDK.
-        var effective = (await ide.InvokeAsync("od.sdk.list")).GetProperty("effective");
-        Assert.True(effective.ValueKind == JsonValueKind.Object, "The IDE has no effective (stable .NET 10+) SDK.");
-        string? effectiveVersion = effective.GetProperty("HighestSdkVersion").GetString();
-        Assert.False(effectiveVersion?.Contains('-') ?? true, $"A pre-release SDK ({effectiveVersion}) became the IDE's effective SDK.");
+        await SdkRootCandidates.SelectAsync(ide, sdk11Root);
 
         await OpenAndWaitForItemsAsync(ide, solution);
 
         var build = await ide.InvokeAsync("od.build-solution", "App11", "rebuild");
         Assert.True(build.GetProperty("result").GetString() == "Success",
-            $"net11.0 did not build with the dotnetup SDK {sdk11Version}: {build}");
+            $"net11.0 did not build with SDK {sdk11Version}: {build}");
 
         var run = await ide.InvokeAsync("od.run-project", "App11");
         Assert.True(run.GetProperty("success").GetBoolean(), run.ToString());
@@ -87,7 +75,7 @@ public sealed class Net11ProjectIntegrationTests
         Assert.Contains("HELLO-NET11 11.", output, StringComparison.Ordinal);
 
         // What a user presses: Debug > Start Without Debugging (Ctrl+F5) and Start Debugging (F5)
-        // must find the pre-release SDK's root: Start Debugging launches the program with a host of its own, and it must
+        // must find the selected SDK 11 root: Start Debugging launches the program with a host of its own, and it must
         // still be that root, the only place a .NET 11 runtime exists here.
         // Start Without Debugging runs the program without the IDE tracking it (no debug session),
         // so a clean exit is what shows it found that runtime.
@@ -254,23 +242,6 @@ public sealed class Net11ProjectIntegrationTests
             if (root is not null && Directory.Exists(sdkDirectory)
                 && Directory.GetDirectories(sdkDirectory).Any(path => Path.GetFileName(path).StartsWith("11.", StringComparison.Ordinal)))
                 return root;
-        }
-        return null;
-    }
-
-    /// <summary>"root (version)" of any discovered SDK root holding an 11.x SDK, stable or pre-release, or null.</summary>
-    static string? FindAnySdk11(JsonElement sdkList)
-    {
-        foreach (var sdk in sdkList.GetProperty("sdks").EnumerateArray())
-        {
-            string? root = sdk.GetProperty("RootPath").GetString();
-            string sdkDir = Path.Combine(root ?? "", "sdk");
-            if (root == null || !Directory.Exists(sdkDir))
-                continue;
-            string? version = Directory.GetDirectories(sdkDir).Select(Path.GetFileName)
-                .FirstOrDefault(name => name != null && name.StartsWith("11.", StringComparison.Ordinal));
-            if (version != null)
-                return $"{root} ({version})";
         }
         return null;
     }

@@ -461,6 +461,32 @@
       "note": "Regression gates behind the fast-mode work: an idle window and an idle IDE after an ILSpy search stay under a share of one core, and a second build of an unchanged solution skips every project (changed, added and referenced-project changes are rebuilt). The idle thresholds are CPU ratios, not wall-clock times, but a loaded shared runner can still move them, so this stays observe until it has been green on each platform. Had no CI entry."
     },
     {
+      "id": "sdk-selected-at-startup-tests",
+      "batch": 5,
+      "lane": "integration-stable",
+      "measuredSeconds": 70,
+      "timeoutMinutes": 10,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.SdkSelectedAtStartupIntegrationTests", "-parallel", "none"],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe" },
+      "note": "Each of SDK 10 and SDK 11 selected before startup, via a root that holds only that SDK: the project loads with items and builds. Nothing is downloaded. Skips a major the machine has no stable SDK for. macOS ARM64: 2 passed in 67 seconds. Starts as observe."
+    },
+    {
+      "id": "net11-project-tests",
+      "batch": 5,
+      "lane": "integration-stable",
+      "measuredSeconds": 80,
+      "timeoutMinutes": 10,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.Net11ProjectIntegrationTests", "-parallel", "none"],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe" },
+      "note": "net11.0 projects: build fails with NETSDK1045 under an SDK 10 only root, and builds, runs and debugs under an SDK 11 only root. macOS ARM64: 3 passed in 76 seconds. Starts as observe."
+    },
+    {
       "id": "runtime-upgrade-tests",
       "batch": 5,
       "lane": "integration-stable",
@@ -485,7 +511,7 @@
       "buildArgs": [
         "-p:BuildIntegrationFixtures=false"
       ],
-      "note": "A project targeting a runtime the machine does not have builds but cannot launch, and retargeting its project file fixes it. Skips itself where a .NET 6 runtime is installed. Needs the net6.0 targeting pack from the package source. Had no CI entry. Starts as observe."
+      "note": "A net10.0 project builds and debugs, and after its project file is retargeted to net11.0 it builds and debugs again. Skips itself where no .NET 11 runtime is installed. Only .NET 10 and 11 are covered; older runtimes are not tested. Starts as observe."
     },
     {
       "id": "workbench-tests",

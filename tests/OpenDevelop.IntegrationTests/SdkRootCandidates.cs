@@ -35,8 +35,12 @@ static class SdkRootCandidates
     }
 
     /// <summary>Existing DOTNET_ROOT-style folders whose sdk/ directory holds an 11.x SDK.</summary>
-    public static IEnumerable<string> WithSdk11()
+    public static IEnumerable<string> WithSdk11() => WithSdk(11);
+
+    /// <summary>Existing DOTNET_ROOT-style folders whose sdk/ directory holds an SDK of the given major version.</summary>
+    public static IEnumerable<string> WithSdk(int major)
     {
+        string prefix = major + ".";
         var roots = new List<string>();
         void Add(string? root)
         {
@@ -46,7 +50,7 @@ static class SdkRootCandidates
             if (!Directory.Exists(sdkDirectory))
                 return;
             if (!Directory.EnumerateDirectories(sdkDirectory)
-                .Any(directory => Path.GetFileName(directory).StartsWith("11.", StringComparison.Ordinal)))
+                .Any(directory => Path.GetFileName(directory).StartsWith(prefix, StringComparison.Ordinal)))
                 return;
             roots.Add(Path.GetFullPath(root));
         }
@@ -59,6 +63,7 @@ static class SdkRootCandidates
         Add("/usr/local/share/dotnet");
         Add("/usr/share/dotnet");
         Add("/opt/homebrew/opt/dotnet/libexec");
+        Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet"));
 
         return roots.Distinct(StringComparer.Ordinal);
     }

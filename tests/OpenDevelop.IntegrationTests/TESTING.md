@@ -72,47 +72,29 @@ everything the suite needs: it builds the addins, the out-of-process designer ho
 apps that tests assume are prebuilt, and packs the local NuGet feed fixture. Prefer
 `dotnet build tests/OpenDevelop.IntegrationTests/...` over building the app alone.
 
+Only .NET 10 and 11 are covered; no older SDK or runtime is installed or tested.
+
 `NewProjectDialogIntegrationTests.NewSolutionDialog_StillCreatesAWorkingProject_WhenTheSelectedSdkIsUnusable`
-(issue #19) has one case, `dotnetup-sdk9`, that installs a real .NET SDK 9 with
-[dotnetup](https://github.com/dotnet/sdk/tree/main/documentation/general/dotnetup) (public preview;
-`DotnetupSdkProvider`). It needs network access to `aka.ms` and about 300 MB of temp space, caches
-everything under `%TEMP%\opendevelop-it-dotnetup-preview` (delete it to force a clean install), writes
-nothing to your own dotnetup state or machine-wide SDKs, and is Windows-only. When the SDK cannot
-be acquired - offline, blocked `aka.ms`, a changed script or dotnetup option, a non-Windows host,
-another test process holding the cache lock for the length of one cold acquisition (about 20
-minutes), a proxy that answers with an HTML block page - that case is reported as **Skipped**,
-not failed, so a green run with a skip there means the real-SDK-9 coverage did not run; the
-`fake-sdk9-root` and `10.0` cases always run. It uses dotnetup's `preview` channel (never `daily`,
-which is unsigned) and **fails** if the bootstrap script or the `dotnetup.exe` it fetches does not
-carry a valid Microsoft Authenticode signature. That includes a non-HTML body from a filtering proxy
-(for example plain-text `Access Denied`): it cannot be told apart from a tampered script, so it is
-a failure, not a skip.
+(issue #19) checks that an unusable SDK selection (an empty SDK 9 folder, or the bare string `10.0`)
+is never used and the new project is still created.
 
 `SdkSelectedAtStartupIntegrationTests` covers the other half of issue #19. The IDE's in-process MSBuild
 is initialised once, early in startup, and then stays on that SDK, and the shared app
-instance is long running, so changing the SDK at run time (as the theory above does) cannot reach
-that path. This test starts its **own** IDE process (own `-configdir`, own `DEVFLOW_AGENT_PORT`)
-with a real dotnetup-installed SDK 9 already persisted as the selected SDK, opens a net10.0
-project, and requires that the effective SDK is 10+, the project loads with items, the Output
-pad's **Build** channel holds no `Microsoft.CSharp.Core.targets` error, and the build succeeds.
-It needs the same dotnetup prerequisite (skipped the same way) and about a minute. Set
-`OD_IT_IDE_DLL` to the `OpenDevelop.dll` of another IDE build to run it against that build - for
-example a build of commit `df5e306bf1` (before the fix), where it fails with all three symptoms,
-which is how to confirm the test still detects the defect. Like the dotnetup theory it is Windows-only,
-so on macOS it always reports Skipped and this startup path has no automated coverage there.
+instance is long running, so changing the SDK at run time cannot reach that path. This test starts
+its **own** IDE process (own `-configdir`, own `DEVFLOW_AGENT_PORT`) with a root holding exactly one SDK
+(`IsolatedSdkRoot`, built from the installed SDK 10 or 11 with links, nothing downloaded) already
+persisted as the selected SDK, opens a net10.0 project, and requires that the effective SDK is the
+selected one, the project loads with items, the Output pad's **Build** channel holds no
+`Microsoft.CSharp.Core.targets` error, and the build succeeds. It skips when the machine has no stable
+SDK of that major. Set `OD_IT_IDE_DLL` to the `OpenDevelop.dll` of another IDE build to run it against
+that build.
 
-`Net11ProjectIntegrationTests` covers a project whose target framework no stable SDK supports yet
-(net11.0 while .NET 11 is a release candidate), again each test in its own IDE.
-`Net11Project_LoadsButFailsToBuild_WhenNoRootHoldingSdk11IsAdded` expects the build to fail with
-NETSDK1045. It runs on any machine, because automatic discovery stops at .NET SDK 10
-(`DotNetSdkService.HighestAutomaticallyDiscoveredSdkMajor`): an installed .NET 11 is ignored until
-its root is added as a custom path, so the IDE keeps its stable SDK 10 and the net11.0 target is
-rejected. The test fails if discovery starts exposing an SDK 11 again, so the policy cannot regress
-silently on the machines that have .NET 11 installed.
-`Net11Project_BuildsAndRuns_WithADotnetupInstalledPreviewSdk11`
-installs the `11.0` channel with dotnetup (a pre-release until .NET 11 ships), registers it as a
-custom SDK root, and requires that the IDE keeps a stable SDK as its own, builds the project with the
-pre-release SDK, and runs it to completion on the .NET 11 runtime from that root.
+`Net11ProjectIntegrationTests` covers net11.0 projects, each test in its own IDE.
+`Net11Project_LoadsButFailsToBuild_WhenOnlySdk10IsSelected` selects an SDK 10 only root and expects
+the build to fail with NETSDK1045. `Net11Project_BuildsAndRuns_WhenSdk11IsSelected` selects an SDK 11
+only root and requires the project to build and run to completion on the .NET 11 runtime.
+`RuntimeUpgradeIntegrationTests` retargets a net10.0 project to net11.0 and checks it builds and
+debugs on both sides.
 
 Tests carrying `[Trait("DesignerBackend", "Microsoft")]` exercise the Microsoft WinForms/WPF/WinUI
 backends, which only exist on Windows. They skip themselves elsewhere (see

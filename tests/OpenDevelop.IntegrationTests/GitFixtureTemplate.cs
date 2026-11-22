@@ -17,7 +17,7 @@ static class GitFixtureTemplate
         Directory.CreateDirectory(Path.Combine(directory, "GitFixtureApp"));
         WriteFile(Path.Combine(directory, "GitFixture.sln"), Solution);
         WriteFile(Path.Combine(directory, "GitFixtureApp", "GitFixtureApp.csproj"),
-            "<Project Sdk=\"Microsoft.NET.Sdk\">\r\n  <PropertyGroup>\r\n    <TargetFramework>net8.0</TargetFramework>\r\n  </PropertyGroup>\r\n</Project>\r\n");
+            "<Project Sdk=\"Microsoft.NET.Sdk\">\r\n  <PropertyGroup>\r\n    <TargetFramework>net10.0</TargetFramework>\r\n  </PropertyGroup>\r\n</Project>\r\n");
         foreach (var name in new[] { "Added", "Clean", "Modified", "Untracked" })
         {
             WriteFile(Path.Combine(directory, "GitFixtureApp", name + ".cs"),
