@@ -120,6 +120,57 @@ agent pinned back to 0.2.13, `OpenSlnx_AddReference_ProjectAndBrowsedAssembly` p
 the agent rejects the test's `ui/tap` with `ui-mutation-busy` while the modal `od.menu.invoke` that
 opened the dialog is still running, and the dialog stays open for the tests that follow.
 
+**Step 4: the solution is built off the UI thread and published on it.** Step 3 called this impossible
+because the project model asserted the main thread during construction. It no longer does, by design
+rather than by relaxing checks:
+
+- *Ownership instead of "main thread only".* `ModelThreadAffinity` (Base) says who may touch a
+  solution's model: the thread that builds it until `Solution.Publish()`, the main thread afterwards
+  (exactly the old `SD.MainThread.VerifyAccess()`). Nothing outside the builder can see an unpublished
+  solution, so building it on the thread pool is safe. Projects inherit the solution's affinity
+  (`IHasModelThreadAffinity`); `AbstractProject`, `MSBuildBasedProject`, `CompilableProject` and both
+  configuration/platform collections check it instead of the main thread. A model built on the main
+  thread (synchronous open, new-project wizard) behaves as before.
+- *Construction has no side effects; publication activates.* `ProjectChangeWatcher` is passive until its
+  first `Enable()`; projects and the solution enable their watchers, and the solution subscribes to
+  `FileService`, in `Publish()` (which `CurrentSolution`'s setter calls).
+- *No UI in the model.* `ProjectBrowserPad.RefreshView()` calls became a `ProjectTreeChangedMessageEventArgs`
+  message Solution Explorer subscribes to; `MSBuildBasedProject` no longer shows the ToolsVersion-upgrade
+  dialog while constructing (such a project loads as an `ErrorProject`, which the open reports).
+- *Pipeline.* `SDProjectService`: `BuildSolution` (any thread: slnx migration, parse, parallel
+  pre-evaluation, construction) and `PublishSolution` (UI: `CurrentSolution`, watchers, `OnSolutionOpened`).
+  `OpenSolutionOrProjectAsync` runs the first through `BackgroundSolutionBuilder` (one build at a time; a
+  newer open or `CloseSolution` cancels; the awaiting thread takes the finished model over with
+  `ModelThreadAffinity.TransferOwnershipToCurrentThread`) and the second on the UI thread. Interactive
+  callers (File > Open, recent lists, drag and drop, startup, Solution Explorer, reload-on-change) use it;
+  `OpenSolutionOrProject` stays synchronous for callers that need the solution on return.
+- *Parallel pre-evaluation.* `ProjectPreEvaluation` evaluates every project's active configuration
+  concurrently before construction; `MSBuildBasedProject.OpenConfiguration` takes a matching evaluation
+  instead of making one. On the 2-core test machine it only saves ~10%: evaluation is CPU- and
+  allocation-bound and does not scale past the physical cores.
+- *Switches.* `OD_ASYNC_SOLUTION_LOAD=0` (synchronous open), `OD_PARALLEL_EVALUATION=0`,
+  `OD_PARALLEL_EVALUATION_DOP=<n>`; see `SolutionLoadOptions`.
+
+Making the open asynchronous exposed the work that runs after it, which the old blocking open had
+hidden behind its own freeze. Profiling the UI thread after publication found three UI-thread hogs:
+
+- Solution Explorer did not virtualize (WPF's `TreeView` does not by default) while every project starts
+  expanded: thousands of templated rows were created and measured at once. `StickyTreeView` now
+  virtualizes (recycling, pixel scrolling); expansion state lives in `ProjectBrowserNodeModel.IsExpanded`
+  (two-way), and Collapse/Expand All are model operations.
+- Solution Explorer built its node tree on the UI thread (`BuildSolutionTreeAsync`), ~11 s for 471
+  projects. The reads it does are thread-safe snapshots, and node models create their images lazily when
+  bound, so the tree is now built on the thread pool and only its root is added on the UI thread.
+- The Unit Tests pad parsed every test project's sources on the UI thread to show approximate tests and
+  a total (`MtpTestProject.PopulateApproxTreeFromRoslyn`). The scan now runs on the thread pool; the result
+  is applied on the UI thread unless the tree changed meanwhile (an MTP discovery wins), and the pad's
+  count awaits `ApproximateScanCompletion`.
+
+Measuring: `tests/bench/solution_load_bench.py` (fresh process per run, `od.open-solution-begin` and
+polling, so DevFlow is free during the load) and `tests/bench/profile_open.py`. A DevFlow UI action is a
+poor responsiveness probe - DevFlow queues it behind lower-priority dispatcher work - so the benchmark also
+reads `od.ui-latency.*`, an in-process probe that posts at `DispatcherPriority.Input`.
+
 **Roslyn push and snapshots.** After a solution opens, the snapshots are built and pushed to
 RoslynHost; on OpenDevelop.Mvp that took 138 s end to end.
 
