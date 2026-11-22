@@ -937,7 +937,7 @@
       "args": ["-method", "OpenDevelop.IntegrationTests.DesignerEditorJourneyTests.WinFormsDesigner_ImageListEditorWritesSourceAndResxAsOneUndoableTransaction_LibreWinForms", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "src/Samples/LibreWinFormsSample/LibreWinFormsSample.csproj" }],
-      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required", "linux-x64": "observe" },
       "note": "Exercises LibreWinForms image-list editing and undo."
     },
     {
@@ -952,8 +952,8 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.FormsMenuEditingTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "src/Samples/LibreWinFormsSample/LibreWinFormsSample.csproj" }],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
-      "note": "Menu and strip editing in the WinForms designer, written for both cells. LibreWinForms (every platform listed): the component tray holds strip-level objects, not ToolStripItems - the one case that runs off Windows, 25 s on macOS ARM64 with the other six skipped. Microsoft WinForms (Windows only): the same tray check plus the pointer-driven popup edit/cancel/commit/undo, Type Here creation and status-strip insertion journeys; those need the interactive desktop and have not been run on a hosted runner yet. Three journeys skip themselves for LibreWinForms because selecting a menu item does not expand its dropdown there yet (a LibreWinForms gap, not a Windows requirement). Linux is not listed because the LibreWinForms designer entries are not enabled there. Starts as observe."
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe" },
+      "note": "Menu and strip editing in the WinForms designer, written for both cells. LibreWinForms (every platform listed): the component tray holds strip-level objects, not ToolStripItems - the one case that runs off Windows, 25 s on macOS ARM64 with the other six skipped. Microsoft WinForms (Windows only): the same tray check plus the pointer-driven popup edit/cancel/commit/undo, Type Here creation and status-strip insertion journeys; those need the interactive desktop and have not been run on a hosted runner yet. Three journeys skip themselves for LibreWinForms because selecting a menu item does not expand its dropdown there yet (a LibreWinForms gap, not a Windows requirement). Starts as observe."
     },
     {
       "id": "librewpf-designer-property-editors",
