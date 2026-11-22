@@ -202,7 +202,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					var fullFileName = FileName.Create(Path.GetFullPath(file));
 					
 					if (SD.ProjectService.IsSolutionOrProjectFile(fullFileName)) {
-						SD.ProjectService.OpenSolutionOrProject(fullFileName);
+						SD.ProjectService.OpenSolutionOrProjectAsync(fullFileName).FireAndForget();
 					} else {
 						SharpDevelop.FileService.OpenFile(fullFileName);
 					}
@@ -215,7 +215,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			if (!didLoadSolutionOrFile && SD.PropertyService.Get("SharpDevelop.LoadPrevProjectOnStartup", false)) {
 				if (SD.FileService.RecentOpen.RecentProjects.Count > 0) {
 					try {
-						SD.ProjectService.OpenSolutionOrProject(SD.FileService.RecentOpen.RecentProjects[0]);
+						SD.ProjectService.OpenSolutionOrProjectAsync(SD.FileService.RecentOpen.RecentProjects[0]).FireAndForget();
 						didLoadSolutionOrFile = true;
 					} catch (Exception ex) {
 						MessageService.ShowException(ex);

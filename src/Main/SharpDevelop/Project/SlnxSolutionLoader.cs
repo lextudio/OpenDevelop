@@ -131,8 +131,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			int projectCount = projectInfos.Count;
 			int projectsLoaded = 0;
 			foreach (var projectInfo in projectInfos)
-			{
 				projectInfo.ActiveProjectConfiguration = projectInfo.ConfigurationMapping.GetProjectConfiguration(solution.ActiveConfiguration);
+			using var preEvaluation = SolutionPreEvaluation.Begin(solution, projectInfos, progress.CancellationToken);
+			foreach (var projectInfo in projectInfos)
+			{
 				progress.TaskName = "Loading " + projectInfo.ProjectName;
 				using (projectInfo.ProgressMonitor = progress.CreateSubTask(1.0 / Math.Max(projectCount, 1)))
 				{

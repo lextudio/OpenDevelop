@@ -55,6 +55,9 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (information == null)
 				throw new ArgumentNullException("information");
 			this.parentSolution = information.Solution;
+			// A project belongs to its solution's model: built by the solution's builder thread until the
+			// solution is published, owned by the main thread afterwards.
+			this.threadAffinity = (information.Solution as IHasModelThreadAffinity)?.ThreadAffinity ?? ModelThreadAffinity.MainThread;
 			this.activeConfiguration = information.ActiveProjectConfiguration;
 			this.configurationMapping = information.ConfigurationMapping ?? new ConfigurationMapping();
 			this.Name = information.ProjectName;
@@ -63,6 +66,47 @@ namespace ICSharpCode.SharpDevelop.Project
 			this.TypeGuid = information.TypeGuid;
 			if (information.ProjectSections != null)
 				this.projectSections.AddRange(information.ProjectSections);
+			if (threadAffinity.IsPublished)
+				ActivateChangeWatcher();
+			else
+				threadAffinity.Published += delegate { ActivateChangeWatcher(); };
+		}
+
+		readonly ModelThreadAffinity threadAffinity;
+
+		/// <summary>
+		/// The thread ownership of this project's model; use its <see cref="ModelThreadAffinity.VerifyAccess"/>
+		/// where main-thread-only state is touched. It is the main thread once the solution is published.
+		/// </summary>
+		protected internal ModelThreadAffinity ThreadAffinity {
+			get { return threadAffinity; }
+		}
+
+		bool changeWatcherActive;
+
+		/// <summary>Starts watching the project file; runs on the main thread when the model is published.</summary>
+		void ActivateChangeWatcher()
+		{
+			lock (SyncRoot) {
+				if (isDisposed || changeWatcherActive || watcher == null)
+					return;
+				changeWatcherActive = true;
+				watcher.Enable();
+			}
+		}
+
+		/// <summary>Stops change notifications while the project itself writes its file (no-op before publication).</summary>
+		protected void SuspendChangeWatcher()
+		{
+			if (changeWatcherActive)
+				watcher.Disable();
+		}
+
+		/// <summary>Counterpart of <see cref="SuspendChangeWatcher"/>.</summary>
+		protected void ResumeChangeWatcher()
+		{
+			if (changeWatcherActive)
+				watcher.Enable();
 		}
 		
 		#region IDisposable implementation
@@ -77,7 +121,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		public virtual void Dispose()
 		{
-			SD.MainThread.VerifyAccess();
+			threadAffinity.VerifyAccess();
 			lock (SyncRoot) {
 				if (isDisposed)
 					return;
@@ -156,21 +200,21 @@ namespace ICSharpCode.SharpDevelop.Project
 			set {
 				if (value == null)
 					throw new ArgumentNullException();
-				SD.MainThread.VerifyAccess();
+				threadAffinity.VerifyAccess();
 				Debug.Assert(FileUtility.IsUrl(value) || Path.IsPathRooted(value));
-				
+
 				lock (SyncRoot) {
 					if (watcher == null) {
+						// Passive until the model is published (ActivateChangeWatcher).
 						if (SD.Services.GetService(typeof(IWorkbench)) == null) {
 							watcher = new MockProjectChangeWatcher();
 						} else {
 							watcher = new ProjectChangeWatcher(value);
-							watcher.Enable();
 						}
 					} else {
-						watcher.Disable();
+						SuspendChangeWatcher();
 						watcher.Rename(value);
-						watcher.Enable();
+						ResumeChangeWatcher();
 					}
 					
 					fileName = value;
@@ -216,7 +260,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		[Browsable(false)]
 		public IMutableModelCollection<SolutionSection> ProjectSections {
 			get {
-				SD.MainThread.VerifyAccess();
+				threadAffinity.VerifyAccess();
 				return projectSections;
 			}
 		}
@@ -230,7 +274,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		public ConfigurationAndPlatform ActiveConfiguration {
 			get { return activeConfiguration; }
 			set {
-				SD.MainThread.VerifyAccess();
+				threadAffinity.VerifyAccess();
 				if (value.Configuration == null || value.Platform == null)
 					throw new ArgumentNullException();
 				

@@ -601,6 +601,28 @@ namespace ICSharpCode.SharpDevelop.Project
 		}
 		
 		/// <summary>
+		/// The global properties a project is evaluated with for a configuration: the build engine's
+		/// global properties plus Configuration/Platform (and TargetFramework when pinned). The
+		/// solution's own properties live on its ProjectCollection and apply on top. Shared with the
+		/// solution loader's parallel pre-evaluation, whose results are only reused when they were
+		/// made with exactly these properties.
+		/// </summary>
+		public static Dictionary<string, string> CreateEvaluationGlobalProperties(string configuration, string platform, string targetFramework = null)
+		{
+			var globalProps = new Dictionary<string, string>(MSBuildInternals.PropertyNameComparer);
+			var msbuildEngine = SD.Services.GetService<IMSBuildEngine>();
+			if (msbuildEngine != null) {
+				foreach (var kv in msbuildEngine.GlobalBuildProperties)
+					globalProps[kv.Key] = kv.Value;
+			}
+			globalProps["Configuration"] = configuration;
+			globalProps["Platform"] = platform;
+			if (!string.IsNullOrEmpty(targetFramework))
+				globalProps["TargetFramework"] = targetFramework;
+			return globalProps;
+		}
+
+		/// <summary>
 		/// calls OpenConfiguration for the current configuration
 		/// </summary>
 		ConfiguredProject OpenCurrentConfiguration()
@@ -678,18 +700,15 @@ namespace ICSharpCode.SharpDevelop.Project
 					return new ConfiguredProject(this, cachedProject, false);
 				}
 				
-				Dictionary<string, string> globalProps = new Dictionary<string, string>(MSBuildInternals.PropertyNameComparer);
-				var msbuildEngine = SD.Services.GetService<IMSBuildEngine>();
-				if (msbuildEngine != null) {
-					foreach (var kv in msbuildEngine.GlobalBuildProperties)
-						globalProps[kv.Key] = kv.Value;
-				}
-				globalProps["Configuration"] = configuration;
-				globalProps["Platform"] = platform;
-				if (!string.IsNullOrEmpty(targetFramework))
-					globalProps["TargetFramework"] = targetFramework;
+				Dictionary<string, string> globalProps = CreateEvaluationGlobalProperties(configuration, platform, targetFramework);
 				var evaluationStartedUtc = DateTime.UtcNow; // before: a file added mid-evaluation must count as newer
-				MSBuild.Project project = MSBuildInternals.LoadProject(MSBuildProjectCollection, projectFile, globalProps);
+				MSBuild.Project project = null;
+				// The solution loader may already have evaluated the active configuration in parallel,
+				// off this thread (ProjectPreEvaluation); take it if it matches exactly.
+				if (openCurrentConfiguration)
+					project = ProjectPreEvaluation.Take(MSBuildProjectCollection, projectFile, globalProps, ref evaluationStartedUtc);
+				if (project == null)
+					project = MSBuildInternals.LoadProject(MSBuildProjectCollection, projectFile, globalProps);
 				if (openCurrentConfiguration) {
 					currentlyOpenProject = project;
 					currentlyOpenEvaluatedAt = evaluationStartedUtc;
@@ -1331,7 +1350,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// </summary>
 		internal void CreateItemsListFromMSBuild()
 		{
-			SD.MainThread.VerifyAccess();
+			ThreadAffinity.VerifyAccess();
 			
 			using (var c = OpenCurrentConfiguration()) {
 				foreach (ProjectItem item in items) {
@@ -1364,7 +1383,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			// refresh project browser to make sure references and other project items are still valid
 			// after TargetFramework or other properties changed. Fixes SD-1876
 			if (!isLoading)
-				ProjectBrowserPad.RefreshView();
+				ICSharpCode.ILSpy.Util.MessageBus.Send(this, new ProjectTreeChangedMessageEventArgs(this));
 		}
 		
 		void AddProjectItem(ProjectItem item)
@@ -1376,7 +1395,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (item.IsAddedToProject)
 				throw new ArgumentException("item is already added to project", "item");
 			
-			SD.MainThread.VerifyAccess();
+			ThreadAffinity.VerifyAccess();
 			using (var c = OpenCurrentConfiguration()) {
 				items.Add(item);
 				itemsReadOnly = null; // remove readonly variant of item list - will regenerate on next Items call
@@ -1493,10 +1512,13 @@ namespace ICSharpCode.SharpDevelop.Project
 				try {
 					LoadProjectInternal(loadInformation);
 				} catch (InvalidProjectFileException ex) {
+					// MSB4132 (unknown ToolsVersion): constructing a project never prompts - it may run on the
+					// solution loader's background thread. A requested upgrade (ProjectLoadInformation.upgradeToolsVersion)
+					// was already applied by LoadProjectInternal; otherwise the project loads as an ErrorProject,
+					// which the solution open reports. Rare anyway: ResolveSupportedToolsVersion evaluates an
+					// unknown ToolsVersion with Current.
 					if (ex.ErrorCode == "MSB4132") {
-						if (UpgradeToolsVersion(loadInformation)) {
-							// successful upgrade has loaded the project
-						} else if (projectFile != null && projectFile.ToolsVersion == "12.0") {
+						if (projectFile != null && projectFile.ToolsVersion == "12.0") {
 							// ToolsVersion 12.0 not found: the user needs to install Microsoft Build Tools 2013
 							throw new ToolNotFoundProjectLoadException(ex.Message, ex) {
 								Description = "Microsoft Build Tools 2013 are necessary for opening Visual Studio 2013 solutions.",
@@ -1527,35 +1549,6 @@ namespace ICSharpCode.SharpDevelop.Project
 		}
 		
 		const string autoUpgradeNewToolsVersion = "4.0";
-		
-		bool UpgradeToolsVersion(ProjectLoadInformation loadInformation)
-		{
-			if (loadInformation.upgradeToolsVersion != null)
-				return false;
-			if (!CanUpgradeToolsVersion())
-				return false;
-			loadInformation.ProgressMonitor.ShowingDialog = true;
-			StringTagPair[] tags = {
-				new StringTagPair("ProjectName", loadInformation.ProjectName),
-				new StringTagPair("OldToolsVersion", projectFile.ToolsVersion),
-				new StringTagPair("NewToolsVersion", autoUpgradeNewToolsVersion)
-			};
-			string message = StringParser.Parse("${res:ICSharpCode.SharpDevelop.Project.UpgradeView.UpdateOnLoadDueToMissingMSBuild}", tags);
-			string upgradeButton = StringParser.Parse("${res:ICSharpCode.SharpDevelop.Project.UpgradeView.UpdateToMSBuildButton}", tags);
-			int result = MessageService.ShowCustomDialog(
-				"${res:ICSharpCode.SharpDevelop.Project.UpgradeView.Title}",
-				message,
-				0, 1, upgradeButton, "${res:Global.CancelButtonText}");
-			loadInformation.ProgressMonitor.ShowingDialog = false;
-			if (result == 0) {
-				loadInformation.upgradeToolsVersion = true;
-				LoadProjectInternal(loadInformation);
-				return true;
-			} else {
-				loadInformation.upgradeToolsVersion = false;
-				return false;
-			}
-		}
 		
 		bool CanUpgradeToolsVersion()
 		{
@@ -1602,7 +1595,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		public override void Save(string fileName)
 		{
 			lock (SyncRoot) {
-				watcher.Disable();
+				SuspendChangeWatcher();
 				watcher.Rename(fileName);
 				// we need the global lock - if the file is being renamed,
 				// MSBuild will update the global project collection
@@ -1614,7 +1607,7 @@ namespace ICSharpCode.SharpDevelop.Project
 						userProjectFile.Save(userFile);
 					}
 				}
-				watcher.Enable();
+				ResumeChangeWatcher();
 			}
 			FileUtility.RaiseFileSaved(new FileNameEventArgs(fileName));
 		}

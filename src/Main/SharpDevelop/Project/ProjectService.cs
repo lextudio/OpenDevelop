@@ -75,6 +75,8 @@ namespace ICSharpCode.SharpDevelop.Project
 				SD.MainThread.VerifyAccess();
 				var oldValue = currentSolution;
 				if (oldValue != value) {
+					// Hand the model to the main thread before anyone can see it (starts its watchers).
+					(value as Solution)?.Publish();
 					currentSolution = value;
 					if (oldValue != null)
 						allSolutions.Remove(oldValue);
@@ -162,9 +164,11 @@ namespace ICSharpCode.SharpDevelop.Project
 		public bool OpenSolutionOrProject(FileName fileName)
 		{
 			if (!IsSolutionOrProjectFile(fileName)) {
-				MessageService.ShowError(StringParser.Parse("${res:ICSharpCode.SharpDevelop.Commands.OpenCombine.InvalidProjectOrCombine}", new StringTagPair("FileName", fileName)));
+				ShowNotASolutionOrProjectError(fileName);
 				return false;
 			}
+			solutionBuilder.CancelPending();
+			solutionBuilder.WaitUntilIdle();
 			if (!CloseSolution(allowCancel: true))
 				return false;
 			FileUtility.ObservedLoad(OpenSolutionOrProjectInternal, fileName);
@@ -172,9 +176,66 @@ namespace ICSharpCode.SharpDevelop.Project
 			return currentSolution != null;
 		}
 		
+		readonly BackgroundSolutionBuilder solutionBuilder = new BackgroundSolutionBuilder();
+		
+		/// <summary>
+		/// Opens a solution without blocking the UI thread: the solution and its projects are built on the
+		/// thread pool (<see cref="BuildSolution"/>, which never touches the UI) and published on the UI thread
+		/// when complete (<see cref="PublishSolution"/>). <see cref="CurrentSolution"/> stays null until then;
+		/// a later open or <see cref="CloseSolution"/> cancels a build in progress. Project files (which may ask
+		/// how to add the project to a solution) and OD_ASYNC_SOLUTION_LOAD=0 take the synchronous path.
+		/// </summary>
+		public async Task<bool> OpenSolutionOrProjectAsync(FileName fileName, CancellationToken cancellationToken = default)
+		{
+			SD.MainThread.VerifyAccess();
+			if (!SolutionLoadOptions.AsyncLoad || !IsSolutionFile(fileName))
+				return OpenSolutionOrProject(fileName);
+			if (!CloseSolution(allowCancel: true))
+				return false;
+			
+			BeginSolutionOpen();
+			ResolveProjectBindings();
+			var solution = await solutionBuilder.BuildAsync(
+				progress => BuildSolution(fileName, progress),
+				token => SD.StatusBar.CreateProgressMonitor(token),
+				cancellationToken);
+			// Resumed on the UI thread (the caller's dispatcher context), which now owns the model.
+			SD.MainThread.VerifyAccess();
+			if (solution == null)
+				return false; // cancelled or superseded
+			if (currentSolution != null) {
+				solution.Dispose(); // something else was opened meanwhile (synchronous path)
+				return false;
+			}
+			FileUtility.ObservedLoad(() => PublishSolution(solution), fileName);
+			return currentSolution == solution;
+		}
+		
+		static bool IsSolutionFile(FileName fileName) => fileName.HasExtension(".sln") || fileName.HasExtension(".slnx");
+		
+		void ShowNotASolutionOrProjectError(FileName fileName)
+		{
+			MessageService.ShowError(StringParser.Parse("${res:ICSharpCode.SharpDevelop.Commands.OpenCombine.InvalidProjectOrCombine}", new StringTagPair("FileName", fileName)));
+		}
+		
+		/// <summary>
+		/// Creates the project bindings' add-in objects on the UI thread before a background build asks them
+		/// to load projects: add-in activation is not meant to race.
+		/// </summary>
+		void ResolveProjectBindings()
+		{
+			foreach (var descriptor in projectBindings) {
+				try {
+					_ = descriptor.Binding;
+				} catch (Exception ex) {
+					LoggingService.Warn("Could not create the project binding for " + descriptor.ProjectFileExtension, ex);
+				}
+			}
+		}
+		
 		void OpenSolutionOrProjectInternal(FileName fileName)
 		{
-			if (fileName.HasExtension(".sln") || fileName.HasExtension(".slnx")) {
+			if (IsSolutionFile(fileName)) {
 				OpenSolutionInternal(fileName);
 			} else {
 				OpenProjectInternal(fileName);
@@ -183,16 +244,42 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		void OpenSolutionInternal(FileName fileName)
 		{
+			BeginSolutionOpen();
+			Solution solution;
+			using (var progress = SD.StatusBar.CreateProgressMonitor()) {
+				solution = BuildSolution(fileName, progress);
+			}
+			PublishSolution(solution);
+		}
+		
+		void BeginSolutionOpen()
+		{
 			PerfTimeline.Begin(PerfTimeline.SolutionOpen);
 			ReferenceResolutionDiagnostics.Reset();
+		}
+		
+		/// <summary>
+		/// Reads the solution file and constructs the solution with all of its projects, evaluating them in
+		/// parallel. Runs on any thread and never touches the UI: the result is an unpublished model owned by
+		/// the calling thread until <see cref="PublishSolution"/>.
+		/// </summary>
+		Solution BuildSolution(FileName fileName, IProgressMonitor progress)
+		{
 			fileName = MigrateToSlnxIfPossible(fileName);
-			ISolution solution;
-			using (var progress = SD.StatusBar.CreateProgressMonitor())
-			using (Environment.GetEnvironmentVariable("OD_SHARED_EVALUATION") == "0" ? null : MSBuildInternals.BeginSharedEvaluation())
-			using (Environment.GetEnvironmentVariable("OD_DEFER_PROJECT_WATCHERS") == "0" ? null : ProjectChangeWatcher.DeferEnabling()) {
-
-				solution = LoadSolutionFile(fileName, progress);
-
+			using (SolutionLoadOptions.SharedEvaluation ? MSBuildInternals.BeginSharedEvaluation() : null) {
+				return LoadSolution(fileName, progress);
+			}
+		}
+		
+		/// <summary>
+		/// Makes a built solution the current one (publishing it to the UI thread) and runs the solution-opened
+		/// work: project behaviors, SolutionOpened handlers and messages, recent list, upgrade/error dialogs.
+		/// </summary>
+		void PublishSolution(ISolution solution)
+		{
+			SD.MainThread.VerifyAccess();
+			// Watchers start one per idle dispatcher turn, after the handlers (fast-mode.md step 3).
+			using (SolutionLoadOptions.DeferProjectWatchers ? ProjectChangeWatcher.DeferEnabling() : null) {
 				this.CurrentSolution = solution;
 			}
 			PerfTimeline.Mark(PerfTimeline.SolutionOpen, "projects-evaluated", solution.Projects.Count() + " projects");
@@ -525,6 +612,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		public bool CloseSolution(bool allowCancel = true)
 		{
 			SD.MainThread.VerifyAccess();
+			solutionBuilder.CancelPending();
 			var solution = this.CurrentSolution;
 			if (solution == null)
 				return true;
@@ -637,6 +725,11 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		#region LoadSolutionFile + CreateEmptySolutionFile
 		public ISolution LoadSolutionFile(FileName fileName, IProgressMonitor progress)
+		{
+			return LoadSolution(fileName, progress);
+		}
+		
+		Solution LoadSolution(FileName fileName, IProgressMonitor progress)
 		{
 			if (fileName == null)
 				throw new ArgumentNullException("fileName");

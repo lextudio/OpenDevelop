@@ -1005,7 +1005,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				if (File.Exists(file)) {
 					var fileName = FileName.Create(file);
 					if (SD.ProjectService.IsSolutionOrProjectFile(fileName)) {
-						SD.ProjectService.OpenSolutionOrProject(fileName);
+						SD.ProjectService.OpenSolutionOrProjectAsync(fileName).FireAndForget();
 					} else {
 						SD.FileService.OpenFile(fileName);
 					}

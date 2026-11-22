@@ -91,6 +91,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		public ProjectBrowserPad()
 		{
 			instance = this;
+			ICSharpCode.ILSpy.Util.MessageBus<ProjectTreeChangedMessageEventArgs>.Subscribers += delegate { RefreshView(); };
 			SD.ProjectService.SolutionOpened += ProjectServiceSolutionLoaded;
 			SD.ProjectService.SolutionClosed += ProjectServiceSolutionClosed;
 			

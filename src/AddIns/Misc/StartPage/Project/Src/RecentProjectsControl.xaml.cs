@@ -109,7 +109,7 @@ namespace ICSharpCode.StartPage
 		{
 			RecentOpenItem item = (RecentOpenItem)lastProjectsListView.SelectedItem;
 			if (item != null) {
-				SD.ProjectService.OpenSolutionOrProject(FileName.Create(item.Path));
+				SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(item.Path)).FireAndForget();
 			}
 		}
 		
@@ -123,7 +123,7 @@ namespace ICSharpCode.StartPage
 		void listViewNameClick(object sender, MouseButtonEventArgs e)
 		{
 			RecentOpenItem item = (RecentOpenItem)((TextBlock)sender).Tag;
-			SD.ProjectService.OpenSolutionOrProject(FileName.Create(item.Path));
+			SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(item.Path)).FireAndForget();
 		}
 		
 		void openSolutionClick(object sender, RoutedEventArgs e)

@@ -124,7 +124,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		void IConfigurationOrPlatformNameCollection.Add(string newName, string copyFrom)
 		{
-			SD.MainThread.VerifyAccess();
+			project.ThreadAffinity.VerifyAccess();
 			newName = ValidateName(newName);
 			if (newName == null)
 				throw new ArgumentException();
@@ -201,7 +201,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		void IConfigurationOrPlatformNameCollection.Remove(string name)
 		{
-			SD.MainThread.VerifyAccess();
+			project.ThreadAffinity.VerifyAccess();
 			lock (project.SyncRoot) {
 				string otherName = null;
 				foreach (string configName in this) {

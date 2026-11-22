@@ -197,7 +197,7 @@ namespace ICSharpCode.SharpDevelop.Commands
 						Header = accelaratorKeyPrefix + recentProject
 					};
 					items[i].Click += delegate {
-						SD.ProjectService.OpenSolutionOrProject(recentProject);
+						SD.ProjectService.OpenSolutionOrProjectAsync(recentProject).FireAndForget();
 					};
 				}
 				return items;
