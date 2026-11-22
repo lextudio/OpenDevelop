@@ -4,8 +4,8 @@
     <!-- Force transitive dependencies onto the versions pinned here; without it a package can
          drag in an older, vulnerable release (NU1902/NU1903) behind our back. -->
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
-    <!-- The lextudio GitHub Packages build of 1.0.2 contains native assets for every supported Terminal RID. -->
-    <LibGhosttyNetVersion>1.0.2</LibGhosttyNetVersion>
+    <!-- The lextudio GitHub Packages build of 1.0.3 contains native assets for every supported Terminal RID. -->
+    <LibGhosttyNetVersion>1.0.3</LibGhosttyNetVersion>
     <!-- lextudio's SharpDbg build: the DAP adapter and its whole dependency closure, published by
          the sharpdbg repository's own workflow (publish-opendevelop-packages.yml). The debugger add-in used
          to build that project from source on every build; it now restores this package and copies the
