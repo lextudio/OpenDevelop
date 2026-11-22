@@ -1,0 +1,22 @@
+<Project Sdk="LibreWPF.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <UseLibreWpfXamlSourceGenerator>true</UseLibreWpfXamlSourceGenerator>
+    <!-- XSG is the sole XAML compiler for this fixture; the BAML task does not understand {cs:}. -->
+    <ProGpuWpfUseWpfMarkup>false</ProGpuWpfUseWpfMarkup>
+    <!-- LibreWPF.Sdk's portable markup target owns the traditional WinFX import.  Keeping this
+         true makes the fixture prove that the analyzer, not PresentationBuildTasks, compiled XAML. -->
+    <ImportFrameworkWinFXTargets>true</ImportFrameworkWinFXTargets>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Deliberately a package reference: this proves the project-local OpenAvalon NuGet feed
+         transports the analyzer rather than accidentally loading the sibling checkout. -->
+    <PackageReference Include="LibreWPF.Xaml.SourceGenerator" Version="0.1.0-local.2" PrivateAssets="all" />
+    <AdditionalFiles Include="MainWindow.xaml" />
+    <AdditionalFiles Include="SecondWindow.xaml" />
+  </ItemGroup>
+</Project>

@@ -83,6 +83,60 @@ public sealed class WpfHotReloadJourneyTests
 	}
 
 	/// <summary>
+	/// Route D through the IDE for a project compiled by the XAML source generator: a <c>{cs:}</c>
+	/// edit cannot be pushed as XAML text, so Apply has to classify it as a code delta, have the
+	/// Roslyn host rerun the generator on the unsaved buffer, and send the metadata delta to the
+	/// agent, whose generated handler rebuilds the window. It covers what the Base-level
+	/// XsgHotReloadEndToEndTests bypass: the IDE's own project evaluation (the generator is a
+	/// package analyzer, the XAML an AdditionalFiles item), the launch baseline capture and the
+	/// classification behind the Apply command. The fixture needs a local-only generator package,
+	/// so the journey skips where it has not been built.
+	/// </summary>
+	[Fact]
+	public async Task XsgProject_CsExpressionEdit_AppliesAsACodeDelta()
+	{
+		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
+		var built = Path.Combine(fixtureDirectory, "bin", "Debug", "net10.0-windows",
+			OperatingSystem.IsWindows() ? "XsgLocalFeedFixture.exe" : "XsgLocalFeedFixture");
+		if (!File.Exists(built))
+			Assert.Skip("Build tests/fixtures/XsgLocalFeedFixture (Debug) first; it needs the local XSG generator package.");
+		var xaml = Path.Combine(fixtureDirectory, "MainWindow.xaml");
+		var originalXaml = await File.ReadAllTextAsync(xaml);
+
+		var opened = await _app.ReopenSolutionAsync(Path.Combine(fixtureDirectory, "XsgLocalFeedFixture.slnx"));
+		Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+		await OpenAsActiveDocumentAsync(xaml);
+		try {
+			await StartHotReloadAsync();
+			var session = await WaitForSessionAsync("Ready", TimeSpan.FromSeconds(120));
+			var endpoint = session.GetProperty("diagnostics").GetProperty("endpoint").GetString();
+			Assert.False(string.IsNullOrWhiteSpace(endpoint));
+			Assert.Equal("Hot reload ready", await QueryAgentAsync(endpoint!, "Status.Text"));
+
+			var replaced = await _app.InvokeAsync("od.file.replace-text", xaml,
+				"{cs: &quot;Hot reload ready&quot;}", "{cs: &quot;Hot reload from &quot; + &quot;the IDE&quot;}");
+			Assert.True(replaced.GetProperty("success").GetBoolean(), replaced.ToString());
+			var applied = await _app.InvokeAsync("od.hot-reload.apply-command");
+			Assert.True(applied.GetProperty("success").GetBoolean(), applied.ToString());
+
+			try {
+				await WaitForAgentValueAsync(endpoint!, "Status.Text", "Hot reload from the IDE", TimeSpan.FromSeconds(60));
+			} catch (Xunit.Sdk.XunitException ex) {
+				// What the apply did is only reported in the Hot Reload output channel.
+				throw new Xunit.Sdk.XunitException(ex.Message + Environment.NewLine + "Hot Reload output: "
+					+ await _app.InvokeAsync("od.output-text", "Hot Reload"));
+			}
+			// Unsaved: the delta came from the editor buffer, not the file.
+			Assert.Equal(originalXaml, await File.ReadAllTextAsync(xaml));
+		} finally {
+			await File.WriteAllTextAsync(xaml, originalXaml);
+			await _app.InvokeAsync("od.hot-reload.stop-command");
+			await _app.InvokeAsync("od.stop-project");
+			await WaitForSessionInactiveAsync();
+		}
+	}
+
+	/// <summary>
 	/// A full apply must survive a DynamicResource on a DependencyProperty.
 	///
 	/// The agent parses the incoming XAML itself with XamlXmlReader/XamlObjectWriter. With a plain
@@ -93,12 +147,10 @@ public sealed class WpfHotReloadJourneyTests
 	/// already updated the named properties it could reach, and the real failure was only visible
 	/// as "full apply skipped: ..." in the output channel.
 	///
-	/// Asserting this through the live tree is not possible: the agent answers only a fixed set of
-	/// named queries (PaneTitle.Text, PaneBody.Text, PaneList.SelectedIndex,
-	/// PrimaryButton.Background) and returns null for anything else, so a probe element the test
-	/// introduces is invisible to it. The failure is only ever reported in one place - the
-	/// "Hot Reload" output category, as "full apply skipped: ..." appended to an apply that still
-	/// reports success - so that is what this reads.
+	/// The failure is only ever reported in one place - the "Hot Reload" output category, as
+	/// "full apply skipped: ..." appended to an apply that still reports success - so that is what
+	/// this reads. (The agent can now read any named element's property, "Name.Property", but a
+	/// value that the XML fallback also reaches would look right either way.)
 	/// </summary>
 	[Fact]
 	public async Task Apply_WithDynamicResourceOnDependencyProperty_StillRunsFullApply()

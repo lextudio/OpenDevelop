@@ -1,0 +1,8 @@
+<Window x:Class="XsgLocalFeedFixture.SecondWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="second XSG local-feed fixture">
+  <Grid>
+    <TextBlock Text="Second generated handler" />
+  </Grid>
+</Window>

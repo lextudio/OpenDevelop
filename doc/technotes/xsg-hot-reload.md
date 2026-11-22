@@ -89,12 +89,12 @@ Route T stays the fast path (unsaved buffer, no build). Route D is the slow path
 | Phase | Work | Where | Status |
 |---|---|---|---|
 | 0a | Can `dotnet watch` and the OpenDevelop debugger own one process? | superseded: no; the plan replaces `dotnet watch` with an OpenDevelop producer plus agent (no debugger) or SharpDbg (debugger), see `sharpdbg-enc.md` | closed |
-| 0b | `dotnet watch` on a real LibreWPF app with a live window under XSG | experiment | open |
+| 0b | A real LibreWPF app with a live window under XSG, Route D | OpenDevelop + openavalon | **done locally** with the OpenDevelop producer instead of `dotnet watch`: `XsgHotReloadEndToEndTests` (see below) |
 | 1 | Generator hot-reload ready in Debug: typed `x:Name` fields, event wiring, DynamicResource via `SetResourceReference`, `[MetadataUpdateHandler]` + weak registry | openavalon | done in the working tree (not committed); typed fields, events, `SetResourceReference`, idempotence, `#line` were already in `f6cf29056` |
 | 2 | `HotReloadWorkflow.Classify` from a real XAML parse diff: Route T / `BuildRequired` (`{cs:}`, events) / `RestartRequired` (`x:Name` removed, `x:Class` changed) | OpenDevelop | done, and only for projects that opted in to XSG (`UseLibreWpfXamlSourceGenerator` in the project file, or the `LIBREWPF_USE_XSG` environment switch; a value set in Directory.Build.props is not seen); BAML and WinUI keep the text path. Event-handler edits are not recognised (text alone cannot tell an event from a property), they still take Route T |
-| 3 | Agent: only start in the target app; atomic apply, last-known-good, serialized queue | WpfHotReload.Runtime | target-process guard done |
+| 3 | Agent: only start in the target app; atomic apply, last-known-good, serialized queue | WpfHotReload.Runtime | target-process guard committed (`9f5f214`, not pushed). Serialized queue already holds: the pipe server has one instance and handles each request synchronously on the dispatcher. Last-known-good: committed (`be2ba81`, not pushed). A merge that throws re-applies the last text that applied, or the IDE's `previousXamlText` before any; covered by `WpfHotReloadEndToEndTests.FailedMerge_RestoresTheLastAppliedState` through the test-only `WPF_HOTRELOAD_TEST_FAULT_AFTER_MERGE` marker. Atomicity beyond that (a restore that itself fails) reports "restart the application" |
 | 5 | Route D without `dotnet watch`: delta producer (E0), agent `applyDelta` (E1), SharpDbg `sharpdbg/applyDeltas` (E3a), debug-state follow-up (E3b) | OpenDevelop + sharpdbg | E2 done; E0 done locally (host producer, launch DLL/PDB capture, EnC PDB maps); schedule in `sharpdbg-enc.md` |
-| 4 | Convergence tests (apply, revert, compare) and an XSG journey beside `WpfHotReloadJourneyTests` | OpenDevelop | open |
+| 4 | Convergence tests (apply, revert, compare) and an XSG journey beside `WpfHotReloadJourneyTests` | OpenDevelop | Base-level XSG journey done (`XsgHotReloadEndToEndTests`), including convergence for Route D (edit, second edit, revert reaches the launch text, agent and SharpDbg) and Route T rollback; IDE (DevFlow) journey done locally (`XsgProject_CsExpressionEdit_AppliesAsACodeDelta`) |
 
 Phase 1 delivery: under `#if DEBUG` each generated class carries a nested `__XsgHotReload` registered
 with `[assembly: MetadataUpdateHandler]`. `InitializeComponent` registers `this` (weakly, once);
@@ -125,7 +125,86 @@ so it is not a valid minimal XSG fixture.
 
 Phase 3 guard: `StartupHook.Initialize` returns unless `PresentationFramework` resolves, so inherited
 `DOTNET_STARTUP_HOOKS` in `dotnet watch` and build hosts no longer start a listener on the app's pipe.
-Not yet exercised against a real `dotnet watch` run (phase 0b).
+Not yet exercised against a real `dotnet watch` run (phase 0b). OpenDevelop only gets it, and `applyDelta`, once
+WpfHotReload.Runtime is pushed and the `0.1.0-ci.1` pin moves (see `sharpdbg-enc.md`, Status).
+
+## Route D end to end (2026-11-22, local)
+
+`tests/OpenDevelop.Base.Tests/XsgHotReloadEndToEndTests.cs` runs `tests/fixtures/XsgLocalFeedFixture` (now a code-only
+`WinExe`) under the agent, loads its real compiler inputs into the Roslyn host (via `dotnet msbuild -getItem`), captures
+the launch DLL/PDB, edits `{cs: "Hot reload ready"}` in the unsaved XAML text and asserts the live `Status.Text` becomes
+the new value. Passing on macOS arm64. What it took:
+
+- **Host had no XAML.** `LanguageServiceProjectSnapshot` now carries `AdditionalFileNames` (both evaluation paths and
+  the `.od` cache; an old cache entry without them is re-evaluated). The host keeps them as AdditionalDocuments, so its
+  compilation runs the generator.
+- **The XAML buffer never reached the host.** `HotReloadDeltaRequest.AdditionalTexts` carries it; the producer applies
+  it to the AdditionalDocument before compiling. `AgentPipeHotReloadSession` sends it for a `.xaml` change.
+- **Generator: `x:Name` was only a field.** It now also sets `FrameworkElement.Name`/`FrameworkContentElement.Name` and
+  registers the name in the root `NameScope` (unregistering first, since Hot Reload reruns `InitializeComponent`), as
+  BAML does. Without it `FindName`, `ElementName` bindings and the agent's lookup by name fail. Unit tests:
+  `openavalon/LibreWPF/src/LibreWPF.Xaml.SourceGenerator.Tests` (5).
+- **Agent:** query `<Name>.<Property>` reads any public property of a named element (was a fixed list).
+
+The same test runs under SharpDbg (`CsExpressionEdit_UnderSharpDbg_ReachesTheLiveWindow`, E3a in `sharpdbg-enc.md`).
+
+The test skips where the fixture is not built: the fixture needs the local-only generator package.
+
+## IDE journey (2026-11-22, local)
+
+`WpfHotReloadJourneyTests.XsgProject_CsExpressionEdit_AppliesAsACodeDelta` drives the edit through the IDE (open the
+fixture, Start Hot Reload, edit the unsaved buffer, Apply) and passes. Getting there fixed:
+
+- **The first Apply of a session was never classified.** With no accepted text yet, the command used the editor
+  buffer as the "previous" text, so previous == current and `Classify` returned `FullDocument`; a `{cs:}` edit went
+  out as text. It now falls back to the file on disk (what the launch build compiled).
+- **The agent's XML fallback set markup-extension text as a literal** (`Status.Text` became `{cs: "..." + "..."}`).
+  Attribute values starting with `{` (other than the `{}` escape) are skipped.
+- **The IDE's Roslyn host compiled every SDK project without its global usings and without package analyzers or
+  source generators** (also the targeting pack's Regex/LibraryImport generators). Snapshots now carry
+  `GlobalUsings` from the evaluated `Using` items (the host adds them as an in-memory `obj/OpenDevelop.GlobalUsings.g.cs`),
+  and the `ResolveReferences` run that already resolves references also returns the `Analyzer` items (single project:
+  `-getItem:Analyzer`; batch: an injected `ODResolveAnalyzers` target through `CustomAfterMicrosoftCommonTargets`,
+  importing the project's own value first). They are cached with the references (an older cache entry is resolved
+  again once). The SDK's code-quality analyzers (`Sdks/Microsoft.NET.Sdk/analyzers`) are left out: diagnostics only,
+  and the costly part. Tests: `ReferenceResolutionBatchTests` (real MSBuild collects the Regex generator),
+  `RoslynHostProcessTests.GlobalUsings_FromTheSnapshot_AreInTheProjectsCompilation`.
+- **The launch baseline was the apphost**, a native executable ("PE image doesn't contain managed metadata"). The
+  baseline is now the managed assembly beside it (`HotReloadLaunchBaseline.ManagedModuleFor`).
+- **Baseline failures were only in the log file**; Apply then said "No launch baseline exists". They now go to the
+  Hot Reload output channel ("Code changes cannot be applied in this session: ...").
+
+Still passing after these changes: both existing WPF Hot Reload journeys, `ProjectReloadTests.ExternalProjectFileChange_*`,
+`AddInTests.OpenLens_*`, and 131 related Base tests. Solution-open cost, OpenDevelop.Mvp.slnx (89 projects), macOS arm64 Debug, wall time from `od.open-solution` to
+the `roslyn-projects-pushed` milestone; "cold" deletes the solution's `.od` caches, "warm" reopens in the same
+process; `OD_RESOLVE_ANALYZERS=0` turns the collection off:
+
+| Analyzers | Cold (s) | Warm (s) |
+|---|---|---|
+| off | 41.2, 49.0, 35.2 | 15.5, 14.0, 13.5 |
+| on | 38.8, 40.1, 48.7, 37.3, 38.2 | 14.1, 14.0, 16.8, 14.1, 13.5 |
+
+No difference above the run-to-run noise. All 89 projects resolved analyzers (1,316 paths in total; the Regex,
+LibraryImport, System.Text.Json, logging and MessagePack generators among them). The first two "on" runs still
+loaded the SDK's CA analyzers: MSBuild reports them as `.../Sdks/Microsoft.NET.Sdk/targets/../analyzers/...`, which
+the filter only matched after normalising the path. The milestone covers loading projects into the host, not running
+the generators: those run lazily, when a compilation is first needed.
+
+## Local iteration (nothing published yet)
+
+Packages under test are packed with unique versions into `artifacts/openavalon-feed` and the pins are moved locally,
+not committed:
+
+| Package | Local version | Source |
+|---|---|---|
+| `WpfHotReload.Runtime` | `0.1.0-dev.7` | `../WpfHotReload.Runtime`, `dotnet pack -p:Version=...` |
+| `LeXtudio.SharpDbg.Cli` | `1.0.0-lextudio.dev.2` (`SharpDbgCliVersion`) | `../sharpdbg/iac/pack-opendevelop-cli.ps1`; run pwsh with `-NoProfile` and `/usr/local/share/dotnet` first on `PATH`, because the profile puts Homebrew's dotnet first |
+| `LibreWPF.Xaml.SourceGenerator` | `0.1.0-local.2` (fixture only) | `../openavalon/LibreWPF/src/LibreWPF.Xaml.SourceGenerator`, `dotnet pack` |
+
+Bump the version on every repack (NuGet caches a version forever). `sync-openavalon-feed.ps1` refuses a pin that
+GitHub Packages does not have; write `<package>.nupkg.verified` (two lines: id, version) beside a local package so the
+sync skips it and still fetches everything else. Before pushing, publish in dependency order and
+replace the local pins with published ones.
 
 ## Open questions
 
