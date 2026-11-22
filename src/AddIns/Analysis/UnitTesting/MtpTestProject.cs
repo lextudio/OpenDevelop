@@ -21,6 +21,9 @@ namespace ICSharpCode.UnitTesting
 			= new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
 		DateTime? lastBuildTime;
 		bool discoveryInProgress;
+		/// <summary>Bumped (on the UI thread) whenever <see cref="discoveredNodesByTargetFramework"/> is replaced.</summary>
+		int treeRevision;
+		Task approximateScan = Task.CompletedTask;
 		int suppressBuildDiscoveryCount;
 		bool disposed;
 
@@ -66,6 +69,9 @@ namespace ICSharpCode.UnitTesting
 		// take. TriggerDiscoveryAsync's real MTP pass replaces discoveredNodesByTargetFramework (and
 		// rebuilds the tree via the same PopulateTree call) once it completes, same as it always
 		// did - this just seeds it with an approximate answer first instead of nothing.
+		/// <summary>Completes when the latest approximate Roslyn scan has been applied to the tree (or discarded).</summary>
+		public Task ApproximateScanCompletion => approximateScan;
+
 		void PopulateApproxTreeFromRoslyn()
 		{
 			// FileSaved can fire repeatedly while the workbench is opening/restoring documents.
@@ -77,21 +83,47 @@ namespace ICSharpCode.UnitTesting
 			// work loses neither the fast approximation nor the authoritative MTP pass.
 			if (!NestedTestsInitialized)
 				return;
+			approximateScan = PopulateApproxTreeFromRoslynAsync();
+		}
+
+		/// <summary>
+		/// Parses the project's sources off the UI thread (seconds for a large test project; done on the UI
+		/// thread it froze the IDE after opening a solution with many test projects) and applies the result on
+		/// it, unless the tree was replaced meanwhile - e.g. by an MTP discovery, which is authoritative.
+		/// </summary>
+		async Task PopulateApproxTreeFromRoslynAsync()
+		{
 			try {
-				var candidates = RoslynTestScanner.ScanFiles(GetCompileSourceFiles());
-				if (candidates.Count == 0)
+				int revision = treeRevision;
+				var sourceFiles = GetCompileSourceFiles();
+				var targetFrameworks = GetTargetFrameworks();
+				var approx = await Task.Run(() => {
+					var candidates = RoslynTestScanner.ScanFiles(sourceFiles);
+					if (candidates.Count == 0)
+						return null;
+					var nodesByTargetFramework = new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
+					foreach (var targetFramework in targetFrameworks)
+						nodesByTargetFramework[targetFramework] = candidates.Select(BuildApproxNode).ToList();
+					return nodesByTargetFramework;
+				});
+				if (approx == null)
 					return;
-
-				var approx = new Dictionary<string, IReadOnlyList<MtpTestNode>>(StringComparer.OrdinalIgnoreCase);
-				foreach (var targetFramework in GetTargetFrameworks()) {
-					approx[targetFramework] = candidates.Select(BuildApproxNode).ToList();
-				}
-
-				discoveredNodesByTargetFramework = approx;
-				PopulateTree();
+				await SD.MainThread.InvokeAsync(() => {
+					if (disposed || revision != treeRevision)
+						return; // superseded by a newer result
+					ReplaceDiscoveredNodes(approx);
+				});
 			} catch (Exception ex) {
 				SD.Log.Warn("Roslyn approximate test scan failed: " + ex.Message);
 			}
+		}
+
+		/// <summary>Replaces the discovered tests and refreshes the tree. UI thread only.</summary>
+		void ReplaceDiscoveredNodes(IReadOnlyDictionary<string, IReadOnlyList<MtpTestNode>> nodesByTargetFramework)
+		{
+			discoveredNodesByTargetFramework = nodesByTargetFramework;
+			treeRevision++;
+			PopulateTree();
 		}
 
 		IReadOnlyList<string> GetCompileSourceFiles()
@@ -205,10 +237,8 @@ namespace ICSharpCode.UnitTesting
 				// The user cancelled from the status bar: leave the tree exactly as it was rather
 				// than reporting a failure for something they asked to stop.
 			} finally {
-				if (hasMtpResult) {
-					discoveredNodesByTargetFramework = discovered;
-					await SD.MainThread.InvokeAsync(PopulateTree);
-				}
+				if (hasMtpResult)
+					await SD.MainThread.InvokeAsync(() => ReplaceDiscoveredNodes(discovered));
 				discoveryInProgress = false;
 			}
 		}

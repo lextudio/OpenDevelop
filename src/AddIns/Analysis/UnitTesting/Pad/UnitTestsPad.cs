@@ -166,10 +166,11 @@ namespace ICSharpCode.UnitTesting
 		/// The status bar's Total reflects the discovered test count (doc/technotes/ilspy.md,
 		/// "Total: 0" fix, 2026-08-09): a pad showing test classes while reading "Total: 0" reads as
 		/// broken. Counting initializes every test project's nested tests, each an MSBuild
-		/// evaluation; done in one go on SolutionOpened it held the UI thread for 3.4 s on
-		/// OpenDevelop.Mvp (doc/technotes/fast-mode.md step 3). Count one project per dispatcher
-		/// turn instead, so the window stays responsive, and publish the total only if no test run
-		/// has started meanwhile (a run's own StartRun owns the status bar from then on).
+		/// evaluation plus a source scan; done in one go on SolutionOpened it held the UI thread for
+		/// 3.4 s on OpenDevelop.Mvp (doc/technotes/fast-mode.md step 3). Count one project per
+		/// dispatcher turn instead, waiting for each project's background source scan, so the window
+		/// stays responsive, and publish the total only if no test run has started meanwhile (a run's
+		/// own StartRun owns the status bar from then on).
 		/// </summary>
 		async void CountDiscoveredTestsAsync(ITest solution, int runVersion)
 		{
@@ -182,6 +183,13 @@ namespace ICSharpCode.UnitTesting
 				await Dispatcher.Yield(DispatcherPriority.Background);
 				if (testService.OpenSolution != solution || viewModel.RunVersion != runVersion)
 					return;
+				// Initializing a test project starts its source scan in the background; count once it is in.
+				if (project is MtpTestProject mtpProject) {
+					mtpProject.EnsureNestedTestsInitialized();
+					await mtpProject.ApproximateScanCompletion;
+					if (testService.OpenSolution != solution || viewModel.RunVersion != runVersion)
+						return;
+				}
 				count += CountLeafTests(project);
 			}
 			if (testService.OpenSolution == solution && viewModel.RunVersion == runVersion)
