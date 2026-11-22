@@ -22,8 +22,21 @@ public sealed record HotReloadProjectId(string ProjectFileName, string? TargetFr
 /// </summary>
 public sealed record HotReloadBaselineRequest(HotReloadProjectId Project, byte[] ModuleImage, byte[] PdbImage);
 
-/// <summary>IDE-to-host request to calculate against the baseline captured at launch.</summary>
-public sealed record HotReloadDeltaRequest(HotReloadProjectId Project);
+/// <summary>
+/// IDE-to-host request to calculate the next delta for the application as it runs now.
+/// <paramref name="AdditionalTexts"/> carries the editor's current text of source-generator inputs
+/// (XAML read by the XAML source generator): those are AdditionalFiles, which the ordinary
+/// C# document synchronisation does not track, so the request brings them up to date first.
+/// <paramref name="PreviousDeltaApplied"/> says whether the application accepted the delta the
+/// previous request returned: the host then builds on that generation, otherwise it discards it and
+/// stays on the generation the application still runs. Deltas are a chain; one computed against the
+/// wrong generation is rejected or corrupts the running module.
+/// </summary>
+public sealed record HotReloadDeltaRequest(HotReloadProjectId Project, HotReloadAdditionalText[]? AdditionalTexts = null,
+	bool PreviousDeltaApplied = false);
+
+/// <summary>Current text of one AdditionalFile (full path) of the project.</summary>
+public sealed record HotReloadAdditionalText(string FileName, string Text);
 
 public enum HotReloadDeltaStatus
 {

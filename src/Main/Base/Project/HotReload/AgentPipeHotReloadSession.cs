@@ -19,6 +19,8 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 	{
 		readonly AgentPipeClient client;
 		IRoslynLanguageProtocol codeDeltaProtocol;
+		bool previousDeltaApplied;
+		readonly SemaphoreSlim codeDeltaGate = new SemaphoreSlim(1, 1);
 		HotReloadProjectId codeDeltaProject;
 		IHotReloadDeltaApplier debuggerDeltaApplier;
 		readonly CancellationTokenSource disposal = new CancellationTokenSource();
@@ -137,7 +139,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 				if (!Capabilities.Supports(HotReloadChangeKind.CodeDelta))
 					return new HotReloadApplyResult(HotReloadOutcome.BuildRequired,
 						"This edit adds an x:Name or changes a {cs:} expression; rebuild the application to apply it.");
-				return await ApplyCodeDeltaAsync(token).ConfigureAwait(false);
+				return await ApplyCodeDeltaAsync(change, token).ConfigureAwait(false);
 			}
 
 			using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, disposal.Token);
@@ -189,7 +191,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			}
 		}
 
-		async Task<HotReloadApplyResult> ApplyCodeDeltaAsync(CancellationToken token)
+		async Task<HotReloadApplyResult> ApplyCodeDeltaAsync(HotReloadDocumentChange change, CancellationToken token)
 		{
 			if (codeDeltaProtocol is null || codeDeltaProject is null)
 				return new HotReloadApplyResult(HotReloadOutcome.BuildRequired,
@@ -198,10 +200,15 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			if (debuggerDeltaApplier is null && State != HotReloadSessionState.Ready
 				&& !await WaitForReadyAsync(TimeSpan.FromSeconds(30), linked.Token).ConfigureAwait(false))
 				return new HotReloadApplyResult(HotReloadOutcome.Failed, $"The {Framework} Hot Reload agent is not ready.");
+			// One code delta at a time, from producing it to recording whether it applied: deltas form a
+			// chain, and a second Apply that asked for its delta while the first was still being applied
+			// would report the first as not applied and be computed against the wrong generation.
+			await codeDeltaGate.WaitAsync(linked.Token).ConfigureAwait(false);
 			State = HotReloadSessionState.Applying;
 			try {
 				var delta = await codeDeltaProtocol.RoslynHotReloadProduceDeltaAsync(
-					new HotReloadDeltaRequest(codeDeltaProject), linked.Token).ConfigureAwait(false);
+					new HotReloadDeltaRequest(codeDeltaProject, AdditionalTextsFor(change), previousDeltaApplied), linked.Token).ConfigureAwait(false);
+				previousDeltaApplied = false;
 				if (delta.Status == ProtocolHotReloadDeltaStatus.RudeEdit) {
 					State = HotReloadSessionState.RestartRequired;
 					return new HotReloadApplyResult(HotReloadOutcome.RestartRequired, delta.Diagnostic);
@@ -214,13 +221,28 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 					State = HotReloadSessionState.Ready;
 					return new HotReloadApplyResult(HotReloadOutcome.Failed, delta.Diagnostic ?? "Could not produce a code delta.");
 				}
-				return await ApplyAsync(delta.Delta, linked.Token).ConfigureAwait(false);
+				var applied = await ApplyAsync(delta.Delta, linked.Token).ConfigureAwait(false);
+				// The next request tells the host whether to build on this generation.
+				previousDeltaApplied = applied.Outcome == HotReloadOutcome.Applied;
+				return applied;
 			} catch (Exception ex) {
 				LastError = ex.Message;
 				State = HotReloadSessionState.Failed;
 				return new HotReloadApplyResult(HotReloadOutcome.Failed, ex.Message, ex.ToString());
+			} finally {
+				codeDeltaGate.Release();
 			}
 		}
+
+		/// <summary>
+		/// A XAML edit reaches the delta through the XAML source generator, which reads the file as an
+		/// AdditionalFiles item; the host's C# document sync never sees that buffer, so send it along.
+		/// A C# edit is already in the host workspace.
+		/// </summary>
+		static HotReloadAdditionalText[]? AdditionalTextsFor(HotReloadDocumentChange change) =>
+			change.FilePath.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase)
+				? new[] { new HotReloadAdditionalText(change.FilePath, change.CurrentText) }
+				: null;
 
 		public async Task<HotReloadApplyResult> ApplyAsync(HotReloadModuleDelta delta, CancellationToken token)
 		{
@@ -229,6 +251,8 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			try {
 				if (debuggerDeltaApplier is not null) {
 					var result = await debuggerDeltaApplier.ApplyAsync(delta, token).ConfigureAwait(false);
+					if (result.IsSuccess)
+						result = await RunUpdateHandlersAsync(delta, result, token).ConfigureAwait(false);
 					State = result.Outcome == HotReloadOutcome.RestartRequired ? HotReloadSessionState.RestartRequired
 						: result.IsSuccess || result.Outcome is HotReloadOutcome.BuildRequired or HotReloadOutcome.Unsupported
 							? HotReloadSessionState.Ready : HotReloadSessionState.Failed;
@@ -252,6 +276,26 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 				LastError = ex.Message;
 				State = HotReloadSessionState.Failed;
 				return new HotReloadApplyResult(HotReloadOutcome.Failed, ex.Message, ex.ToString());
+			}
+		}
+
+		/// <summary>
+		/// A debugger-applied delta runs no <c>MetadataUpdateHandler</c> (the runtime only does that for
+		/// <c>MetadataUpdater.ApplyUpdate</c>), so the generated XAML handler would never rebuild the
+		/// view. The agent runs them in the app. A paused debuggee cannot answer: the code is updated
+		/// either way, so that is reported, not failed.
+		/// </summary>
+		async Task<HotReloadApplyResult> RunUpdateHandlersAsync(HotReloadModuleDelta delta, HotReloadApplyResult applied, CancellationToken token)
+		{
+			try {
+				var response = await client.SendAsync(new AgentPipeClient.AgentRequest {
+					Kind = "runUpdateHandlers", Mvid = delta.Mvid.ToString("D"), UpdatedTypeTokens = delta.UpdatedTypeTokens,
+				}, TimeSpan.FromSeconds(10), token).ConfigureAwait(false);
+				return response.IsOk ? applied
+					: new HotReloadApplyResult(HotReloadOutcome.Applied, applied.Message + " The view was not refreshed: " + response.Result);
+			} catch (Exception ex) when (ex is TimeoutException || ex is System.IO.IOException || ex is OperationCanceledException && !token.IsCancellationRequested) {
+				return new HotReloadApplyResult(HotReloadOutcome.Applied,
+					applied.Message + " The view refreshes once the application runs again (" + ex.Message + ").");
 			}
 		}
 

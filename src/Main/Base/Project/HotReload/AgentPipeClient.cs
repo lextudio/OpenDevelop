@@ -62,14 +62,23 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			var remaining = deadline - DateTime.UtcNow;
 			if (remaining <= TimeSpan.Zero)
 				throw new TimeoutException("No time left to connect to the WPF Hot Reload agent.");
-			await pipe.ConnectAsync((int)Math.Min(remaining.TotalMilliseconds, int.MaxValue), token).ConfigureAwait(false);
+			// The deadline covers the whole exchange, not just the connect: an agent in a process the
+			// debugger has paused still accepts the connection (the OS does) but never answers.
+			using var exchange = CancellationTokenSource.CreateLinkedTokenSource(token);
+			exchange.CancelAfter(remaining);
+			string line;
+			try {
+				await pipe.ConnectAsync((int)Math.Min(remaining.TotalMilliseconds, int.MaxValue), exchange.Token).ConfigureAwait(false);
 
-			var payload = JsonSerializer.Serialize(request, JsonOptions);
-			var writer = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true };
-			await writer.WriteLineAsync(payload).ConfigureAwait(false);
+				var payload = JsonSerializer.Serialize(request, JsonOptions);
+				var writer = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true };
+				await writer.WriteLineAsync(payload.AsMemory(), exchange.Token).ConfigureAwait(false);
 
-			var reader = new StreamReader(pipe, new UTF8Encoding(false));
-			var line = await reader.ReadLineAsync().ConfigureAwait(false);
+				var reader = new StreamReader(pipe, new UTF8Encoding(false));
+				line = await reader.ReadLineAsync(exchange.Token).ConfigureAwait(false);
+			} catch (OperationCanceledException) when (!token.IsCancellationRequested) {
+				throw new TimeoutException("The WPF Hot Reload agent did not answer in time.");
+			}
 			if (string.IsNullOrEmpty(line))
 				throw new IOException("The Hot Reload agent closed the connection without answering.");
 			return JsonSerializer.Deserialize<AgentResponse>(line, JsonOptions)

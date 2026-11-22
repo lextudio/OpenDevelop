@@ -44,6 +44,12 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		/// <summary>The session for the application currently launched with Hot Reload, if any.</summary>
 		public static IHotReloadSession CurrentSession { get; private set; }
 
+		/// <summary>
+		/// When the current session's launch was configured, after its build: a source file written later is
+		/// no longer the text the running application was compiled from.
+		/// </summary>
+		public static DateTime CurrentSessionStartedUtc { get; private set; }
+
 		/// <summary>Optional debugger-addin bridge for applying a delta through DAP.</summary>
 		public static Func<IHotReloadDeltaApplier> DebuggerDeltaApplierFactory { get; set; }
 
@@ -134,13 +140,17 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 				}
 
 				CurrentSession = session;
-				if (!TryCaptureLaunchSnapshot(project, startInfo.FileName, out var protocol, out var request, out var snapshotDiagnostic))
-					LoggingService.Warn("Hot Reload: EnC baseline was not captured: " + snapshotDiagnostic);
+				CurrentSessionStartedUtc = DateTime.UtcNow;
+				if (!TryCaptureLaunchSnapshot(project, startInfo.FileName, out var protocol, out var request, out var snapshotDiagnostic)) {
+					// Code edits cannot be applied in this session: say why where Apply results go.
+					if (!string.IsNullOrEmpty(snapshotDiagnostic))
+						HotReloadOutput.Write(adapter.Framework, "Code changes cannot be applied in this session: " + snapshotDiagnostic);
+				}
 				else {
 					if (session is AgentPipeHotReloadSession agentSession)
 						agentSession.ConfigureCodeDelta(protocol!, request!.Project,
 							withDebugger ? DebuggerDeltaApplierFactory?.Invoke() : null);
-					SendLaunchBaselineAsync(protocol!, request!, project.Name).FireAndForget();
+					SendLaunchBaselineAsync(protocol!, request!, project.Name, adapter.Framework).FireAndForget();
 				}
 				CurrentSessionChanged?.Invoke(null, EventArgs.Empty);
 				LoggingService.Info($"Hot Reload: session started for {adapter.Framework}.");
@@ -184,14 +194,16 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			}
 		}
 
-		static async Task SendLaunchBaselineAsync(IRoslynLanguageProtocol protocol, HotReloadBaselineRequest request, string projectName)
+		static async Task SendLaunchBaselineAsync(IRoslynLanguageProtocol protocol, HotReloadBaselineRequest request, string projectName, string framework)
 		{
 			try {
 				var result = await HotReloadLaunchBaseline.SendAsync(protocol, request, CancellationToken.None).ConfigureAwait(false);
 				if (result.Status != ProtocolHotReloadDeltaStatus.Applied)
-					LoggingService.Warn("Hot Reload: EnC baseline was not captured: " + result.Diagnostic);
+					HotReloadOutput.Write(framework, $"Code changes cannot be applied in this session ({projectName}): " + result.Diagnostic);
 				else LoggingService.Info("Hot Reload: EnC baseline captured for " + projectName + ".");
-			} catch (Exception ex) { LoggingService.Warn("Hot Reload: EnC baseline capture failed: " + ex.Message); }
+			} catch (Exception ex) {
+				HotReloadOutput.Write(framework, $"Code changes cannot be applied in this session ({projectName}): " + ex.Message);
+			}
 		}
 
 		static async Task ObserveReadinessAsync(IHotReloadSession session)

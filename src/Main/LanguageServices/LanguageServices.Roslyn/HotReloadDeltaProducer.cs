@@ -45,8 +45,21 @@ public sealed class HotReloadDeltaProducer
 		readonly MemoryStream peStream;
 		readonly PEReader peReader;
 		readonly MetadataReaderProvider pdbProvider;
-		public Compilation Compilation { get; }
-		public EmitBaseline EmitBaseline { get; }
+		// The generation the application runs, advanced only once the application accepted a delta.
+		public Compilation Compilation { get; private set; }
+		public EmitBaseline EmitBaseline { get; private set; }
+		(Compilation Compilation, EmitBaseline EmitBaseline)? pending;
+
+		public void SetPending(Compilation compilation, EmitBaseline next) => pending = (compilation, next);
+
+		public void Settle(bool applied)
+		{
+			if (applied && pending is { } next) {
+				Compilation = next.Compilation;
+				EmitBaseline = next.EmitBaseline;
+			}
+			pending = null;
+		}
 		public ModuleMetadata Module { get; }
 		public Guid Mvid { get; }
 		public IReadOnlyDictionary<string, int> TypeTokens { get; }
@@ -140,6 +153,19 @@ public sealed class HotReloadDeltaProducer
 	{
 		if (request is null)
 			throw new ArgumentNullException(nameof(request));
+		// First, whatever this request goes on to return: the previous delta's outcome decides which
+		// generation the application runs, and an error answered below must not lose that.
+		lock (sync) {
+			if (baselines.TryGetValue(request.Project, out var running))
+				running.Settle(request.PreviousDeltaApplied);
+		}
+		if (request.AdditionalTexts is { Length: > 0 } additionalTexts) {
+			var unknown = languageService.SetAdditionalDocumentTexts(request.Project.ProjectFileName,
+				request.Project.TargetFramework, additionalTexts.Select(text => (text.FileName, text.Text)).ToArray());
+			if (unknown.Count != 0)
+				return Failed("Not an AdditionalFiles item of the project, so no source generator reads it: "
+					+ string.Join(", ", unknown));
+		}
 		var compilation = await languageService.GetProjectCompilationAsync(request.Project.ProjectFileName,
 			request.Project.TargetFramework, cancellationToken).ConfigureAwait(false);
 		if (compilation is null)
@@ -170,6 +196,7 @@ public sealed class HotReloadDeltaProducer
 			if (missingTypeKeys.Length != 0)
 				return Failed("The launch module does not contain updated type(s): " + string.Join(", ", missingTypeKeys));
 			var tokens = typeKeys.Select(key => baseline.TypeTokens[key]).ToArray();
+			baseline.SetPending(compilation, difference.Baseline!);
 			var updatedMethodTokens = difference.UpdatedMethods.Select(method => MetadataTokens.GetToken(method)).ToArray();
 			return new HotReloadDeltaResponse(HotReloadDeltaStatus.Applied,
 				new HotReloadModuleDelta(baseline.Mvid, metadata.ToArray(), il.ToArray(), pdb.ToArray(), tokens, updatedMethodTokens),

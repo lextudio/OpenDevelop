@@ -84,6 +84,17 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		/// removing a name a restart and changing an expression a rebuild. For BAML and WinUI a re-parse
 		/// carries those edits, and reporting them as structural would block a reload that works.
 		/// </param>
+		/// <summary>
+		/// <see cref="Classify"/> for an Apply whose "previous" text may be unknown: nothing was accepted in this
+		/// session and the file was written after the launch, so neither the editor nor the disk holds what the
+		/// application was compiled from. With the XAML source generator the code-delta path still knows (its
+		/// baseline is the launch compilation), so it takes the edit; a text push has nothing to diff against.
+		/// </summary>
+		public static HotReloadChangeKind ClassifyApply(string previousText, string currentText, bool generatesXamlCode)
+			=> previousText == null && generatesXamlCode
+				? HotReloadChangeKind.CodeDelta
+				: Classify(previousText ?? currentText, currentText, generatesXamlCode);
+
 		public static HotReloadChangeKind Classify(string previousText, string currentText, bool generatesXamlCode)
 		{
 			if (previousText == null || currentText == null)

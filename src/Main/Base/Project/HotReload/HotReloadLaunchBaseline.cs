@@ -27,6 +27,8 @@ public static class HotReloadLaunchBaseline
 			diagnostic = "The selected launch assembly does not exist: " + assemblyPath;
 			return false;
 		}
+		// An apphost launch: the baseline is the application's managed assembly beside it.
+		assemblyPath = ManagedModuleFor(assemblyPath) ?? assemblyPath;
 		var pdbPath = Path.ChangeExtension(assemblyPath, ".pdb");
 		if (!File.Exists(pdbPath)) {
 			diagnostic = "The selected launch portable PDB does not exist: " + pdbPath;
@@ -38,6 +40,37 @@ public static class HotReloadLaunchBaseline
 			return true;
 		} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is BadImageFormatException) {
 			diagnostic = "Could not snapshot the launch assembly and PDB: " + ex.Message;
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// The managed module a launch runs. An SDK project normally launches its apphost (a native
+	/// executable: no extension on macOS/Linux, .exe on Windows), which carries no metadata; the
+	/// application's code is the same-named .dll beside it. Null when neither is managed.
+	/// </summary>
+	public static string? ManagedModuleFor(string launchPath)
+	{
+		if (IsManagedAssembly(launchPath))
+			return launchPath;
+		// Extension-less apphost (macOS/Linux) first: for "Foo.Bar" the assembly is "Foo.Bar.dll", and
+		// ChangeExtension would find an unrelated "Foo.dll". Then the Windows "Foo.exe" -> "Foo.dll".
+		var beside = launchPath + ".dll";
+		if (IsManagedAssembly(beside))
+			return beside;
+		beside = Path.ChangeExtension(launchPath, ".dll");
+		return !string.Equals(beside, launchPath, StringComparison.OrdinalIgnoreCase) && IsManagedAssembly(beside) ? beside : null;
+	}
+
+	static bool IsManagedAssembly(string path)
+	{
+		try {
+			if (!File.Exists(path))
+				return false;
+			using var stream = File.OpenRead(path);
+			using var reader = new System.Reflection.PortableExecutable.PEReader(stream);
+			return reader.HasMetadata;
+		} catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is BadImageFormatException) {
 			return false;
 		}
 	}

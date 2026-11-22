@@ -208,21 +208,7 @@ namespace ICSharpCode.SharpDevelop.Services
 		public WindowsDebugger()
 		{
 			Instance = this;
-			HotReloadService.DebuggerDeltaApplierFactory = () => new SharpDbgDeltaApplier();
-		}
-
-		sealed class SharpDbgDeltaApplier : IHotReloadDeltaApplier
-		{
-			public async Task<HotReloadApplyResult> ApplyAsync(HotReloadModuleDelta delta, System.Threading.CancellationToken token)
-			{
-				var session = CurrentSession;
-				if (session == null || !session.IsPaused)
-					return new HotReloadApplyResult(HotReloadOutcome.BuildRequired, "Pause the debugger before applying a code delta.");
-				try {
-					await session.ApplyDeltasAsync(delta.Mvid, delta.Metadata, delta.IL, delta.Pdb, delta.UpdatedMethodTokens, token).ConfigureAwait(false);
-					return new HotReloadApplyResult(HotReloadOutcome.Applied, "Applied through SharpDbg.");
-				} catch (Exception ex) { return new HotReloadApplyResult(HotReloadOutcome.Failed, ex.Message, ex.ToString()); }
-			}
+			HotReloadService.DebuggerDeltaApplierFactory = () => new SharpDbgDeltaApplier(() => CurrentSession);
 		}
 
 		string errorDebugging = "${res:XML.MainMenu.DebugMenu.Error.Debugging}";

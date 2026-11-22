@@ -85,6 +85,69 @@ public class RoslynHostProcessTests
 		} finally { directory.Delete(true); }
 	}
 
+	/// <summary>
+	/// Deltas form a chain: each one names the generation it builds on (EncBaseId). After the IDE
+	/// reports a delta applied, the next one must build on it; after a delta that was not applied,
+	/// the next one must build on the generation the application still runs.
+	/// </summary>
+	[Fact]
+	public async Task HotReloadDelta_BuildsOnTheAppliedGenerationOnly()
+	{
+		var token = TestContext.Current.CancellationToken;
+		using var transport = new RoslynHostProcessTransport(TryLocateHost(), TimeSpan.FromSeconds(60));
+		var protocol = new RemoteRoslynLanguageProtocol(transport);
+		var directory = Directory.CreateTempSubdirectory("RoslynHotReloadChain-");
+		try {
+			var sourcePath = Path.Combine(directory.FullName, "View.cs");
+			var projectPath = Path.Combine(directory.FullName, "Chain.csproj");
+			static string Source(string value) => "public class View { public string Text() => \"" + value + "\"; }";
+			await File.WriteAllTextAsync(sourcePath, Source("v1"), token);
+			var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+				.Select(path => Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(path));
+			var compiler = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("Chain",
+				new[] { Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
+					Microsoft.CodeAnalysis.Text.SourceText.From(Source("v1"), System.Text.Encoding.UTF8)) }, references,
+				new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
+			using var image = new MemoryStream();
+			using var symbols = new MemoryStream();
+			Assert.True(compiler.Emit(image, symbols, options: new Microsoft.CodeAnalysis.Emit.EmitOptions(
+				debugInformationFormat: Microsoft.CodeAnalysis.Emit.DebugInformationFormat.PortablePdb)).Success);
+			var project = new HotReloadProjectId(projectPath, null);
+			await protocol.RoslynProjectLoadAsync(new LanguageServiceProjectSnapshot(projectPath, "C#", new[] { sourcePath },
+				references.Select(reference => ((Microsoft.CodeAnalysis.PortableExecutableReference)reference).FilePath!).ToArray(),
+				Array.Empty<string>(), Array.Empty<string>(), null, null), token);
+			Assert.Equal(HotReloadDeltaStatus.Applied, (await protocol.RoslynHotReloadCaptureBaselineAsync(
+				new HotReloadBaselineRequest(project, image.ToArray(), symbols.ToArray()), token)).Status);
+
+			async Task<(Guid EncId, Guid EncBaseId)> Produce(string value, bool previousApplied)
+			{
+				await protocol.TextDocumentDidChangeAsync(new TextDocumentIdentifier(sourcePath), Source(value), token);
+				var response = await protocol.RoslynHotReloadProduceDeltaAsync(
+					new HotReloadDeltaRequest(project, null, previousApplied), token);
+				Assert.True(response.Status == HotReloadDeltaStatus.Applied, response.Status + ": " + response.Diagnostic);
+				using var provider = MetadataReaderProvider.FromMetadataImage(System.Collections.Immutable.ImmutableArray.Create(response.Delta!.Metadata));
+				var reader = provider.GetMetadataReader();
+				var module = reader.GetModuleDefinition();
+				return (reader.GetGuid(module.GenerationId), reader.GetGuid(module.BaseGenerationId));
+			}
+
+			var first = await Produce("v2", previousApplied: false);
+			Assert.Equal(Guid.Empty, first.EncBaseId);
+			var second = await Produce("v3", previousApplied: true);
+			Assert.Equal(first.EncId, second.EncBaseId);
+			// The application rejected "second": "third" must build on "first" again.
+			var third = await Produce("v4", previousApplied: false);
+			Assert.Equal(first.EncId, third.EncBaseId);
+			// "third" was applied, then an edit that does not compile: that request reports the
+			// applied outcome and answers CompilationError. The next delta still builds on "third".
+			await protocol.TextDocumentDidChangeAsync(new TextDocumentIdentifier(sourcePath), "public class View { public string Text() => ; }", token);
+			var broken = await protocol.RoslynHotReloadProduceDeltaAsync(new HotReloadDeltaRequest(project, null, PreviousDeltaApplied: true), token);
+			Assert.Equal(HotReloadDeltaStatus.CompilationError, broken.Status);
+			var fourth = await Produce("v5", previousApplied: false);
+			Assert.Equal(third.EncId, fourth.EncBaseId);
+		} finally { directory.Delete(true); }
+	}
+
     [Fact]
     public async Task DocumentStatus_ReturnsRealReferencesAndOptInDiagnosticSamples()
     {

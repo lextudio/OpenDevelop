@@ -49,12 +49,28 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			}
 
 			var currentText = editor.Document.Text;
-			var previousText = HotReloadDocumentTracker.GetAcceptedText(fileName) ?? currentText;
-			var change = new HotReloadDocumentChange(fileName.ToString(), previousText, currentText,
+			var knownPrevious = HotReloadDocumentTracker.GetAcceptedText(fileName) ?? LaunchedText(fileName);
+			var change = new HotReloadDocumentChange(fileName.ToString(), knownPrevious ?? currentText, currentText,
 				editor.Document.Version?.GetHashCode() ?? 0,
-				HotReloadWorkflow.Classify(previousText, currentText, GeneratesXamlCode(session, fileName)));
+				HotReloadWorkflow.ClassifyApply(knownPrevious, currentText, GeneratesXamlCode(session, fileName)));
 
 			ApplyAsync(session, change, fileName).FireAndForget();
+		}
+
+		// Before the first accepted apply, the application runs what the launch build compiled: the
+		// file on disk, unless it was saved after the launch (then it is unknown: null). Falling back to
+		// the editor buffer instead made previous and current equal, so the first apply of a session was
+		// never classified (a {cs:} edit went out as plain text).
+		static string LaunchedText(FileName fileName)
+		{
+			try {
+				if (!System.IO.File.Exists(fileName)
+					|| System.IO.File.GetLastWriteTimeUtc(fileName) > HotReloadService.CurrentSessionStartedUtc)
+					return null;
+				return System.IO.File.ReadAllText(fileName);
+			} catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException) {
+				return null;
+			}
 		}
 
 		// Only a WPF session can be on the LibreWPF generator; the environment switch is process-wide and
