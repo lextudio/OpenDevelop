@@ -88,7 +88,6 @@ namespace ICSharpCode.SharpDevelop.Project
 	/// </summary>
 	public class ProjectLoadInformation : ProjectInformation
 	{
-		internal bool? upgradeToolsVersion;
 		
 		IProgressMonitor progressMonitor = new DummyProgressMonitor();
 		

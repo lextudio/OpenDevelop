@@ -1512,11 +1512,11 @@ namespace ICSharpCode.SharpDevelop.Project
 				try {
 					LoadProjectInternal(loadInformation);
 				} catch (InvalidProjectFileException ex) {
-					// MSB4132 (unknown ToolsVersion): constructing a project never prompts - it may run on the
-					// solution loader's background thread. A requested upgrade (ProjectLoadInformation.upgradeToolsVersion)
-					// was already applied by LoadProjectInternal; otherwise the project loads as an ErrorProject,
-					// which the solution open reports. Rare anyway: ResolveSupportedToolsVersion evaluates an
-					// unknown ToolsVersion with Current.
+					// MSB4132 (unknown ToolsVersion) does not normally occur: MSBuildInternals.ResolveSupportedToolsVersion
+					// evaluates a ToolsVersion the installed MSBuild lacks with Current, so legacy 2.0/3.5/12.0 projects
+					// load without the upgrade prompt older SharpDevelop showed here. Constructing a project never
+					// prompts in any case (it may run on the solution builder's thread): it fails as an ErrorProject,
+					// which the solution open reports.
 					if (ex.ErrorCode == "MSB4132") {
 						if (projectFile != null && projectFile.ToolsVersion == "12.0") {
 							// ToolsVersion 12.0 not found: the user needs to install Microsoft Build Tools 2013
@@ -1548,23 +1548,9 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 		}
 		
-		const string autoUpgradeNewToolsVersion = "4.0";
-		
-		bool CanUpgradeToolsVersion()
-		{
-			if (projectFile == null)
-				return false;
-			if (string.IsNullOrEmpty(projectFile.ToolsVersion))
-				return true;
-			return projectFile.ToolsVersion == "2.0" || projectFile.ToolsVersion == "3.5";
-		}
-		
 		void LoadProjectInternal(ProjectLoadInformation loadInformation)
 		{
 			projectFile = ProjectRootElement.Open(loadInformation.FileName, MSBuildProjectCollection);
-			if (loadInformation.upgradeToolsVersion == true && CanUpgradeToolsVersion()) {
-				projectFile.ToolsVersion = autoUpgradeNewToolsVersion;
-			}
 			
 			string userFileName = loadInformation.FileName + ".user";
 			if (File.Exists(userFileName)) {
