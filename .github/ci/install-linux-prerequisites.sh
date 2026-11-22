@@ -33,10 +33,10 @@ fi
 
 if [[ "$display" == 1 ]]; then
   sudo apt-get update
-  # The GTK designer needs the GTK 4/libadwaita runtime, Gtk-4.0.gir metadata to validate and
-  # instantiate controls, glib-compile-resources for project .gresource manifests, and Blueprint's
-  # compiler for the .blp compile/decompile/language-server journey. ubuntu-latest happens to
-  # include most of these, but the native Ubuntu ARM64 image does not; install the complete
-  # toolchain explicitly so designer lanes do not depend on image drift.
-  sudo apt-get install -y xvfb libgtk-3-0 libgtk-4-1 libadwaita-1-0 gir1.2-gtk-4.0 gir1.2-adw-1 libglib2.0-bin blueprint-compiler libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
+  # The GTK designer needs the GTK 4/libadwaita runtime, the development packages' XML GIR
+  # metadata to validate and instantiate controls, glib-compile-resources for project .gresource
+  # manifests, and Blueprint's compiler for the .blp compile/decompile/language-server journey.
+  # ubuntu-latest happens to include most of these, but the native Ubuntu ARM64 image does not;
+  # install the complete toolchain explicitly so designer lanes do not depend on image drift.
+  sudo apt-get install -y xvfb libgtk-3-0 libgtk-4-1 libadwaita-1-0 libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin blueprint-compiler libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
 fi
