@@ -204,7 +204,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 			SD.MainThread.VerifyAccess();
 			if (!SolutionLoadOptions.AsyncLoad || !IsSolutionFile(fileName))
-				return OpenSolutionOrProject(fileName);
+				return OpenSynchronouslyReportingAllErrors(fileName);
 			if (!CloseSolution(allowCancel: true))
 				return false;
 			
@@ -223,7 +223,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				// ("error while loading") and lets anything else propagate to the caller.
 				SD.MainThread.InvokeIfRequired(() => {
 					EndLoadingSolution(load);
-					FileUtility.ObservedLoad(() => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex).Throw(), fileName);
+					ObservedLoadReportingAllErrors(() => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex).Throw(), fileName);
 				});
 				return false;
 			}
@@ -251,8 +251,33 @@ namespace ICSharpCode.SharpDevelop.Project
 				solution.Dispose(); // something else was opened meanwhile (synchronous path)
 				return false;
 			}
-			FileUtility.ObservedLoad(() => PublishSolution(solution), fileName);
+			ObservedLoadReportingAllErrors(() => PublishSolution(solution), fileName);
 			return currentSolution == solution;
+		}
+		
+		/// <summary>
+		/// Runs <paramref name="load"/> like the synchronous open does - <see cref="FileUtility.ObservedLoad"/> reports
+		/// I/O-type errors ("error while loading") - and shows any other exception too, instead of letting it
+		/// propagate: the asynchronous open reports every error itself, so its task never faults and callers
+		/// simply await it.
+		/// </summary>
+		static void ObservedLoadReportingAllErrors(FileOperationDelegate load, FileName fileName)
+		{
+			try {
+				FileUtility.ObservedLoad(load, fileName);
+			} catch (Exception ex) {
+				MessageService.ShowException(ex, "Could not open " + fileName);
+			}
+		}
+		
+		bool OpenSynchronouslyReportingAllErrors(FileName fileName)
+		{
+			try {
+				return OpenSolutionOrProject(fileName);
+			} catch (Exception ex) {
+				MessageService.ShowException(ex, "Could not open " + fileName);
+				return false;
+			}
 		}
 		
 		static bool IsSolutionFile(FileName fileName) => fileName.HasExtension(".sln") || fileName.HasExtension(".slnx");

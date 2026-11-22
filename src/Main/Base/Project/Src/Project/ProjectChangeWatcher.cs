@@ -335,7 +335,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// <summary>
 		/// Re-reads the solution so an edited SDK-style project file takes effect, without prompting.
 		/// </summary>
-		void ReloadAfterSdkStyleProjectChange()
+		async void ReloadAfterSdkStyleProjectChange()
 		{
 			reloadQueued = false;
 			var solution = ProjectService.OpenSolution;
@@ -351,7 +351,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				return;
 			}
 			LoggingService.Info("Reloading solution after " + fileName + " changed.");
-			SD.ProjectService.OpenSolutionOrProjectAsync(solution.FileName).FireAndForget();
+			await SD.ProjectService.OpenSolutionOrProjectAsync(solution.FileName);
 		}
 
 		/// <summary>
@@ -399,7 +399,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			SD.MainThread.InvokeAsyncAndForget(MainFormActivated, DispatcherPriority.Background);
 		}
 		
-		static void MainFormActivated()
+		static async void MainFormActivated()
 		{
 			if (wasChangedExternally) {
 				if (!showingMessageBox) {
@@ -420,7 +420,7 @@ namespace ICSharpCode.SharpDevelop.Project
 						} else {
 							FileChangeWatcher.CancelReloadQueue();
 							if (result == 0) {
-								SD.ProjectService.OpenSolutionOrProjectAsync(ProjectService.OpenSolution.FileName).FireAndForget();
+								await SD.ProjectService.OpenSolutionOrProjectAsync(ProjectService.OpenSolution.FileName);
 							} else {
 								new CloseSolution().Run();
 							}

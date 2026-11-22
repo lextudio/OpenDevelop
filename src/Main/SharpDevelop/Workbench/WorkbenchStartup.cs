@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -183,6 +184,44 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// Application.RaiseIdle (WinForms) removed - no WinForms message loop to pump in this MVP build.
 		}
 		
+		/// <summary>The files to open once the main window has rendered (decided by <see cref="Run"/>).</summary>
+		List<string> startupFiles = new List<string>();
+		
+		// The startup files' event handler: OpenStartupFilesAsync guards every file and the awaited open never
+		// faults (IProjectService reports its own errors), so async void cannot lose an exception.
+#pragma warning disable VSTHRD100
+		async void OnMainWindowFirstRender(object sender, EventArgs e)
+#pragma warning restore VSTHRD100
+		{
+			SD.Workbench.MainWindow.ContentRendered -= OnMainWindowFirstRender;
+			await OpenStartupFilesAsync(startupFiles);
+		}
+		
+		/// <summary>
+		/// Opens the files given on the command line (or the previous solution), in order: a solution is
+		/// awaited, so files given after it open once it has loaded.
+		/// </summary>
+		static async Task OpenStartupFilesAsync(IReadOnlyList<string> files)
+		{
+			NavigationService.SuspendLogging();
+			try {
+				foreach (string file in files) {
+					LoggingService.Info("Open file " + file);
+					try {
+						var fullFileName = FileName.Create(Path.GetFullPath(file));
+						if (SD.ProjectService.IsSolutionOrProjectFile(fullFileName))
+							await SD.ProjectService.OpenSolutionOrProjectAsync(fullFileName);
+						else
+							SharpDevelop.FileService.OpenFile(fullFileName);
+					} catch (Exception e) {
+						MessageService.ShowException(e, "unable to open file " + file);
+					}
+				}
+			} finally {
+				NavigationService.ResumeLogging();
+			}
+		}
+		
 		public void Run(IList<string> fileList)
 		{
 			// Report the .NET SDK situation before anything is opened. A missing or mismatched SDK
@@ -191,37 +230,15 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// Once per session, and a no-op on a healthy machine.
 			SD.ProjectService.ReportSdkAvailability();
 
-			bool didLoadSolutionOrFile = false;
-			
-			NavigationService.SuspendLogging();
-			
-			foreach (string file in fileList) {
-				LoggingService.Info("Open file " + file);
-				didLoadSolutionOrFile = true;
-				try {
-					var fullFileName = FileName.Create(Path.GetFullPath(file));
-					
-					if (SD.ProjectService.IsSolutionOrProjectFile(fullFileName)) {
-						SD.ProjectService.OpenSolutionOrProjectAsync(fullFileName).FireAndForget();
-					} else {
-						SharpDevelop.FileService.OpenFile(fullFileName);
-					}
-				} catch (Exception e) {
-					MessageService.ShowException(e, "unable to open file " + file);
-				}
+			// What to open is decided now (it also decides whether the "nothing loaded" autostart runs);
+			// the opening itself happens once the window is up (OpenStartupFilesAsync, on first render), so
+			// a solution loads in the background with its progress visible instead of before the window exists.
+			startupFiles = fileList.ToList();
+			if (startupFiles.Count == 0 && SD.PropertyService.Get("SharpDevelop.LoadPrevProjectOnStartup", false)
+			    && SD.FileService.RecentOpen.RecentProjects.Count > 0) {
+				startupFiles.Add(SD.FileService.RecentOpen.RecentProjects[0].ToString());
 			}
-			
-			// load previous solution
-			if (!didLoadSolutionOrFile && SD.PropertyService.Get("SharpDevelop.LoadPrevProjectOnStartup", false)) {
-				if (SD.FileService.RecentOpen.RecentProjects.Count > 0) {
-					try {
-						SD.ProjectService.OpenSolutionOrProjectAsync(SD.FileService.RecentOpen.RecentProjects[0]).FireAndForget();
-						didLoadSolutionOrFile = true;
-					} catch (Exception ex) {
-						MessageService.ShowException(ex);
-					}
-				}
-			}
+			bool didLoadSolutionOrFile = startupFiles.Count > 0;
 			
 			if (!didLoadSolutionOrFile) {
 				foreach (ICommand command in AddInTree.BuildItems<ICommand>("/SharpDevelop/Workbench/AutostartNothingLoaded", null, false)) {
@@ -233,8 +250,6 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				}
 				StartPreloadThread();
 			}
-			
-			NavigationService.ResumeLogging();
 			
 			if (SD.ParserService is ParserService parserService)
 				parserService.StartParserThread();
@@ -284,6 +299,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 					System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 			};
 			SD.Workbench.MainWindow.ContentRendered += onFirstRender;
+			SD.Workbench.MainWindow.ContentRendered += OnMainWindowFirstRender;
 			if (ExternalRunLoop) {
 				// The startup splash owns the run loop (SharpDevelopMain.RunApplication started it
 				// with the splash as the first window); reveal the workbench and let the caller

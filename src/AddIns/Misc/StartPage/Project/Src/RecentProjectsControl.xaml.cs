@@ -105,11 +105,11 @@ namespace ICSharpCode.StartPage
 			}
 		}
 		
-		void lastProjectsDoubleClick(object sender, RoutedEventArgs e)
+		async void lastProjectsDoubleClick(object sender, RoutedEventArgs e)
 		{
 			RecentOpenItem item = (RecentOpenItem)lastProjectsListView.SelectedItem;
 			if (item != null) {
-				SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(item.Path)).FireAndForget();
+				await SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(item.Path));
 			}
 		}
 		
@@ -120,10 +120,10 @@ namespace ICSharpCode.StartPage
 			}
 		}
 		
-		void listViewNameClick(object sender, MouseButtonEventArgs e)
+		async void listViewNameClick(object sender, MouseButtonEventArgs e)
 		{
 			RecentOpenItem item = (RecentOpenItem)((TextBlock)sender).Tag;
-			SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(item.Path)).FireAndForget();
+			await SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(item.Path));
 		}
 		
 		void openSolutionClick(object sender, RoutedEventArgs e)

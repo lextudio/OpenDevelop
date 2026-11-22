@@ -411,12 +411,12 @@ namespace ICSharpCode.SharpDevelop.Gui
 			filelister.ShowFilesInPath(filetree.NodePath + Path.DirectorySeparatorChar);
 		}
 		
-		void FileSelected(object sender, EventArgs e)
+		async void FileSelected(object sender, EventArgs e)
 		{
 			foreach (FileList.FileListItem item in filelister.SelectedItems) {
 				var fileName = FileName.Create(item.FullName);
 				if (SD.ProjectService.IsSolutionOrProjectFile(fileName))
-					SD.ProjectService.OpenSolutionOrProjectAsync(fileName).FireAndForget();
+					await SD.ProjectService.OpenSolutionOrProjectAsync(fileName);
 				else
 					FileService.OpenFile(fileName);
 			}
