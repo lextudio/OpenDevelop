@@ -241,18 +241,24 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// moves focus to it. BringPadToFront routes through AvalonDockLayout.ActivatePad's
 			// LegacyPadClass match, so the migrated ToolPaneModel (ProjectBrowserViewModel) is the
 			// one that actually gets selected, not a second never-shown pad instance.
-			MessageBus<SolutionOpenedMessageEventArgs>.Subscribers += OnSolutionOpenedMessage;
-			void OnSolutionOpenedMessage(object? sender, SolutionOpenedMessageEventArgs args) {
+			MessageBus<SolutionOpenedMessageEventArgs>.Subscribers += (sender, args) => BringProjectBrowserToFront("SolutionOpened");
+			// A solution loading in the background is not opened yet, but the Projects pad shows its loading
+			// placeholder meanwhile - bring it forward when the load starts, not only once it has finished.
+			SD.ProjectService.LoadingSolutionChanged += (sender, args) => {
+				if (SD.ProjectService.LoadingSolution != null)
+					BringProjectBrowserToFront("LoadingSolution");
+			};
+			void BringProjectBrowserToFront(string reason) {
 				// typeof(...) must name the MEF-migrated pad registered in the AddInTree
 				// (ICSharpCode.SharpDevelop.Services.ProjectBrowserPad), not the legacy
 				// ICSharpCode.SharpDevelop.Project.ProjectBrowserPad stub - GetPad matches on the
 				// descriptor's Class string, and the legacy name is not registered anywhere
 				// (measured: GetPad returned null and the pad never came to front).
 				var descriptor = GetPad(typeof(Services.ProjectBrowserPad));
-				LoggingService.Debug("SolutionOpened: ProjectBrowserPad descriptor=" + (descriptor?.Class ?? "<null>"));
+				LoggingService.Debug(reason + ": ProjectBrowserPad descriptor=" + (descriptor?.Class ?? "<null>"));
 				if (descriptor != null)
 					descriptor.BringPadToFront();
-			};
+			}
 			
 			SharpDevelop.FileService.FileRemoved += CheckRemovedOrReplacedFile;
 			SharpDevelop.FileService.FileReplaced += CheckRemovedOrReplacedFile;

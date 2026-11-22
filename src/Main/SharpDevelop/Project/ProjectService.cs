@@ -178,6 +178,21 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		readonly BackgroundSolutionBuilder solutionBuilder = new BackgroundSolutionBuilder();
 		
+		FileName loadingSolution;
+		
+		public FileName LoadingSolution {
+			get { return loadingSolution; }
+			private set {
+				SD.MainThread.VerifyAccess();
+				if (loadingSolution != value) {
+					loadingSolution = value;
+					LoadingSolutionChanged(this, EventArgs.Empty);
+				}
+			}
+		}
+		
+		public event EventHandler LoadingSolutionChanged = delegate { };
+		
 		/// <summary>
 		/// Opens a solution without blocking the UI thread: the solution and its projects are built on the
 		/// thread pool (<see cref="BuildSolution"/>, which never touches the UI) and published on the UI thread
@@ -195,11 +210,19 @@ namespace ICSharpCode.SharpDevelop.Project
 			
 			BeginSolutionOpen();
 			ResolveProjectBindings();
-			var solution = await solutionBuilder.BuildAsync(
-				progress => BuildSolution(fileName, progress),
-				token => SD.StatusBar.CreateProgressMonitor(token),
-				cancellationToken);
-			// Resumed on the UI thread (the caller's dispatcher context), which now owns the model.
+			LoadingSolution = fileName;
+			Solution solution;
+			try {
+				solution = await solutionBuilder.BuildAsync(
+					progress => BuildSolution(fileName, progress),
+					token => SD.StatusBar.CreateProgressMonitor(token),
+					cancellationToken);
+			} finally {
+				// Resumed on the UI thread (the caller's dispatcher context), which now owns the model.
+				// A newer open may already have replaced the marker with its own file.
+				if (LoadingSolution == fileName)
+					LoadingSolution = null;
+			}
 			SD.MainThread.VerifyAccess();
 			if (solution == null)
 				return false; // cancelled or superseded

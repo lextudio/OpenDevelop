@@ -132,11 +132,12 @@ namespace ICSharpCode.SharpDevelop.Project
 			int projectsLoaded = 0;
 			foreach (var projectInfo in projectInfos)
 				projectInfo.ActiveProjectConfiguration = projectInfo.ConfigurationMapping.GetProjectConfiguration(solution.ActiveConfiguration);
-			using var preEvaluation = SolutionPreEvaluation.Begin(solution, projectInfos, progress.CancellationToken);
+			using var preEvaluation = SolutionPreEvaluation.Begin(solution, projectInfos, progress);
+			double constructionStart = progress.Progress; // what evaluation already reported
 			foreach (var projectInfo in projectInfos)
 			{
 				progress.TaskName = "Loading " + projectInfo.ProjectName;
-				using (projectInfo.ProgressMonitor = progress.CreateSubTask(1.0 / Math.Max(projectCount, 1)))
+				using (projectInfo.ProgressMonitor = progress.CreateSubTask((1 - constructionStart) / Math.Max(projectCount, 1)))
 				{
 					var loading = System.Diagnostics.Stopwatch.StartNew();
 					var solutionItem = LoadProjectWithErrorHandling(projectInfo);
@@ -153,7 +154,7 @@ namespace ICSharpCode.SharpDevelop.Project
 					}
 				}
 				projectsLoaded++;
-				progress.Progress = (double)projectsLoaded / projectCount;
+				progress.Progress = constructionStart + (1 - constructionStart) * projectsLoaded / projectCount;
 			}
 		}
 		
