@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Xml;
 
 namespace ICSharpCode.SharpDevelop.Project.HotReload
 {
@@ -72,11 +76,39 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		/// might have changed.
 		/// </summary>
 		public static HotReloadChangeKind Classify(string previousText, string currentText)
+			=> Classify(previousText, currentText, generatesXamlCode: false);
+
+		/// <param name="generatesXamlCode">
+		/// True when the project compiles its XAML to C# (the LibreWPF XAML source generator): only then
+		/// does an x:Name own a generated field and a {cs:} attribute own generated code, so only then is
+		/// removing a name a restart and changing an expression a rebuild. For BAML and WinUI a re-parse
+		/// carries those edits, and reporting them as structural would block a reload that works.
+		/// </param>
+		public static HotReloadChangeKind Classify(string previousText, string currentText, bool generatesXamlCode)
 		{
 			if (previousText == null || currentText == null)
 				return HotReloadChangeKind.FullDocument;
 			if (string.Equals(previousText, currentText, StringComparison.Ordinal))
 				return HotReloadChangeKind.FullDocument;
+
+			// Edits a text push cannot express. Needs both sides to parse: text typed half-way is
+			// invalid XML all the time, and that must not be mistaken for a structural change.
+			// Names are collected from the whole file because the generator emits one field per
+			// x:Name anywhere in it, template content included. {cs:} values compare in order: moving
+			// one changes the generated code, and a false CodeDelta only costs a rebuild whereas a
+			// missed one loses the edit.
+			var previousFacts = generatesXamlCode ? XamlFacts.TryRead(previousText) : null;
+			var currentFacts = generatesXamlCode ? XamlFacts.TryRead(currentText) : null;
+			if (previousFacts != null && currentFacts != null) {
+				if (previousFacts.XClass != currentFacts.XClass || previousFacts.Names.Except(currentFacts.Names).Any())
+					return HotReloadChangeKind.RestartRequired;
+				if (!previousFacts.CsExpressions.SequenceEqual(currentFacts.CsExpressions)
+					|| currentFacts.Names.Except(previousFacts.Names).Any())
+					return HotReloadChangeKind.CodeDelta;
+				return previousFacts.ElementCount == currentFacts.ElementCount
+					? HotReloadChangeKind.Property
+					: HotReloadChangeKind.Subtree;
+			}
 
 			// Same element structure, different attribute text: treat as a property edit. Counting
 			// tags is deliberately crude - it only has to be right about "nothing was added or
@@ -84,6 +116,94 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			return CountElements(previousText) == CountElements(currentText)
 				? HotReloadChangeKind.Property
 				: HotReloadChangeKind.Subtree;
+		}
+
+		/// <summary>
+		/// What a text push cannot carry, read with namespace processing off so Simpler XAML
+		/// (no xmlns declarations) still reads. Null when the text is not well-formed.
+		/// </summary>
+		sealed class XamlFacts
+		{
+			const string XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
+
+			public string XClass;
+			public readonly HashSet<string> Names = new HashSet<string>(StringComparer.Ordinal);
+			public readonly List<string> CsExpressions = new List<string>();
+			public int ElementCount;
+
+			public static XamlFacts TryRead(string xaml)
+			{
+				try {
+					var facts = new XamlFacts();
+					using (var text = new StringReader(xaml))
+					using (var reader = new XmlTextReader(text) { Namespaces = false, DtdProcessing = DtdProcessing.Prohibit }) {
+						var xamlPrefixes = new HashSet<string>(StringComparer.Ordinal) { "x" };
+						while (reader.Read()) {
+							if (reader.NodeType != XmlNodeType.Element)
+								continue;
+							var isRoot = facts.ElementCount == 0;
+							facts.ElementCount++;
+							if (!reader.HasAttributes)
+								continue;
+							// Declarations first: a prefix may be declared after the attribute that uses it.
+							// The set is file-wide rather than scoped, which can only over-recognise.
+							while (reader.MoveToNextAttribute()) {
+								if (reader.Name.StartsWith("xmlns:", StringComparison.Ordinal) && reader.Value == XamlNamespace)
+									xamlPrefixes.Add(reader.Name.Substring("xmlns:".Length));
+							}
+							reader.MoveToElement();
+							while (reader.MoveToNextAttribute()) {
+								var name = reader.Name;
+								var value = reader.Value;
+								var colon = name.IndexOf(':');
+								var local = colon < 0 ? name : name.Substring(colon + 1);
+								var inXamlNamespace = colon >= 0 && xamlPrefixes.Contains(name.Substring(0, colon));
+								if (inXamlNamespace && local == "Class" && isRoot)
+									facts.XClass = value;
+								else if ((inXamlNamespace && local == "Name") || name == "Name")
+									facts.Names.Add(value);
+								if (value.StartsWith("{cs:", StringComparison.Ordinal))
+									facts.CsExpressions.Add(value);
+							}
+							reader.MoveToElement();
+						}
+					}
+					return facts;
+				} catch (XmlException) {
+					return null;
+				}
+			}
+		}
+
+		/// <summary>
+		/// Whether the project opted in to the XAML source generator, through the property in its own
+		/// project file or the environment switch the targets also honour. A value set elsewhere
+		/// (Directory.Build.props) is not seen and reads as false, which keeps the text path.
+		/// </summary>
+		public static bool UsesGeneratedXaml(string projectFileName, Func<string, string> getEnvironmentVariable = null)
+		{
+			getEnvironmentVariable = getEnvironmentVariable ?? Environment.GetEnvironmentVariable;
+			if (IsSwitchOn(getEnvironmentVariable("LIBREWPF_USE_XSG"))
+				|| IsSwitchOn(getEnvironmentVariable("LIBREWPF_USE_XAML_SOURCE_GENERATOR")))
+				return true;
+			if (string.IsNullOrEmpty(projectFileName) || !File.Exists(projectFileName))
+				return false;
+			try {
+				return System.Xml.Linq.XDocument.Load(projectFileName)
+					.Descendants("UseLibreWpfXamlSourceGenerator")
+					.Any(e => IsSwitchOn(e.Value));
+			} catch (Exception ex) when (ex is XmlException || ex is IOException || ex is UnauthorizedAccessException) {
+				return false;
+			}
+		}
+
+		// The targets treat any non-empty environment value as on, including "0"; this is stricter on
+		// purpose. Reading a project as not generated only keeps the text path, whereas the opposite
+		// mistake blocks reloads that work.
+		static bool IsSwitchOn(string value)
+		{
+			value = value?.Trim();
+			return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) || value == "1";
 		}
 
 		static int CountElements(string xaml)

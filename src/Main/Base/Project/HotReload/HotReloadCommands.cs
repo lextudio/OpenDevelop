@@ -52,10 +52,16 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			var previousText = HotReloadDocumentTracker.GetAcceptedText(fileName) ?? currentText;
 			var change = new HotReloadDocumentChange(fileName.ToString(), previousText, currentText,
 				editor.Document.Version?.GetHashCode() ?? 0,
-				HotReloadWorkflow.Classify(previousText, currentText));
+				HotReloadWorkflow.Classify(previousText, currentText, GeneratesXamlCode(session, fileName)));
 
 			ApplyAsync(session, change, fileName).FireAndForget();
 		}
+
+		// Only a WPF session can be on the LibreWPF generator; the environment switch is process-wide and
+		// must not turn the generator's rules on for a WinUI or Uno project.
+		static bool GeneratesXamlCode(IHotReloadSession session, FileName fileName)
+			=> session.Framework == "WPF"
+				&& HotReloadWorkflow.UsesGeneratedXaml(SD.ProjectService.FindProjectContainingFile(fileName)?.FileName);
 
 		static async Task ApplyAsync(IHotReloadSession session, HotReloadDocumentChange change, FileName fileName)
 		{

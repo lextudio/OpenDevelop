@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -151,6 +152,100 @@ public sealed class HotReloadServiceTests : IDisposable
 		HotReloadChangeKind expected)
 	{
 		Assert.Equal(expected, HotReloadWorkflow.Classify(previous, current));
+	}
+
+	[Theory]
+	[InlineData(HotReloadChangeKind.CodeDelta, HotReloadOutcome.BuildRequired)]
+	[InlineData(HotReloadChangeKind.RestartRequired, HotReloadOutcome.RestartRequired)]
+	public async Task AgentSession_AnswersEditsATextPushCannotCarry_WithoutTouchingThePipe(
+		HotReloadChangeKind kind, HotReloadOutcome expected)
+	{
+		// No agent listens on this pipe: an answer proves nothing was sent to it.
+		var session = new AgentPipeHotReloadSession(new FakeAdapter("WPF", true), IdeDriven(),
+			"odhr-test-" + Guid.NewGuid().ToString("N").Substring(0, 8), null);
+
+		var result = await session.ApplyAsync(new HotReloadDocumentChange("/tmp/A.xaml", "old", "new", 1, kind),
+			CancellationToken.None);
+
+		Assert.Equal(expected, result.Outcome);
+		Assert.False(result.IsSuccess);
+	}
+
+	[Theory]
+	// A {cs:} expression changed: Route T cannot express it.
+	[InlineData("<Button Content=\"{cs: a + 1}\" />", "<Button Content=\"{cs: a + 2}\" />",
+		HotReloadChangeKind.CodeDelta)]
+	// A new x:Name is a new field.
+	[InlineData("<Grid><Button /></Grid>", "<Grid><Button x:Name=\"Ok\" /></Grid>",
+		HotReloadChangeKind.CodeDelta)]
+	// Removing an x:Name is a rude edit; the Name form counts too.
+	[InlineData("<Grid><Button Name=\"Ok\" /></Grid>", "<Grid><Button /></Grid>",
+		HotReloadChangeKind.RestartRequired)]
+	[InlineData("<Window x:Class=\"A.B\"><Grid /></Window>", "<Window x:Class=\"A.C\"><Grid /></Window>",
+		HotReloadChangeKind.RestartRequired)]
+	// Declared namespaces read the same as Simpler XAML's undeclared ones.
+	[InlineData("<Window xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" x:Class=\"A.B\"><Button x:Name=\"Ok\" /></Window>",
+		"<Window xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" x:Class=\"A.B\"><Button /></Window>",
+		HotReloadChangeKind.RestartRequired)]
+	// The generator emits a field for a name inside a template too, so removing it is a restart.
+	[InlineData("<Window><Window.Resources><ControlTemplate><Border x:Name=\"Part\" /></ControlTemplate></Window.Resources></Window>",
+		"<Window><Window.Resources><ControlTemplate><Border /></ControlTemplate></Window.Resources></Window>",
+		HotReloadChangeKind.RestartRequired)]
+	// Any prefix bound to the XAML namespace counts, declared on the same element or earlier.
+	[InlineData("<Window xmlns:q=\"http://schemas.microsoft.com/winfx/2006/xaml\" q:Class=\"A.B\"><Button q:Name=\"Ok\" /></Window>",
+		"<Window xmlns:q=\"http://schemas.microsoft.com/winfx/2006/xaml\" q:Class=\"A.B\"><Button /></Window>",
+		HotReloadChangeKind.RestartRequired)]
+	// Half-typed XAML does not parse, so it takes the old tag-count path rather than being read as
+	// a removed x:Name.
+	[InlineData("<Grid><Button x:Name=\"Ok\" /></Grid>", "<Grid><Button ",
+		HotReloadChangeKind.Property)]
+	// Simpler XAML has no xmlns declarations at all.
+	[InlineData("<Grid><TextBlock Text=\"a\" /></Grid>", "<Grid><TextBlock Text=\"b\" /></Grid>",
+		HotReloadChangeKind.Property)]
+	public void Classify_ForGeneratedXaml_SeparatesEditsATextPushCannotCarry(string previous, string current,
+		HotReloadChangeKind expected)
+	{
+		Assert.Equal(expected, HotReloadWorkflow.Classify(previous, current, generatesXamlCode: true));
+	}
+
+	[Theory]
+	[InlineData("<Grid><Button x:Name=\"Ok\" /></Grid>", "<Grid><Button /></Grid>")]
+	[InlineData("<Grid><Button Name=\"Ok\" /></Grid>", "<Grid><Button /></Grid>")]
+	[InlineData("<Window x:Class=\"A.B\" />", "<Window x:Class=\"A.C\" />")]
+	[InlineData("<Button Content=\"{cs: a + 1}\" />", "<Button Content=\"{cs: a + 2}\" />")]
+	public void Classify_WithoutGeneratedXaml_KeepsTheTextPath(string previous, string current)
+	{
+		// A re-parse carries these under BAML and WinUI, so reporting them as structural would block a
+		// reload that works.
+		var kind = HotReloadWorkflow.Classify(previous, current);
+		Assert.NotEqual(HotReloadChangeKind.RestartRequired, kind);
+		Assert.NotEqual(HotReloadChangeKind.CodeDelta, kind);
+	}
+
+	[Fact]
+	public void UsesGeneratedXaml_ReadsTheProjectFileProperty()
+	{
+		var dir = Path.Combine(Path.GetTempPath(), "od-xsg-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+		Directory.CreateDirectory(dir);
+		try {
+			var on = Path.Combine(dir, "On.csproj");
+			var off = Path.Combine(dir, "Off.csproj");
+			File.WriteAllText(on, "<Project><PropertyGroup><UseLibreWpfXamlSourceGenerator>true</UseLibreWpfXamlSourceGenerator></PropertyGroup></Project>");
+			File.WriteAllText(off, "<Project><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup></Project>");
+			Func<string, string> noEnvironment = _ => null;
+			Assert.True(HotReloadWorkflow.UsesGeneratedXaml(on, noEnvironment));
+			Assert.False(HotReloadWorkflow.UsesGeneratedXaml(off, noEnvironment));
+			Assert.False(HotReloadWorkflow.UsesGeneratedXaml(Path.Combine(dir, "Missing.csproj"), noEnvironment));
+			Assert.False(HotReloadWorkflow.UsesGeneratedXaml(null, noEnvironment));
+
+			// The environment switch counts only when it is truly on: "0" must not turn it on.
+			Assert.True(HotReloadWorkflow.UsesGeneratedXaml(off, n => n == "LIBREWPF_USE_XSG" ? "1" : null));
+			Assert.True(HotReloadWorkflow.UsesGeneratedXaml(off, n => n == "LIBREWPF_USE_XAML_SOURCE_GENERATOR" ? "true" : null));
+			Assert.False(HotReloadWorkflow.UsesGeneratedXaml(off, n => n == "LIBREWPF_USE_XSG" ? "0" : null));
+			Assert.False(HotReloadWorkflow.UsesGeneratedXaml(off, n => n == "LIBREWPF_USE_XSG" ? "false" : null));
+		} finally {
+			Directory.Delete(dir, true);
+		}
 	}
 
 	static HotReloadCapabilities IdeDriven() => new HotReloadCapabilities(
