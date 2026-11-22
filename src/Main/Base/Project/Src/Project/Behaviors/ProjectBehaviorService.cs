@@ -26,6 +26,12 @@ namespace ICSharpCode.SharpDevelop.Project
 	{
 		const string AddInPath = "/SharpDevelop/Workbench/ProjectBehaviors";
 		
+		/// <summary>
+		/// Builds the behavior chain of <paramref name="project"/>. This can run on the solution builder's
+		/// background thread (a project creates its behaviors while its items are created), so behavior
+		/// constructors and the conditions under /SharpDevelop/Workbench/ProjectBehaviors must not touch the UI;
+		/// behaviors do UI work in the methods the workbench calls on the main thread (Start, ShowProperties, ...).
+		/// </summary>
 		public static ProjectBehavior LoadBehaviorsForProject(IProject project, ProjectBehavior defaultBehavior)
 		{
 			List<ProjectBehavior> behaviors = AddInTree.BuildItems<ProjectBehavior>(AddInPath, project, false);

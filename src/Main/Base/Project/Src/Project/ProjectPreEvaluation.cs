@@ -26,6 +26,13 @@ namespace ICSharpCode.SharpDevelop.Project
 	/// evaluation instead of making one, provided it was made from the same XML with exactly the same global
 	/// properties. A project that fails to evaluate here is left to its constructor, which reports the error
 	/// as before. Dispose the instance once the projects are constructed: it unloads every unused evaluation.
+	///
+	/// Concurrency: the evaluations run without <see cref="MSBuildInternals.SolutionProjectCollectionLock"/>.
+	/// MSBuild synchronizes concurrent evaluation of distinct projects in one <see cref="ProjectCollection"/>
+	/// itself (its loaded-project list and ProjectRootElementCache are internally locked, and the shared
+	/// EvaluationContext is built for concurrent use); the global lock serializes SharpDevelop's own
+	/// operations on a live solution. The collection here belongs to a solution that is still being built, so
+	/// nothing else uses it, and the concurrent phase only evaluates: unloading waits until it has finished.
 	/// </summary>
 	public sealed class ProjectPreEvaluation : IDisposable
 	{
@@ -114,7 +121,16 @@ namespace ICSharpCode.SharpDevelop.Project
 			MSBuildInternals.InitializeMSBuildEnvironment();
 			var context = MSBuildInternals.SharedEvaluationContext;
 			var options = new ParallelOptions { MaxDegreeOfParallelism = DegreeOfParallelism, CancellationToken = cancellationToken };
-			Parallel.ForEach(requests, options, request => {
+			var duplicates = new ConcurrentBag<Microsoft.Build.Evaluation.Project>();
+			try {
+				EvaluateConcurrently();
+			} finally {
+				// Unloading takes SolutionProjectCollectionLock; do it after the concurrent phase, which only evaluates.
+				foreach (var duplicate in duplicates)
+					MSBuildInternals.UnloadProject(projectCollection, duplicate);
+			}
+
+			void EvaluateConcurrently() => Parallel.ForEach(requests, options, request => {
 				try {
 					var startedUtc = DateTime.UtcNow;
 					var rootElement = ProjectRootElement.Open(request.FileName, projectCollection);
@@ -125,7 +141,7 @@ namespace ICSharpCode.SharpDevelop.Project
 						EvaluationContext = context
 					});
 					if (!evaluations.TryAdd(rootElement.FullPath, new Evaluation(project, request.GlobalProperties, startedUtc)))
-						MSBuildInternals.UnloadProject(projectCollection, project); // listed twice: keep the first
+						duplicates.Add(project); // listed twice: keep the first
 				} catch (Exception ex) when (ex is not OperationCanceledException) {
 					// Missing file, invalid XML, unresolvable SDK, ...: the project's constructor reports it.
 					LoggingService.Debug("Pre-evaluation skipped " + request.FileName + ": " + ex.Message);
