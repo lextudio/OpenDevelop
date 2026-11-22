@@ -20,10 +20,6 @@
   </Folder>
   <Folder Name="/src/" />
   <Folder Name="/src/Libraries/">
-  <Folder Name="/src/Libraries/MewUI.Xaml/">
-    <Project Path="src/Libraries/MewUI.Xaml/LeXtudio.MewUI.Xaml.csproj" />
-    <Project Path="src/Libraries/MewUI.Xaml.Tests/LeXtudio.MewUI.Xaml.Tests.csproj" />
-  </Folder>
     <Project Path="src/Libraries/ICSharpCode.TypeSystem.Abstractions/ICSharpCode.TypeSystem.Abstractions.csproj" />
   </Folder>
   <Folder Name="/src/Main/">
@@ -75,10 +71,6 @@
     <Project Path="src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/XamlDom/MicrosoftWpfDesign.XamlDom.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/Engine/MicrosoftWpfDesign.Engine.csproj" />
     <Project Path="src/AddIns/DisplayBindings/WpfDesign/MicrosoftHost/SurfaceHost/MicrosoftWpfDesign.SurfaceHost.csproj" />
-  </Folder>
-  <Folder Name="/src/AddIns/DisplayBindings/MewUIDesigner/">
-    <Project Path="src/AddIns/DisplayBindings/MewUIDesigner/MewUIDesigner.csproj" />
-    <Project Path="src/AddIns/DisplayBindings/MewUIDesigner.Host/MewUIDesigner.Host.csproj" />
   </Folder>
   <Folder Name="/src/AddIns/DisplayBindings/GtkDesigner/">
     <Project Path="src/AddIns/DisplayBindings/GtkDesigner/GtkDesigner.csproj" />

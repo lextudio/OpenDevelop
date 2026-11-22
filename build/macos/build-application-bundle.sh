@@ -95,7 +95,6 @@ populate_repo_payload() {
     "DisplayBindings/FormsDesigner/Host"
     "DisplayBindings/WpfDesign/Host"
     "DisplayBindings/GtkDesigner/Host"
-    "DisplayBindings/MewUIDesigner/Host"
     "DisplayBindings/WorkflowDesigner/Host"
     "Debugger"
     "LanguageServices/XamlLanguageServer.Wpf"

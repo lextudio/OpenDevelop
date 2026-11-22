@@ -1581,7 +1581,6 @@ function Invoke-WindowsPayload {
         'DisplayBindings\FormsDesigner\Host',
         'DisplayBindings\FormsDesigner\MicrosoftHost',
         'DisplayBindings\GtkDesigner\Host',
-        'DisplayBindings\MewUIDesigner\Host',
         'DisplayBindings\WinUIXamlDesigner\UnoHost',
         'DisplayBindings\WinUIXamlDesigner\UnoHost.Android',
         'DisplayBindings\WinUIXamlDesigner\UnoHost.iOS',

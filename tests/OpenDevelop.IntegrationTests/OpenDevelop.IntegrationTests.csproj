@@ -67,7 +67,7 @@
        deployed) - a symptom that reads like a missing action rather than a missing build. -->
   <ItemGroup>
     <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/GtkDesigner/GtkDesigner.csproj" />
-    <_DesignerAddinProject Include="../../src/AddIns/DisplayBindings/MewUIDesigner/MewUIDesigner.csproj" />
+
     <!-- The WinForms designer addin itself (its out-of-process Host is built below). Without it, a
          version bump leaves a stale FormsDesigner.dll bound to the previous DesignerCanvas version,
          and every WinForms/Gtk designer test fails with od.forms-designer.status 400 /
