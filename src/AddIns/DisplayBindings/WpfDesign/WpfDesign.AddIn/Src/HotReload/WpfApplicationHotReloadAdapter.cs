@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -70,7 +71,7 @@ namespace ICSharpCode.WpfDesign.AddIn.HotReload
 					HotReloadChangeKind.Subtree,
 					HotReloadChangeKind.Resource,
 					HotReloadChangeKind.FullDocument,
-				},
+					}.Concat(new[] { HotReloadChangeKind.CodeDelta }),
 				reportsStatePreservation: false);
 		}
 
@@ -103,6 +104,8 @@ namespace ICSharpCode.WpfDesign.AddIn.HotReload
 			// Without this WPF records no {Uri, line, column} for the objects it creates, and the
 			// agent cannot map an edit back to a live element.
 			startInfo.Environment["ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO"] = "1";
+			if (!context.WithDebugger)
+				startInfo.Environment["DOTNET_MODIFIABLE_ASSEMBLIES"] = "debug";
 
 			var logFile = Path.Combine(Path.GetTempPath(), "od-wpf-hotreload-" + pipeName + ".log");
 			startInfo.Environment["WPF_HOTRELOAD_LOG"] = logFile;

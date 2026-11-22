@@ -72,6 +72,9 @@ namespace Debugger.AddIn.Service.Dap
 
 		/// <summary>The operating system id of the program being debugged, once known; null before that.</summary>
 		public int? DebuggeeProcessId { get; private set; }
+
+		/// <summary>Requests SharpDbg's opt-in Edit-and-Continue module flags for a launch.</summary>
+		public bool EnableEditAndContinue { get; set; }
 		DapLaunchMode launchMode;
 
 		/// <summary>
@@ -278,14 +281,7 @@ namespace Debugger.AddIn.Service.Dap
 			} else if (launchMode == DapLaunchMode.AttachToSuspendedProcess) {
 				debuggeeProcess = LaunchDebuggeeSuspended(debuggeeLaunchHost, targetPath, workingDirectory, argumentList, launchEnvironment);
 				DebuggeeProcessId = debuggeeProcess.Id;
-				await client.SendRequestAsync("attach", new JsonObject {
-					["processId"] = debuggeeProcess.Id,
-					["console"] = "internalConsole",
-					["justMyCode"] = true,
-					// The IDE (its decompiler add-in) decides whether and how a module without a PDB gets symbols; with no provider nothing is
-					// decompiled. An adapter that does not know the argument keeps decompiling by itself.
-					["decompileExternalCode"] = false
-				}, cancellationToken).ConfigureAwait(false);
+				await client.SendRequestAsync("attach", CreateSuspendedAttachArguments(debuggeeProcess.Id, EnableEditAndContinue), cancellationToken).ConfigureAwait(false);
 			} else {
 				string program = targetPath;
 				var args = new JsonArray();
@@ -307,17 +303,52 @@ namespace Debugger.AddIn.Service.Dap
 				foreach (var variable in launchEnvironment ?? Enumerable.Empty<KeyValuePair<string, string>>()) {
 					env[variable.Key] = variable.Value;
 				}
-				await client.SendRequestAsync("launch", new JsonObject {
-					["program"] = program,
-					["args"] = args,
-					["cwd"] = workingDirectory ?? Path.GetDirectoryName(targetPath),
-					["env"] = env,
-					["decompileExternalCode"] = false,
-					["stopAtEntry"] = breakAtBeginning,
-					["console"] = "internalConsole",
-					["noDebug"] = noDebug
-				}, cancellationToken).ConfigureAwait(false);
+				await client.SendRequestAsync("launch", CreateLaunchArguments(program, args, workingDirectory ?? Path.GetDirectoryName(targetPath),
+					env, breakAtBeginning, noDebug, EnableEditAndContinue), cancellationToken).ConfigureAwait(false);
 			}
+		}
+
+		internal static JsonObject CreateLaunchArguments(string program, JsonArray args, string workingDirectory, JsonObject env,
+			bool breakAtBeginning, bool noDebug, bool enableEditAndContinue)
+		{
+			var result = new JsonObject {
+			["program"] = program,
+			["args"] = args,
+			["cwd"] = workingDirectory,
+			["env"] = env,
+			["decompileExternalCode"] = false,
+			["stopAtEntry"] = breakAtBeginning,
+			["console"] = "internalConsole",
+				["noDebug"] = noDebug
+			};
+			if (enableEditAndContinue)
+				result["enableEditAndContinue"] = true;
+			return result;
+		}
+
+		internal static JsonObject CreateSuspendedAttachArguments(int processId, bool enableEditAndContinue)
+		{
+			return new JsonObject {
+				["processId"] = processId,
+				["console"] = "internalConsole",
+				["justMyCode"] = true,
+				["enableEditAndContinue"] = enableEditAndContinue,
+				// The IDE (its decompiler add-in) decides whether and how a module without a PDB gets symbols; with no provider nothing is
+				// decompiled. An adapter that does not know the argument keeps decompiling by itself.
+				["decompileExternalCode"] = false
+			};
+		}
+
+		/// <summary>Applies a Roslyn EnC metadata/IL delta to a stopped SharpDbg debuggee.</summary>
+		public async Task ApplyDeltasAsync(Guid mvid, byte[] metadata, byte[] il, byte[] pdb = null, CancellationToken cancellationToken = default)
+		{
+			if (client == null) throw new InvalidOperationException("The debug session has not started.");
+			var response = await client.SendRequestAsync("sharpdbg/applyDeltas", new JsonObject {
+				["mvid"] = mvid.ToString("D"), ["metadata"] = Convert.ToBase64String(metadata),
+				["il"] = Convert.ToBase64String(il), ["pdb"] = Convert.ToBase64String(pdb ?? Array.Empty<byte>())
+			}, cancellationToken).ConfigureAwait(false);
+			if (response?["success"]?.GetValue<bool>() == false)
+				throw new InvalidOperationException(response["message"]?.GetValue<string>() ?? "sharpdbg/applyDeltas failed.");
 		}
 
 		/// <summary>

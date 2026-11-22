@@ -5,6 +5,8 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
+using ICSharpCode.SharpDevelop.LanguageServices.Protocol;
+
 namespace ICSharpCode.SharpDevelop.Project.HotReload
 {
 	/// <summary>
@@ -226,6 +228,12 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		/// pretending to have applied something it never transmitted.
 		/// </summary>
 		Task<HotReloadApplyResult> ApplyAsync(HotReloadDocumentChange change, CancellationToken token);
+	}
+
+	/// <summary>Applies one Roslyn-produced EnC module delta to a live application.</summary>
+	public interface IHotReloadDeltaApplier
+	{
+		Task<HotReloadApplyResult> ApplyAsync(HotReloadModuleDelta delta, CancellationToken token);
 	}
 
 	/// <summary>

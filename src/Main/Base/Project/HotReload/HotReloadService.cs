@@ -44,6 +44,9 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		/// <summary>The session for the application currently launched with Hot Reload, if any.</summary>
 		public static IHotReloadSession CurrentSession { get; private set; }
 
+		/// <summary>Optional debugger-addin bridge for applying a delta through DAP.</summary>
+		public static Func<IHotReloadDeltaApplier> DebuggerDeltaApplierFactory { get; set; }
+
 		public static event EventHandler CurrentSessionChanged;
 
 		static int lifecycleHooked;
@@ -133,8 +136,12 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 				CurrentSession = session;
 				if (!TryCaptureLaunchSnapshot(project, startInfo.FileName, out var protocol, out var request, out var snapshotDiagnostic))
 					LoggingService.Warn("Hot Reload: EnC baseline was not captured: " + snapshotDiagnostic);
-				else
+				else {
+					if (session is AgentPipeHotReloadSession agentSession)
+						agentSession.ConfigureCodeDelta(protocol!, request!.Project,
+							withDebugger ? DebuggerDeltaApplierFactory?.Invoke() : null);
 					SendLaunchBaselineAsync(protocol!, request!, project.Name).FireAndForget();
+				}
 				CurrentSessionChanged?.Invoke(null, EventArgs.Empty);
 				LoggingService.Info($"Hot Reload: session started for {adapter.Framework}.");
 				// The launch has only been CONFIGURED at this point; the application starts after

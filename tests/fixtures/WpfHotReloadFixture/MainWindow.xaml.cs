@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Reflection;
 
 namespace sample;
 
@@ -19,6 +20,9 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+		var encProbeAssembly = Environment.GetEnvironmentVariable("ENC_PROBE_ASSEMBLY");
+		if (!string.IsNullOrWhiteSpace(encProbeAssembly))
+			Assembly.LoadFrom(encProbeAssembly);
         HotReloadReady();
     }
 

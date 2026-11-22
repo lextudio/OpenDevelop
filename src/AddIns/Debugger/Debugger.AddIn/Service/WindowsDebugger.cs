@@ -29,6 +29,8 @@ using ICSharpCode.SharpDevelop.Debugging;
 using ICSharpCode.SharpDevelop.Editor;
 using ICSharpCode.SharpDevelop.Gui;
 using ICSharpCode.SharpDevelop.Project;
+using ICSharpCode.SharpDevelop.Project.HotReload;
+using ICSharpCode.SharpDevelop.LanguageServices.Protocol;
 using ICSharpCode.SharpDevelop.Workbench;
 
 namespace ICSharpCode.SharpDevelop.Services
@@ -206,6 +208,21 @@ namespace ICSharpCode.SharpDevelop.Services
 		public WindowsDebugger()
 		{
 			Instance = this;
+			HotReloadService.DebuggerDeltaApplierFactory = () => new SharpDbgDeltaApplier();
+		}
+
+		sealed class SharpDbgDeltaApplier : IHotReloadDeltaApplier
+		{
+			public async Task<HotReloadApplyResult> ApplyAsync(HotReloadModuleDelta delta, System.Threading.CancellationToken token)
+			{
+				var session = CurrentSession;
+				if (session == null || !session.IsPaused)
+					return new HotReloadApplyResult(HotReloadOutcome.BuildRequired, "Pause the debugger before applying a code delta.");
+				try {
+					await session.ApplyDeltasAsync(delta.Mvid, delta.Metadata, delta.IL, delta.Pdb, token).ConfigureAwait(false);
+					return new HotReloadApplyResult(HotReloadOutcome.Applied, "Applied through SharpDbg.");
+				} catch (Exception ex) { return new HotReloadApplyResult(HotReloadOutcome.Failed, ex.Message, ex.ToString()); }
+			}
 		}
 
 		string errorDebugging = "${res:XML.MainMenu.DebugMenu.Error.Debugging}";
@@ -257,6 +274,9 @@ namespace ICSharpCode.SharpDevelop.Services
 			StartAsync(processStartInfo).FireAndForget();
 		}
 
+		internal static bool ShouldEnableEditAndContinue(ProcessStartInfo processStartInfo) =>
+			processStartInfo.Environment.ContainsKey("WPF_HOTRELOAD_PIPE");
+
 		async Task StartAsync(ProcessStartInfo processStartInfo, bool noDebug = false)
 		{
 			DapSession session = null;
@@ -264,6 +284,9 @@ namespace ICSharpCode.SharpDevelop.Services
 				PrintDebugMessage("> Starting debug adapter...\n");
 
 				session = new DapSession();
+				// The WPF Hot Reload adapter marks its configured launch with this private pipe endpoint.
+				// Only that explicit path needs SharpDbg's opt-in EnC module flags; normal debugging does not.
+				session.EnableEditAndContinue = ShouldEnableEditAndContinue(processStartInfo);
 				currentSessionIsNoDebug = noDebug;
 				CurrentSession = session;
 				CurrentSession.Started += SessionStarted;

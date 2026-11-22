@@ -92,6 +92,11 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			public string PreviousXamlText { get; set; }
 			public string ChangeKind { get; set; }
 			public string Query { get; set; }
+			public string Mvid { get; set; }
+			public byte[] Metadata { get; set; }
+			public byte[] Il { get; set; }
+			public byte[] Pdb { get; set; }
+			public int[] UpdatedTypeTokens { get; set; }
 		}
 
 		internal sealed class AgentResponse

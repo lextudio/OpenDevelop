@@ -8,6 +8,15 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
+using System.Collections.Immutable;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
+
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Emit;
+using Microsoft.CodeAnalysis.Text;
+
 using ICSharpCode.SharpDevelop.Project.HotReload;
 using ICSharpCode.WpfDesign.AddIn.HotReload;
 
@@ -25,6 +34,72 @@ namespace OpenDevelop.Base.Tests;
 /// </summary>
 public sealed class WpfHotReloadEndToEndTests
 {
+	[Fact]
+	public async Task ApplyDelta_UpdatesALiveWpfAssemblyAndRunsItsMetadataHandler()
+	{
+		var token = TestContext.Current.CancellationToken;
+		var directory = Directory.CreateTempSubdirectory("WpfEnc-");
+		try {
+			var sourcePath = Path.Combine(directory.FullName, "Program.cs");
+			var probePath = Path.Combine(directory.FullName, "result.txt");
+			string Source(string value) => $$"""
+				using System;
+				using System.IO;
+				using System.Runtime.CompilerServices;
+				using System.Reflection.Metadata;
+				[assembly: MetadataUpdateHandler(typeof(Handler))]
+				public static class Target { public static string Value() => "{{value}}"; }
+				public static class Handler { public static void UpdateApplication(Type[] types) => File.WriteAllText(Environment.GetEnvironmentVariable("ENC_PROBE_PATH")!, Target.Value() + ":" + types.Length); }
+				""";
+			await File.WriteAllTextAsync(sourcePath, Source("v1"), token);
+			var references = Directory.EnumerateFiles(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "*.dll")
+				.Select(path => MetadataReference.CreateFromFile(path));
+			CSharpCompilation Compile(string source) => CSharpCompilation.Create("WpfEncProbe",
+				[CSharpSyntaxTree.ParseText(SourceText.From(source, Encoding.UTF8), path: sourcePath)], references,
+				new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, optimizationLevel: OptimizationLevel.Debug));
+			var v1 = Compile(Source("v1"));
+			using var image = new MemoryStream();
+			using var symbols = new MemoryStream();
+			var pdbPath = Path.Combine(directory.FullName, "WpfEncProbe.pdb");
+			var emitted = v1.Emit(image, symbols, options: new EmitOptions(debugInformationFormat: DebugInformationFormat.PortablePdb, pdbFilePath: pdbPath));
+			Assert.True(emitted.Success, string.Join(Environment.NewLine, emitted.Diagnostics));
+			var dll = Path.Combine(directory.FullName, "WpfEncProbe.dll");
+			await File.WriteAllBytesAsync(dll, image.ToArray(), token);
+			await File.WriteAllBytesAsync(pdbPath, symbols.ToArray(), token);
+			using var metadata = ModuleMetadata.CreateFromImage(image.ToArray());
+			var reader = metadata.GetMetadataReader();
+			var mvid = reader.GetGuid(reader.GetModuleDefinition().Mvid);
+			var baseline = EmitBaseline.CreateInitialBaseline(v1, metadata,
+				_ => EditAndContinueMethodDebugInformation.Create(ImmutableArray<byte>.Empty, ImmutableArray<byte>.Empty),
+				_ => default(StandaloneSignatureHandle), hasPortableDebugInformation: true);
+			var v2 = Compile(Source("v2"));
+			using var md = new MemoryStream(); using var il = new MemoryStream(); using var pdb = new MemoryStream();
+			var edit = new SemanticEdit(SemanticEditKind.Update, v1.GetTypeByMetadataName("Target")!.GetMembers("Value")[0], v2.GetTypeByMetadataName("Target")!.GetMembers("Value")[0]);
+			var difference = v2.EmitDifference(baseline, [edit], _ => false, md, il, pdb);
+			Assert.True(difference.Success, string.Join(Environment.NewLine, difference.Diagnostics));
+			Environment.SetEnvironmentVariable("OD_WPF_HOTRELOAD_AGENT", LocateAgentForTest());
+			var startInfo = new ProcessStartInfo(LocateFixtureExecutable()) { UseShellExecute = false };
+			var adapter = new WpfApplicationHotReloadAdapter();
+			await using var session = await adapter.StartAsync(new HotReloadLaunchContext(project: null, withDebugger: false), startInfo, token);
+			var agentSession = Assert.IsType<AgentPipeHotReloadSession>(session);
+			startInfo.Environment["ENC_PROBE_ASSEMBLY"] = dll;
+			startInfo.Environment["ENC_PROBE_PATH"] = probePath;
+			var agentLog = startInfo.Environment["WPF_HOTRELOAD_LOG"]!;
+			using var app = Process.Start(startInfo); Assert.NotNull(app);
+			try {
+				Assert.True(await session.WaitForReadyAsync(TimeSpan.FromSeconds(30), token));
+				(string Result, string Value) response;
+				var targetToken = MetadataTokens.GetToken(reader.TypeDefinitions.Single(handle => reader.GetString(reader.GetTypeDefinition(handle).Name) == "Target"));
+				try { response = await SendPipeAsync(agentSession.PipeName, new { kind = "applyDelta", mvid, metadata = md.ToArray(), il = il.ToArray(), pdb = pdb.ToArray(), updatedTypeTokens = new[] { targetToken } }); }
+				catch (Exception ex) { throw new Xunit.Sdk.XunitException("Agent log:\n" + await File.ReadAllTextAsync(agentLog, token) + "\n" + ex); }
+				Assert.StartsWith("ok:", response.Result, StringComparison.OrdinalIgnoreCase);
+				for (var i = 0; i < 50 && !File.Exists(probePath); i++) await Task.Delay(100, token);
+				Assert.True(File.Exists(probePath), "MetadataUpdateHandler was not invoked after the live delta.");
+				Assert.Equal("v2:1", await File.ReadAllTextAsync(probePath, token));
+			} finally { if (!app.HasExited) { app.Kill(true); app.WaitForExit(10_000); } }
+		} finally { directory.Delete(true); }
+	}
+
 	[Fact]
 	public async Task AppliedXaml_ChangesTheLiveApplication()
 	{
@@ -56,6 +131,8 @@ public sealed class WpfHotReloadEndToEndTests
 				$"The adapter injected an agent that is not on disk: '{injectedAgent}'. "
 				+ "It is deployed by src/Main/HotReload/WpfHotReload.Agent.");
 			Assert.Equal("1", startInfo.Environment["ENABLE_XAML_DIAGNOSTICS_SOURCE_INFO"]);
+			Assert.Equal("debug", startInfo.Environment["DOTNET_MODIFIABLE_ASSEMBLIES"]);
+			Assert.True(session.Capabilities.Supports(HotReloadChangeKind.CodeDelta));
 			var pipeName = startInfo.Environment["WPF_HOTRELOAD_PIPE"];
 			Assert.False(string.IsNullOrWhiteSpace(pipeName));
 
@@ -67,6 +144,13 @@ public sealed class WpfHotReloadEndToEndTests
 					$"The agent in the launched WPF application never became ready (state {session.State}). "
 					+ $"Application exited: {app.HasExited}.");
 				Assert.Equal(HotReloadSessionState.Ready, session.State);
+				var invalidDelta = await SendPipeAsync(pipeName, new {
+					kind = "applyDelta", mvid = "not-a-guid", metadata = Convert.ToBase64String(new byte[] { 1 }),
+					il = Convert.ToBase64String(new byte[] { 2 }), pdb = Convert.ToBase64String(new byte[] { 3 }),
+					updatedTypeTokens = new[] { 0x02000002 },
+				});
+				Assert.StartsWith("error:", invalidDelta.Result, StringComparison.OrdinalIgnoreCase);
+				Assert.False(app.HasExited);
 
 				// PaneTitle is declared in the self-contained WPF Hot Reload fixture.
 				// The edit is only ever sent over the pipe - the sample on disk is never written to.
@@ -103,6 +187,9 @@ public sealed class WpfHotReloadEndToEndTests
 	/// "retry", not "the agent is gone".
 	/// </summary>
 	static async Task<string> QueryAgentAsync(string pipeName, string query)
+		=> (await SendPipeAsync(pipeName, new { kind = "query", query })).Value;
+
+	static async Task<(string Result, string Value)> SendPipeAsync(string pipeName, object request)
 	{
 		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
 		Exception last = null;
@@ -111,21 +198,22 @@ public sealed class WpfHotReloadEndToEndTests
 				using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
 				await pipe.ConnectAsync(2000);
 				var writer = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true };
-				await writer.WriteLineAsync(JsonSerializer.Serialize(new { kind = "query", query }));
+				await writer.WriteLineAsync(JsonSerializer.Serialize(request));
 				var reader = new StreamReader(pipe, new UTF8Encoding(false));
 				var line = await reader.ReadLineAsync();
 				if (string.IsNullOrWhiteSpace(line))
 					throw new IOException("empty response");
 				using var document = JsonDocument.Parse(line);
-				return document.RootElement.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.String
-					? value.GetString()
-					: null;
+				var result = document.RootElement.TryGetProperty("result", out var resultElement) ? resultElement.GetString() : null;
+				var value = document.RootElement.TryGetProperty("value", out var valueElement) && valueElement.ValueKind == JsonValueKind.String
+					? valueElement.GetString() : null;
+				return (result, value);
 			} catch (Exception ex) when (ex is IOException || ex is TimeoutException) {
 				last = ex;
 				await Task.Delay(200);
 			}
 		}
-		throw new TimeoutException($"The agent did not answer '{query}' in time.", last);
+		throw new TimeoutException("The agent did not answer the pipe request in time.", last);
 	}
 
 	static string LocateAgentForTest()

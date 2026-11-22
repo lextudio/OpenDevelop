@@ -3,6 +3,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using ICSharpCode.Core;
+using ICSharpCode.SharpDevelop.LanguageServices.Protocol;
+using ProtocolHotReloadDeltaStatus = ICSharpCode.SharpDevelop.LanguageServices.Protocol.HotReloadDeltaStatus;
 
 namespace ICSharpCode.SharpDevelop.Project.HotReload
 {
@@ -13,20 +15,26 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 	/// Readiness is proved by the agent answering on its pipe, never by the application process
 	/// merely existing.
 	/// </summary>
-	public sealed class AgentPipeHotReloadSession : IHotReloadSession
+	public sealed class AgentPipeHotReloadSession : IHotReloadSession, IHotReloadDeltaApplier
 	{
 		readonly AgentPipeClient client;
+		IRoslynLanguageProtocol codeDeltaProtocol;
+		HotReloadProjectId codeDeltaProject;
+		IHotReloadDeltaApplier debuggerDeltaApplier;
 		readonly CancellationTokenSource disposal = new CancellationTokenSource();
 		HotReloadSessionState state = HotReloadSessionState.Starting;
 
 		public AgentPipeHotReloadSession(IApplicationHotReloadAdapter adapter, HotReloadCapabilities capabilities,
-			string pipeName, string logFile)
+			string pipeName, string logFile, IRoslynLanguageProtocol codeDeltaProtocol = null,
+			HotReloadProjectId codeDeltaProject = null)
 		{
 			Framework = adapter.Framework;
 			Capabilities = capabilities;
 			PipeName = pipeName;
 			LogFile = logFile;
 			client = new AgentPipeClient(pipeName);
+			this.codeDeltaProtocol = codeDeltaProtocol;
+			this.codeDeltaProject = codeDeltaProject;
 		}
 
 		public string Framework { get; }
@@ -36,6 +44,14 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		public string PipeName { get; }
 
 		public string LogFile { get; }
+
+		/// <summary>Supplied by the shared launch service once it has frozen the matching baseline.</summary>
+		public void ConfigureCodeDelta(IRoslynLanguageProtocol protocol, HotReloadProjectId project, IHotReloadDeltaApplier debuggerDeltaApplier = null)
+		{
+			codeDeltaProtocol = protocol;
+			codeDeltaProject = project;
+			this.debuggerDeltaApplier = debuggerDeltaApplier;
+		}
 
 		public int? ProcessId { get; internal set; }
 
@@ -111,6 +127,19 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			if (State == HotReloadSessionState.Disconnected || State == HotReloadSessionState.Stopped)
 				return new HotReloadApplyResult(HotReloadOutcome.Disconnected, "The Hot Reload session has ended.");
 
+			// A text push cannot carry these, and the agent would otherwise guess: say so up front.
+			if (change.Kind == HotReloadChangeKind.RestartRequired) {
+				State = HotReloadSessionState.RestartRequired;
+				return new HotReloadApplyResult(HotReloadOutcome.RestartRequired,
+					"This edit changes x:Class or removes an x:Name; restart the application.");
+			}
+			if (change.Kind == HotReloadChangeKind.CodeDelta) {
+				if (!Capabilities.Supports(HotReloadChangeKind.CodeDelta))
+					return new HotReloadApplyResult(HotReloadOutcome.BuildRequired,
+						"This edit adds an x:Name or changes a {cs:} expression; rebuild the application to apply it.");
+				return await ApplyCodeDeltaAsync(token).ConfigureAwait(false);
+			}
+
 			using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, disposal.Token);
 			if (State != HotReloadSessionState.Ready
 				&& !await WaitForReadyAsync(TimeSpan.FromSeconds(30), linked.Token).ConfigureAwait(false)) {
@@ -153,6 +182,72 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 				State = HotReloadSessionState.Disconnected;
 				return new HotReloadApplyResult(HotReloadOutcome.Disconnected,
 					"The application is no longer reachable; its Hot Reload session has ended.", ex.Message);
+			} catch (Exception ex) {
+				LastError = ex.Message;
+				State = HotReloadSessionState.Failed;
+				return new HotReloadApplyResult(HotReloadOutcome.Failed, ex.Message, ex.ToString());
+			}
+		}
+
+		async Task<HotReloadApplyResult> ApplyCodeDeltaAsync(CancellationToken token)
+		{
+			if (codeDeltaProtocol is null || codeDeltaProject is null)
+				return new HotReloadApplyResult(HotReloadOutcome.BuildRequired,
+					"No Roslyn EnC producer is available for this launch.");
+			using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, disposal.Token);
+			if (debuggerDeltaApplier is null && State != HotReloadSessionState.Ready
+				&& !await WaitForReadyAsync(TimeSpan.FromSeconds(30), linked.Token).ConfigureAwait(false))
+				return new HotReloadApplyResult(HotReloadOutcome.Failed, $"The {Framework} Hot Reload agent is not ready.");
+			State = HotReloadSessionState.Applying;
+			try {
+				var delta = await codeDeltaProtocol.RoslynHotReloadProduceDeltaAsync(
+					new HotReloadDeltaRequest(codeDeltaProject), linked.Token).ConfigureAwait(false);
+				if (delta.Status == ProtocolHotReloadDeltaStatus.RudeEdit) {
+					State = HotReloadSessionState.RestartRequired;
+					return new HotReloadApplyResult(HotReloadOutcome.RestartRequired, delta.Diagnostic);
+				}
+				if (delta.Status == ProtocolHotReloadDeltaStatus.CompilationError) {
+					State = HotReloadSessionState.Ready;
+					return new HotReloadApplyResult(HotReloadOutcome.BuildRequired, delta.Diagnostic);
+				}
+				if (delta.Status != ProtocolHotReloadDeltaStatus.Applied || delta.Delta is null) {
+					State = HotReloadSessionState.Ready;
+					return new HotReloadApplyResult(HotReloadOutcome.Failed, delta.Diagnostic ?? "Could not produce a code delta.");
+				}
+				return await ApplyAsync(delta.Delta, linked.Token).ConfigureAwait(false);
+			} catch (Exception ex) {
+				LastError = ex.Message;
+				State = HotReloadSessionState.Failed;
+				return new HotReloadApplyResult(HotReloadOutcome.Failed, ex.Message, ex.ToString());
+			}
+		}
+
+		public async Task<HotReloadApplyResult> ApplyAsync(HotReloadModuleDelta delta, CancellationToken token)
+		{
+			if (delta is null)
+				throw new ArgumentNullException(nameof(delta));
+			try {
+				if (debuggerDeltaApplier is not null) {
+					var result = await debuggerDeltaApplier.ApplyAsync(delta, token).ConfigureAwait(false);
+					State = result.Outcome == HotReloadOutcome.RestartRequired ? HotReloadSessionState.RestartRequired
+						: result.IsSuccess || result.Outcome is HotReloadOutcome.BuildRequired or HotReloadOutcome.Unsupported
+							? HotReloadSessionState.Ready : HotReloadSessionState.Failed;
+					return result;
+				}
+				var response = await client.SendAsync(new AgentPipeClient.AgentRequest {
+					Kind = "applyDelta", Mvid = delta.Mvid.ToString("D"), Metadata = delta.Metadata,
+					Il = delta.IL, Pdb = delta.Pdb, UpdatedTypeTokens = delta.UpdatedTypeTokens,
+				}, TimeSpan.FromSeconds(30), token).ConfigureAwait(false);
+				if (!response.IsOk) {
+					var message = response.Result ?? "The agent rejected the code delta.";
+					var outcome = message.IndexOf("restart", StringComparison.OrdinalIgnoreCase) >= 0
+						? HotReloadOutcome.RestartRequired : HotReloadOutcome.Failed;
+					State = outcome == HotReloadOutcome.RestartRequired ? HotReloadSessionState.RestartRequired : HotReloadSessionState.Failed;
+					return new HotReloadApplyResult(outcome, message);
+				}
+				State = HotReloadSessionState.Applied;
+				State = HotReloadSessionState.Ready;
+				return new HotReloadApplyResult(HotReloadOutcome.Applied, response.Result);
 			} catch (Exception ex) {
 				LastError = ex.Message;
 				State = HotReloadSessionState.Failed;
