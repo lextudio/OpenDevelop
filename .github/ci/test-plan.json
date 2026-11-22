@@ -915,6 +915,21 @@
       "note": "Exercises LibreWinForms image-list editing and undo."
     },
     {
+      "id": "winforms-menu-editing",
+      "batch": 5,
+      "lane": "integration-designer",
+      "measuredSeconds": 25,
+      "timeoutMinutes": 15,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": ["-class", "OpenDevelop.IntegrationTests.FormsMenuEditingTests", "-parallel", "none"],
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "additionalProjects": [{ "project": "src/Samples/LibreWinFormsSample/LibreWinFormsSample.csproj" }],
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "note": "Menu and strip editing in the WinForms designer, written for both cells. LibreWinForms (every platform listed): the component tray holds strip-level objects, not ToolStripItems - the one case that runs off Windows, 25 s on macOS ARM64 with the other six skipped. Microsoft WinForms (Windows only): the same tray check plus the pointer-driven popup edit/cancel/commit/undo, Type Here creation and status-strip insertion journeys; those need the interactive desktop and have not been run on a hosted runner yet. Three journeys skip themselves for LibreWinForms because selecting a menu item does not expand its dropdown there yet (a LibreWinForms gap, not a Windows requirement). Linux is not listed because the LibreWinForms designer entries are not enabled there. Starts as observe."
+    },
+    {
       "id": "librewpf-designer-property-editors",
       "batch": 4,
       "lane": "integration-designer",
