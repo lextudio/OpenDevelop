@@ -52,26 +52,30 @@ namespace ICSharpCode.SharpDevelop.Project
 			try {
 				Solution solution;
 				using (var progress = createProgress(cancellation.Token)) {
+					// No continuation here may need the caller's (UI) context: the synchronous open blocks the UI
+					// thread in WaitUntilIdle until the semaphore is released.
 					try {
-						await oneBuildAtATime.WaitAsync(cancellation.Token);
+						await oneBuildAtATime.WaitAsync(cancellation.Token).ConfigureAwait(false);
 					} catch (OperationCanceledException) {
 						return null;
 					}
+					int released = 0;
+					void Release() { if (Interlocked.Exchange(ref released, 1) == 0) oneBuildAtATime.Release(); }
 					try {
-						solution = await Task.Run(() => build(progress), cancellation.Token);
+						solution = await Task.Run(() => { try { return build(progress); } finally { Release(); } }, cancellation.Token).ConfigureAwait(false);
 					} catch (OperationCanceledException) when (cancellation.IsCancellationRequested) {
 						return null;
 					} finally {
-						oneBuildAtATime.Release();
+						Release(); // when the task was cancelled before it started
 					}
 				}
-				// The build is over: the awaiting thread takes the model over, to publish or discard it.
-				solution.ThreadAffinity.TransferOwnershipToCurrentThread();
 				if (cancellation.IsCancellationRequested) {
+					// Superseded: the build has finished, so this thread may take the model over to discard it.
+					solution.ThreadAffinity.TransferOwnershipToCurrentThread();
 					solution.Dispose();
 					return null;
 				}
-				return solution;
+				return solution; // still owned by the build thread; the caller takes it over
 			} finally {
 				Interlocked.CompareExchange(ref current, null, cancellation);
 			}
