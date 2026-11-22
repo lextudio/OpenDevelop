@@ -33,6 +33,12 @@
 		</OptionPanel>
 	</Path>
 	
+	<!-- Load before DevFlow's one-time action discovery, like the other DevFlow-backed add-ins. -->
+	<Path name="/SharpDevelop/Autostart">
+		<Class id    = "AddInManagerRegisterDevFlowActionsCommand"
+		       class = "ICSharpCode.AddInManager2.RegisterDevFlowActionsCommand"/>
+	</Path>
+
 	<!-- Update lookup at startup, once the workbench exists -->
 	<Path name = "/SharpDevelop/Workbench/AutostartAfterWorkbenchInitialized">
 		<Class id    = "AddInManagerVisualInitialization"

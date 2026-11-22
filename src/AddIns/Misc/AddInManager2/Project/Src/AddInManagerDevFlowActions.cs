@@ -6,6 +6,7 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using ICSharpCode.Core;
 using ICSharpCode.AddInManager2.View;
 using ICSharpCode.AddInManager2.ViewModel;
 using LeXtudio.DevFlow.Agent.Core;
@@ -13,6 +14,11 @@ using Microsoft.Maui.DevFlow.Agent.Core;
 
 namespace ICSharpCode.AddInManager2
 {
+	/// <summary>Loads this add-in before DevFlow's one-time action discovery.</summary>
+	public sealed class RegisterDevFlowActionsCommand : DevFlowActionRegistrationCommand
+	{
+	}
+
 	[DevFlowUIThread]
 	public static class AddInManagerDevFlowActions
 	{

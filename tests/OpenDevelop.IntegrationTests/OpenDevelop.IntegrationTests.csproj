@@ -198,6 +198,12 @@
     <_CoreAddinProject Include="../../src/AddIns/DisplayBindings/ClassDiagram/ClassDiagramAddin/ClassDiagramAddin.csproj" />
     <_CoreAddinProject Include="../../src/AddIns/DisplayBindings/WpfDesign/WpfDesign.AddIn/WpfDesign.AddIn.csproj" />
     <_CoreAddinProject Include="../../src/AddIns/DisplayBindings/ILSpyAddIn/ILSpyAddIn.csproj" />
+    <!-- These three add-ins own the Device Manager, Android SDK Manager and Add-in Manager
+         DevFlow journeys. Build and deploy them before the suite so their autostart commands
+         load their assemblies before DevFlow discovers action attributes. -->
+    <_CoreAddinProject Include="../../src/AddIns/Misc/AddInManager2/Project/AddInManager2.csproj" />
+    <_CoreAddinProject Include="../../src/AddIns/Misc/DeviceManager/DeviceManager.csproj" />
+    <_CoreAddinProject Include="../../src/AddIns/Misc/AndroidSdkManager/Project/AndroidSdkManager.csproj" />
     <_CoreAddinProject Include="../../src/AddIns/Misc/PackageManagement/Project/PackageManagement.csproj" />
     <_CoreAddinProject Include="../../src/AddIns/BackendBindings/AspNetCore/Binding/AspNetCore.AddIn.csproj" />
     <!-- XamlBinding owns od.xaml-outline.status (XamlOutlineDevFlowActions) and the XAML outline
