@@ -219,7 +219,7 @@ namespace ICSharpCode.SharpDevelop.Services
 				if (session == null || !session.IsPaused)
 					return new HotReloadApplyResult(HotReloadOutcome.BuildRequired, "Pause the debugger before applying a code delta.");
 				try {
-					await session.ApplyDeltasAsync(delta.Mvid, delta.Metadata, delta.IL, delta.Pdb, token).ConfigureAwait(false);
+					await session.ApplyDeltasAsync(delta.Mvid, delta.Metadata, delta.IL, delta.Pdb, delta.UpdatedMethodTokens, token).ConfigureAwait(false);
 					return new HotReloadApplyResult(HotReloadOutcome.Applied, "Applied through SharpDbg.");
 				} catch (Exception ex) { return new HotReloadApplyResult(HotReloadOutcome.Failed, ex.Message, ex.ToString()); }
 			}

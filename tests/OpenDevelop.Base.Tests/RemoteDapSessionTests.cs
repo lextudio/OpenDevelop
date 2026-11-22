@@ -66,11 +66,12 @@ public class RemoteDapSessionTests
 			}
 		});
 		using var session = new DapSession(); await session.StartRemoteAsync("127.0.0.1", port, null!);
-		var mvid = Guid.NewGuid(); await session.ApplyDeltasAsync(mvid, new byte[] { 1, 2 }, new byte[] { 3 }, new byte[] { 4 }); await server;
+		var mvid = Guid.NewGuid(); await session.ApplyDeltasAsync(mvid, new byte[] { 1, 2 }, new byte[] { 3 }, new byte[] { 4 }, new[] { 0x06000001 }); await server;
 		Assert.NotNull(delta); Assert.Equal(mvid.ToString("D"), delta!["arguments"]!["mvid"]!.GetValue<string>());
 		Assert.Equal(new byte[] { 1, 2 }, Convert.FromBase64String(delta["arguments"]!["metadata"]!.GetValue<string>()));
 		Assert.Equal(new byte[] { 3 }, Convert.FromBase64String(delta["arguments"]!["il"]!.GetValue<string>()));
 		Assert.Equal(new byte[] { 4 }, Convert.FromBase64String(delta["arguments"]!["pdb"]!.GetValue<string>()));
+		Assert.Equal(0x06000001, delta["arguments"]!["updatedMethodTokens"]!.AsArray()[0]!.GetValue<int>());
 	}
 
 	[Fact]

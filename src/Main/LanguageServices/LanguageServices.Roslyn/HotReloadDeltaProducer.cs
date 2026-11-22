@@ -170,8 +170,9 @@ public sealed class HotReloadDeltaProducer
 			if (missingTypeKeys.Length != 0)
 				return Failed("The launch module does not contain updated type(s): " + string.Join(", ", missingTypeKeys));
 			var tokens = typeKeys.Select(key => baseline.TypeTokens[key]).ToArray();
+			var updatedMethodTokens = difference.UpdatedMethods.Select(method => MetadataTokens.GetToken(method)).ToArray();
 			return new HotReloadDeltaResponse(HotReloadDeltaStatus.Applied,
-				new HotReloadModuleDelta(baseline.Mvid, metadata.ToArray(), il.ToArray(), pdb.ToArray(), tokens),
+				new HotReloadModuleDelta(baseline.Mvid, metadata.ToArray(), il.ToArray(), pdb.ToArray(), tokens, updatedMethodTokens),
 				$"Produced a delta for {difference.UpdatedMethods.Length} method(s).");
 		}
 	}

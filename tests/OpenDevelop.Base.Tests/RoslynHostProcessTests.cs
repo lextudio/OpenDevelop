@@ -71,6 +71,9 @@ public class RoslynHostProcessTests
 			var nested = reader.TypeDefinitions.Single(handle =>
 				reader.GetString(reader.GetTypeDefinition(handle).Name) == "Nested");
 			Assert.Contains(MetadataTokens.GetToken(nested), delta.Delta.UpdatedTypeTokens);
+			var text = reader.GetTypeDefinition(nested).GetMethods().Single(handle =>
+				reader.GetString(reader.GetMethodDefinition(handle).Name) == "Text");
+			Assert.Contains(MetadataTokens.GetToken(text), delta.Delta.UpdatedMethodTokens!);
 			await protocol.TextDocumentDidChangeAsync(new TextDocumentIdentifier(sourcePath), afterStaticConstructor, token);
 			var staticConstructorEdit = await protocol.RoslynHotReloadProduceDeltaAsync(new HotReloadDeltaRequest(project), token);
 			Assert.Equal(HotReloadDeltaStatus.RudeEdit, staticConstructorEdit.Status);

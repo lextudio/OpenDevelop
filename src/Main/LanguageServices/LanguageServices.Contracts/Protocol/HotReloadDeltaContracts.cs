@@ -40,7 +40,8 @@ public sealed record HotReloadModuleDelta(
 	byte[] Metadata,
 	byte[] IL,
 	byte[] Pdb,
-	int[] UpdatedTypeTokens);
+	int[] UpdatedTypeTokens,
+	int[]? UpdatedMethodTokens = null);
 
 /// <summary>Host result for baseline capture or delta production.</summary>
 public sealed record HotReloadDeltaResponse(

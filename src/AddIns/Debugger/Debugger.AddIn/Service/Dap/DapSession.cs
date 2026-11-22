@@ -340,12 +340,14 @@ namespace Debugger.AddIn.Service.Dap
 		}
 
 		/// <summary>Applies a Roslyn EnC metadata/IL delta to a stopped SharpDbg debuggee.</summary>
-		public async Task ApplyDeltasAsync(Guid mvid, byte[] metadata, byte[] il, byte[] pdb = null, CancellationToken cancellationToken = default)
+		public async Task ApplyDeltasAsync(Guid mvid, byte[] metadata, byte[] il, byte[] pdb = null, int[]? updatedMethodTokens = null, CancellationToken cancellationToken = default)
 		{
 			if (client == null) throw new InvalidOperationException("The debug session has not started.");
 			var response = await client.SendRequestAsync("sharpdbg/applyDeltas", new JsonObject {
 				["mvid"] = mvid.ToString("D"), ["metadata"] = Convert.ToBase64String(metadata),
-				["il"] = Convert.ToBase64String(il), ["pdb"] = Convert.ToBase64String(pdb ?? Array.Empty<byte>())
+				["il"] = Convert.ToBase64String(il), ["pdb"] = Convert.ToBase64String(pdb ?? Array.Empty<byte>()),
+				["updatedMethodTokens"] = updatedMethodTokens is { Length: > 0 }
+					? new JsonArray(updatedMethodTokens.Select(token => (JsonNode?)token).ToArray()) : null
 			}, cancellationToken).ConfigureAwait(false);
 			if (response?["success"]?.GetValue<bool>() == false)
 				throw new InvalidOperationException(response["message"]?.GetValue<string>() ?? "sharpdbg/applyDeltas failed.");
