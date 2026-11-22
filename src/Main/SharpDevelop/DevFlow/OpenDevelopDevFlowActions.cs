@@ -648,12 +648,23 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			});
 		}
 
-		[DevFlowAction("od.open-solution", Description = "Open a solution or project file by path (bypasses the native Open dialog)")]
-		public static string OpenSolution(string path)
+		[DevFlowAction("od.open-solution", Description = "Open a solution or project file by path (bypasses the native Open dialog); returns once it is loaded, while the UI stays responsive")]
+		public static async System.Threading.Tasks.Task<string> OpenSolution(string path)
 		{
 			try {
-				bool ok = SD.ProjectService.OpenSolutionOrProject(FileName.Create(path));
+				bool ok = await SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(path));
 				return JsonSerializer.Serialize(new { success = ok, currentSolution = SD.ProjectService.CurrentSolution?.FileName?.ToString() });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
+		[DevFlowAction("od.open-solution-begin", Description = "Start opening a solution and return immediately (the load continues in the background; poll od.solution.status). DevFlow runs one UI action at a time, so this is what lets a caller observe the UI while a solution loads")]
+		public static string OpenSolutionBegin(string path)
+		{
+			try {
+				SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(path)).FireAndForget();
+				return JsonSerializer.Serialize(new { success = true, started = true });
 			} catch (Exception ex) {
 				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
 			}

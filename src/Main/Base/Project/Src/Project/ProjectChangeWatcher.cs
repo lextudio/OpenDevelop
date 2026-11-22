@@ -168,27 +168,40 @@ namespace ICSharpCode.SharpDevelop.Project
 		bool enabled = true;
 		DateTime lastWriteTime;
 
+		/// <summary>True once the first <see cref="Enable"/> has registered this watcher with the workbench.</summary>
+		bool attached;
+
+		/// <summary>
+		/// Creates a passive watcher: it records the file's write time and nothing else, so a solution can be
+		/// built on a background thread. The first <see cref="Enable"/> (on the main thread, when the model is
+		/// published) registers it with the workbench and starts watching; a change made in between is still
+		/// reported because the write time was recorded here.
+		/// </summary>
 		public ProjectChangeWatcher(string fileName)
 		{
 			this.fileName = fileName;
-			
-			SD.MainThread.VerifyAccess();
-			activeWatchers.Add(this);
 			UpdateLastWriteTime();
-			
-			SD.Workbench.MainWindow.Activated += MainFormActivated;
 		}
-		
+
 		public void Enable()
 		{
 			enabled = true;
+			if (!attached) {
+				SD.MainThread.VerifyAccess();
+				if (disposed)
+					return;
+				attached = true;
+				activeWatchers.Add(this);
+				SD.Workbench.MainWindow.Activated += MainFormActivated;
+			}
 			SetWatcher();
 		}
 
 		public void Disable()
 		{
 			enabled = false;
-			SetWatcher();
+			if (attached)
+				SetWatcher();
 		}
 
 		public void Rename(string newFileName)
@@ -338,7 +351,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				return;
 			}
 			LoggingService.Info("Reloading solution after " + fileName + " changed.");
-			SD.ProjectService.OpenSolutionOrProject(solution.FileName);
+			SD.ProjectService.OpenSolutionOrProjectAsync(solution.FileName).FireAndForget();
 		}
 
 		/// <summary>
@@ -407,7 +420,7 @@ namespace ICSharpCode.SharpDevelop.Project
 						} else {
 							FileChangeWatcher.CancelReloadQueue();
 							if (result == 0) {
-								SD.ProjectService.OpenSolutionOrProject(ProjectService.OpenSolution.FileName);
+								SD.ProjectService.OpenSolutionOrProjectAsync(ProjectService.OpenSolution.FileName).FireAndForget();
 							} else {
 								new CloseSolution().Run();
 							}
@@ -425,6 +438,12 @@ namespace ICSharpCode.SharpDevelop.Project
 
 		public void Dispose()
 		{
+			// A watcher that was never enabled touched nothing outside itself: the builder of an
+			// unpublished (e.g. cancelled) solution may dispose it on its own thread.
+			if (!attached) {
+				disposed = true;
+				return;
+			}
 			SD.MainThread.VerifyAccess();
 			if (!disposed) {
 				SD.Workbench.MainWindow.Activated -= MainFormActivated;

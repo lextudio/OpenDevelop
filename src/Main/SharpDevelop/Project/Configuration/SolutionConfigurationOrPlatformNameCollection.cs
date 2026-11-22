@@ -42,6 +42,10 @@ namespace ICSharpCode.SharpDevelop.Project
 		readonly List<string> list = new List<string>();
 		volatile IReadOnlyList<string> listSnapshot = EmptyList<string>.Instance;
 		readonly ISolution solution;
+		
+		ModelThreadAffinity ThreadAffinity {
+			get { return (solution as IHasModelThreadAffinity)?.ThreadAffinity ?? ModelThreadAffinity.MainThread; }
+		}
 		readonly bool isPlatform;
 		
 		public SolutionConfigurationOrPlatformNameCollection(ISolution solution, bool isPlatform)
@@ -107,7 +111,7 @@ namespace ICSharpCode.SharpDevelop.Project
 
 		void IConfigurationOrPlatformNameCollection.Add(string newName, string copyFrom)
 		{
-			SD.MainThread.VerifyAccess();
+			ThreadAffinity.VerifyAccess();
 			newName = ValidateName(newName);
 			if (newName == null)
 				throw new ArgumentException();
@@ -137,7 +141,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		void IConfigurationOrPlatformNameCollection.Remove(string name)
 		{
-			SD.MainThread.VerifyAccess();
+			ThreadAffinity.VerifyAccess();
 			int pos = GetIndex(name);
 			if (pos < 0)
 				return;

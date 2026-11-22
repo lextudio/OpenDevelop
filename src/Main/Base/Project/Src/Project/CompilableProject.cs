@@ -383,7 +383,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				FileProjectItem fpi = new FileProjectItem(project, ItemType.None, "app.config");
 				ProjectService.AddProjectItem(project, fpi);
 				FileService.FireFileCreated(appConfigFileName, false);
-				ProjectBrowserPad.RefreshView();
+				ICSharpCode.ILSpy.Util.MessageBus.Send(project, new ProjectTreeChangedMessageEventArgs(project));
 			}
 			return appConfigFileName;
 		}
@@ -417,7 +417,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		public override IAssemblyModel AssemblyModel {
 			get {
-				SD.MainThread.VerifyAccess();
+				ThreadAffinity.VerifyAccess();
 				if (assemblyModel == null) {
 					assemblyModel = new StubUpdateableAssemblyModel();
 				}

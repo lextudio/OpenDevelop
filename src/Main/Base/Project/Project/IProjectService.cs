@@ -99,6 +99,19 @@ namespace ICSharpCode.SharpDevelop.Project
 		bool OpenSolutionOrProject(FileName fileName);
 
 		/// <summary>
+		/// Opens a solution like <see cref="OpenSolutionOrProject"/>, but keeps the UI responsive: the solution
+		/// and its projects are built (MSBuild-evaluated) on a background thread and published on the main
+		/// thread when complete, so <see cref="CurrentSolution"/> stays null until the returned task finishes.
+		/// A later open or <see cref="CloseSolution"/> cancels a load in progress (the task then returns false).
+		/// </summary>
+		/// <remarks>
+		/// Must be called on the main thread. The solution is published on the main thread before the task
+		/// completes; an awaiting caller resumes on its own context. Opening a project file (which may ask
+		/// how to add it to a solution) still loads synchronously.
+		/// </remarks>
+		System.Threading.Tasks.Task<bool> OpenSolutionOrProjectAsync(FileName fileName, System.Threading.CancellationToken cancellationToken = default);
+
+		/// <summary>
 		/// Reports, once per session, whether this machine has a .NET SDK the IDE can actually use
 		/// in-process, whether a .NET SDK 10 (what this IDE and its projects target) is installed,
 		/// and whether the SDK picked under Tools &gt; Options &gt; .NET SDK still exists. Writes to

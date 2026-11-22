@@ -318,6 +318,14 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		static MSBuild.Evaluation.Context.EvaluationContext sharedEvaluationContext;
 
+		/// <summary>The context of the <see cref="BeginSharedEvaluation"/> scope in progress, or null.</summary>
+		internal static MSBuild.Evaluation.Context.EvaluationContext SharedEvaluationContext {
+			get {
+				lock (SolutionProjectCollectionLock)
+					return sharedEvaluationContext;
+			}
+		}
+
 		/// <summary>
 		/// Shares one MSBuild <see cref="MSBuild.Evaluation.Context.EvaluationContext"/> across every
 		/// project evaluated until the returned scope is disposed. A shared context caches file-system
@@ -384,7 +392,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// can normally be built by current MSBuild. Preserve the attribute on disk, but don't let
 		/// it select a nonexistent toolset at runtime.
 		/// </summary>
-		static string ResolveSupportedToolsVersion(MSBuild.Evaluation.ProjectCollection projectCollection, ProjectRootElement rootElement)
+		internal static string ResolveSupportedToolsVersion(MSBuild.Evaluation.ProjectCollection projectCollection, ProjectRootElement rootElement)
 		{
 			string requested = rootElement.ToolsVersion;
 			if (string.IsNullOrEmpty(requested))

@@ -164,7 +164,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			this.Items.Add(project);
 			if (parentSolution.IsLoaded) {
 				project.ProjectLoaded();
-				ProjectBrowserPad.RefreshView();
+				ICSharpCode.ILSpy.Util.MessageBus.Send(this, new ProjectTreeChangedMessageEventArgs(project));
 			}
 			return project;
 		}

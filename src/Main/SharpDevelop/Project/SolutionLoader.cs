@@ -146,6 +146,10 @@ namespace ICSharpCode.SharpDevelop.Project
 			
 			// Now that the project configurations have been set, we can actually load the projects:
 			int projectsLoaded = 0;
+			var projectEntries = solutionEntries.Where(e => e.TypeGuid != ProjectTypeGuids.SolutionFolder).ToList();
+			foreach (var projectInfo in projectEntries)
+				projectInfo.ActiveProjectConfiguration = projectInfo.ConfigurationMapping.GetProjectConfiguration(solution.ActiveConfiguration);
+			using var preEvaluation = SolutionPreEvaluation.Begin(solution, projectEntries, progress.CancellationToken);
 			foreach (var projectInfo in solutionEntries) {
 				// Make copy of IdGuid just in case the project binding writes to projectInfo.IdGuid
 				Guid idGuid = projectInfo.IdGuid;

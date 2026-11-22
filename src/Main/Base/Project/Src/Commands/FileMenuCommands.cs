@@ -42,7 +42,7 @@ namespace ICSharpCode.SharpDevelop.Project.Commands
 				CheckFileExists = true
 			};
 			if (fdiag.ShowDialog() == true) {
-				SD.ProjectService.OpenSolutionOrProject(FileName.Create(fdiag.FileName));
+				SD.ProjectService.OpenSolutionOrProjectAsync(FileName.Create(fdiag.FileName)).FireAndForget();
 			}
 		}
 	}

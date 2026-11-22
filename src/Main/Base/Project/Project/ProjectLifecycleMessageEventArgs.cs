@@ -54,6 +54,18 @@ namespace ICSharpCode.SharpDevelop.Project
 		public IProject NewProject { get; }
 	}
 
+	/// <summary>
+	/// The project model changed in a way views of the project tree should re-read (items re-created from
+	/// MSBuild, a project added to a loaded solution, a generated file added). Sent by the model on the main
+	/// thread; the model does not know who displays it (Solution Explorer subscribes).
+	/// </summary>
+	public sealed class ProjectTreeChangedMessageEventArgs : EventArgs
+	{
+		public ProjectTreeChangedMessageEventArgs(IProject project) => Project = project;
+		/// <summary>The project that changed, or null when it is not specific to one.</summary>
+		public IProject Project { get; }
+	}
+
 	public sealed class SolutionConfigurationChangedMessageEventArgs : ProjectLifecycleMessageEventArgs
 	{
 		public SolutionConfigurationChangedMessageEventArgs(ISolution solution, ConfigurationAndPlatform configuration, long revision) : base(revision)

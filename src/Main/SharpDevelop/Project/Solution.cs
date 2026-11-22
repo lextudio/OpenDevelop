@@ -33,7 +33,7 @@ using ICSharpCode.TypeSystem.Utils;
 
 namespace ICSharpCode.SharpDevelop.Project
 {
-	class Solution : SolutionFolder, IMSBuildSolution
+	class Solution : SolutionFolder, IMSBuildSolution, IHasModelThreadAffinity
 	{
 		static Solution()
 		{
@@ -50,6 +50,44 @@ namespace ICSharpCode.SharpDevelop.Project
 		static readonly Version DefaultVSVersion = new Version(12, 0, 20827, 3);
 		static readonly Version DefaultMinVSVersion = new Version(10, 0, 40219, 1);
 		
+		readonly ModelThreadAffinity threadAffinity = ModelThreadAffinity.ForCurrentThread();
+		
+		/// <summary>
+		/// Ownership of this solution's model: the creating thread until <see cref="Publish"/>, the main
+		/// thread afterwards. Its projects share it (AbstractProject takes it from the load information).
+		/// </summary>
+		public ModelThreadAffinity ThreadAffinity {
+			get { return threadAffinity; }
+		}
+		
+		/// <summary>
+		/// Hands the solution and all of its projects to the main thread and starts what only a live
+		/// solution needs: the solution and project file watchers. Called on the main thread when the
+		/// solution becomes <see cref="IProjectService.CurrentSolution"/>; idempotent.
+		/// </summary>
+		internal void Publish()
+		{
+			if (threadAffinity.IsPublished)
+				return;
+			threadAffinity.Publish();
+			fileService.FileRenamed += FileServiceFileRenamed;
+			fileService.FileRemoved += FileServiceFileRemoved;
+			changeWatcher.Enable();
+		}
+		
+		/// <summary>Stops change notifications while the solution writes its own file (no-op before publication).</summary>
+		void SuspendChangeWatcher()
+		{
+			if (threadAffinity.IsPublished)
+				changeWatcher.Disable();
+		}
+		
+		void ResumeChangeWatcher()
+		{
+			if (threadAffinity.IsPublished)
+				changeWatcher.Enable();
+		}
+		
 		public Solution(FileName fileName, IProjectChangeWatcher changeWatcher, IFileService fileService)
 		{
 			this.msBuildProjectCollection = CreateProjectCollection();
@@ -65,9 +103,8 @@ namespace ICSharpCode.SharpDevelop.Project
 			this.globalSections = new SynchronizedModelCollection<SolutionSection>(new NullSafeSimpleModelCollection<SolutionSection>());
 			globalSections.CollectionChanged += OnSolutionSectionCollectionChanged;
 			
-			fileService.FileRenamed += FileServiceFileRenamed;
-			fileService.FileRemoved += FileServiceFileRemoved;
-			changeWatcher.Enable();
+			// FileService events and the change watcher are wired up by Publish: until then the solution
+			// may still be owned by the background thread that builds it.
 		}
 		
 		public void Dispose()
@@ -114,7 +151,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			set {
 				string ext = FileName.HasExtension(".slnx") ? ".slnx" : ".sln";
 				var newFileName = directory.CombineFile(value + ext);
-				changeWatcher.Disable();
+				SuspendChangeWatcher();
 				try {
 					if (!FileService.RenameFile(fileName, newFileName, false)) {
 						return;
@@ -123,7 +160,7 @@ namespace ICSharpCode.SharpDevelop.Project
 					this.FileName = newFileName;
 					changeWatcher.Rename(newFileName);
 				} finally {
-					changeWatcher.Enable();
+					ResumeChangeWatcher();
 				}
 			}
 		}
@@ -343,13 +380,13 @@ namespace ICSharpCode.SharpDevelop.Project
 		public void Save()
 		{
 			try {
-				changeWatcher.Disable();
+				SuspendChangeWatcher();
 				if (fileName.HasExtension(".slnx")) {
 					// SolutionWriter only knows the classic text format; writing it into a .slnx
 					// destroys the file (and everything the model does not carry, e.g. per-project
 					// configuration rules).
 					SlnxSolutionWriter.Write(this);
-					changeWatcher.Enable();
+					ResumeChangeWatcher();
 					return;
 				}
 				using (var solutionWriter = new SolutionWriter(fileName)) {
@@ -359,7 +396,7 @@ namespace ICSharpCode.SharpDevelop.Project
 					solutionWriter.WriteSolutionItems(this);
 					solutionWriter.WriteGlobalSections(this);
 				}
-				changeWatcher.Enable();
+				ResumeChangeWatcher();
 			} catch (IOException ex) {
 				MessageService.ShowErrorFormatted("${res:SharpDevelop.Solution.CannotSave.IOException}", fileName, ex.Message);
 			} catch (UnauthorizedAccessException ex) {
