@@ -80,7 +80,10 @@ foreach ($entry in $entries) {
             # Uno trait. Both skip themselves off their device OS (macOS only, and not on Windows), so on Windows-only entries the
             # cell cannot reach a device.
             $nonWindows = @($entry.platforms.PSObject.Properties | Where-Object { $_.Name -notlike 'windows-*' -and $_.Value -in 'observe', 'required' })
-            if ($nonWindows.Count -gt 0) { $violations.Add("entry '$($entry.id)' selects the cell $($arguments[$i + 1]) on a non-Windows platform, where its device journeys do not skip themselves") }
+            # An entry may reach the cell off Windows only when it excludes both device journeys by name (-nomethod).
+            $excluded = @(for ($j = 0; $j -lt $arguments.Count - 1; $j++) { if ([string]$arguments[$j] -eq '-nomethod') { [string]$arguments[$j + 1] } })
+            $devicesExcluded = @($excluded | Where-Object { $_ -like '*.WinUIDesigner_UnoOnIosSimulator_*' }).Count -gt 0 -and @($excluded | Where-Object { $_ -like '*.WinUIDesigner_UnoOnAndroidEmulator_*' }).Count -gt 0
+            if ($nonWindows.Count -gt 0 -and -not $devicesExcluded) { $violations.Add("entry '$($entry.id)' selects the cell $($arguments[$i + 1]) on a non-Windows platform, where its device journeys do not skip themselves") }
             # The cell's trait names a descriptor; the runtime pin names the host (OD_WINUI_RUNTIME). An unrecognised pin silently falls back to
             # the Surface host, so a cell pinned wrongly would run green on the wrong host: check the pair.
             $cell = ([string]$arguments[$i + 1]).Substring('Runtime='.Length)

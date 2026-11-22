@@ -923,7 +923,7 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.WpfStripEditingLibreWpfTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "tests/fixtures/WpfDesignerFixture/Libre/sample.csproj" }],
-      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "observe", "linux-x64": "observe", "linux-arm64": "observe" },
       "note": "30 LibreWPF designer editing journeys. Hosted Windows x64 (1389 s) and ARM64 (1569 s) passed all 30 in runs 40595645276 and 40606824351; hosted macOS ARM64 still fails CtrlPointerGestures_DistinguishClickCollapseFromGroupDrag."
     },
     {
@@ -937,7 +937,7 @@
       "args": ["-method", "OpenDevelop.IntegrationTests.DesignerEditorJourneyTests.WinFormsDesigner_ImageListEditorWritesSourceAndResxAsOneUndoableTransaction_LibreWinForms", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "src/Samples/LibreWinFormsSample/LibreWinFormsSample.csproj" }],
-      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required", "linux-x64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required", "linux-x64": "observe", "linux-arm64": "observe" },
       "note": "Exercises LibreWinForms image-list editing and undo."
     },
     {
@@ -952,7 +952,7 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.FormsMenuEditingTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "src/Samples/LibreWinFormsSample/LibreWinFormsSample.csproj" }],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe" },
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe", "linux-arm64": "observe" },
       "note": "Menu and strip editing in the WinForms designer, written for both cells. LibreWinForms (every platform listed): the component tray holds strip-level objects, not ToolStripItems - the one case that runs off Windows, 25 s on macOS ARM64 with the other six skipped. Microsoft WinForms (Windows only): the same tray check plus the pointer-driven popup edit/cancel/commit/undo, Type Here creation and status-strip insertion journeys; those need the interactive desktop and have not been run on a hosted runner yet. Three journeys skip themselves for LibreWinForms because selecting a menu item does not expand its dropdown there yet (a LibreWinForms gap, not a Windows requirement). Starts as observe."
     },
     {
@@ -965,7 +965,7 @@
       "args": ["-method", "OpenDevelop.IntegrationTests.DesignerEditorJourneyTests.WpfDesigner_TransformResourceBrushAndHandleEditsRoundTrip", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "tests/fixtures/WpfDesignerFixture/Libre/sample.csproj" }],
-      "platforms": { "macos-arm64": "observe" },
+      "platforms": { "macos-arm64": "observe", "linux-x64": "observe", "linux-arm64": "observe" },
       "note": "Uses the LibreWPF sample on macOS; the same method selects the Microsoft WPF backend on Windows and is not enabled there without its host."
     },
     {
@@ -982,7 +982,7 @@
         { "project": "src/Tools/MewUIGen/MewUIGen.csproj" },
         { "project": "tests/fixtures/MewUIFixture/MewUIFixture.csproj" }
       ],
-      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe", "linux-arm64": "observe" },
       "note": "Ten MewUI designer journeys passed locally on macOS ARM64 in 55 seconds. Each case restores a temporary fixture; building the fixture primes the NuGet cache."
     },
     {
@@ -997,7 +997,7 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.GtkDesignerTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "tests/fixtures/GtkDesignerFixture/GtkDesignerFixture.csproj" }],
-      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "observe" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "observe", "linux-x64": "observe", "linux-arm64": "observe" },
       "note": "Twelve GTK host, native preview, editing, recovery and libadwaita journeys passed locally on macOS ARM64 in 66 seconds. Hosted Windows x64 passed all twelve on runs 40495471973 and 40524161593; Windows ARM64 failed the toolbox drag onto the native surface until the desktop preparation step (32fd2eda79), then passed all twelve in runs 40662664664 and 40671568295. Hosted macOS still fails the toolbox drag and the real pads case."
     },
     {
@@ -1011,7 +1011,7 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.GtkDesignerIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "additionalProjects": [{ "project": "tests/fixtures/GtkDesignerFixture/GtkDesignerFixture.csproj" }],
-      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required" },
+      "platforms": { "windows-x64": "required", "windows-arm64": "required", "macos-arm64": "required", "linux-x64": "observe", "linux-arm64": "observe" },
       "note": "Nested GTK selection, property editing, insertion, undo and save passed locally on macOS ARM64 in 20 seconds. It shares GtkDesignerFixture with the other GTK entries; its document is ui/mainWindow.ui."
     },
     {
@@ -1185,6 +1185,21 @@
       "note": "The four single-page Gallery cases (routing, settings page, visual states). Split out of the former winui-gallery-corpus entry, whose single 90-minute budget let a host that never starts burn 150 s on each of 24 pages. Setup is unchanged: ci.yml fetches the WinUI Gallery at a pinned commit (the one on the host's Windows App SDK version; see the clone step) and exports OD_WINUI_GALLERY_ROOT; OD_WINUI_GALLERY_BUILD=1 makes each case build the Gallery (Debug-Unpackaged, x64) through od.build-solution first; each page opens in a fresh Microsoft design host. Needs Visual Studio MSBuild, the Windows App SDK and the Microsoft hosts. Budget basis: four cases at the roughly 10 minutes per 25 cases doc/technotes/winui-designer.md records for a developer machine, plus one cold Gallery build and a runner's slower host start; no runner has measured it, so read a timeout here as an unmeasured budget before a host regression. Observe until promoted; read the entry row in the job summary, because the lane stays green on allowAllFailures."
     },
     {
+      "id": "winui-uno-cell-linux",
+      "batch": 5,
+      "lane": "integration-winui",
+      "measuredSeconds": 60,
+      "timeoutMinutes": 45,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "buildArgs": ["-p:BuildIntegrationFixtures=false"],
+      "args": ["-trait", "Runtime=Uno", "-nomethod", "OpenDevelop.IntegrationTests.AddInTests.WinUIDesigner_UnoOnIosSimulator_RendersOnTheDeviceAndSwitchesBack", "-nomethod", "OpenDevelop.IntegrationTests.AddInTests.WinUIDesigner_UnoOnAndroidEmulator_RendersOnTheDeviceAndSwitchesBack", "-parallel", "none"],
+      "env": { "OD_WINUI_RUNTIME": "uno" },
+      "platforms": { "linux-x64": "observe", "linux-arm64": "observe" },
+      "note": "The Uno cell on Linux without its two device journeys (iOS Simulator and Android Emulator), which have no device on this runner. The surface and hosts are Windows-only in the tests today, so most of the cell is expected to skip until the Uno Skia host runs on Linux; the result shows how much does. Starts as observe."
+    },
+    {
       "id": "winui-gallery-abstract-root",
       "noSkips": true,
       "batch": 4,
@@ -1223,7 +1238,9 @@
       "kind": "xunit-exe",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
       "platforms": {
-        "macos-arm64": "required"
+        "macos-arm64": "required",
+        "linux-x64": "observe",
+        "linux-arm64": "observe"
       },
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "args": [
