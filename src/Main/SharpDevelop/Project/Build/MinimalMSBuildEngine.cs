@@ -386,6 +386,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				psi.ArgumentList.Add("-m:" + ResolveNodeCount());
 				psi.ArgumentList.Add("-t:Resolve");
 				psi.ArgumentList.Add("-getItem:ODReferencePath");
+				MakeEphemeral(psi);
 				using var process = Process.Start(psi);
 				if (process == null)
 					return null;
@@ -430,6 +431,20 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 		}
 
+		/// <summary>
+		/// For a child that answers one question and exits (reference resolution): no MSBuild server and
+		/// no reusable worker nodes may outlive it. Both are designed to persist after the client exits,
+		/// and for dotnet/aspire's 471 projects the server kept 4 GB of caches alive after the IDE had
+		/// closed, which on a 7 GB machine ended in the kernel's OOM killer. User builds keep node reuse,
+		/// which makes the next build faster.
+		/// </summary>
+		static void MakeEphemeral(ProcessStartInfo psi)
+		{
+			psi.ArgumentList.Add("-nodeReuse:false");
+			psi.EnvironmentVariables["MSBUILDDISABLENODEREUSE"] = "1";
+			psi.EnvironmentVariables["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0";
+		}
+
 		static int ResolveNodeCount() =>
 			int.TryParse(Environment.GetEnvironmentVariable("OD_RESOLVE_NODES"), out var nodes) && nodes > 0
 				? nodes : Math.Max(1, Math.Min(4, Environment.ProcessorCount));
@@ -460,6 +475,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			// -getItem makes MSBuild print the requested item list as JSON on stdout and suppresses
 			// normal build output, so no log parsing is involved.
 			psi.ArgumentList.Add("-getItem:ReferencePath");
+			MakeEphemeral(psi);
 
 			using var process = Process.Start(psi);
 			if (process == null)

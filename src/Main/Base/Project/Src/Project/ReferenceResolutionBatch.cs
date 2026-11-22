@@ -39,15 +39,36 @@ namespace ICSharpCode.SharpDevelop.Project
 			Func<string, IReadOnlyList<TProject>, IReadOnlyDictionary<TProject, IReadOnlyList<string>>> resolveBatch)
 		{
 			var result = new Dictionary<TProject, IReadOnlyList<string>>();
-			var batches = GroupByGlobalJson(projects, projectFile)
-				.Select(group => Task.Run(() => resolveBatch(group.Key, group.Value)))
+			// Groups (one per global.json) run side by side; each group's chunks run one after another,
+			// so at most one MSBuild graph per group is in memory at a time.
+			var groups = GroupByGlobalJson(projects, projectFile)
+				.Select(group => Task.Run(() => ResolveInChunks(group.Key, group.Value, resolveBatch)))
 				.ToArray();
-			foreach (var batch in batches) {
+			foreach (var group in groups) {
+				foreach (var pair in group.Result)
+					result[pair.Key] = pair.Value;
+			}
+			return result;
+		}
+
+		/// <summary>
+		/// Projects per resolution process: OD_RESOLVE_BATCH_SIZE when set, else 64. One process for all of
+		/// dotnet/aspire's 471 projects grew to 4 GB; a chunk's process exits before the next one starts.
+		/// </summary>
+		public static int ChunkSize =>
+			int.TryParse(Environment.GetEnvironmentVariable("OD_RESOLVE_BATCH_SIZE"), out int size) && size > 0 ? size : 64;
+
+		static Dictionary<TProject, IReadOnlyList<string>> ResolveInChunks<TProject>(
+			string globalJsonDirectory, IReadOnlyList<TProject> projects,
+			Func<string, IReadOnlyList<TProject>, IReadOnlyDictionary<TProject, IReadOnlyList<string>>> resolveBatch)
+		{
+			var result = new Dictionary<TProject, IReadOnlyList<string>>();
+			foreach (var chunk in projects.Chunk(ChunkSize)) {
 				IReadOnlyDictionary<TProject, IReadOnlyList<string>> resolved;
 				try {
-					resolved = batch.Result;
-				} catch (AggregateException) {
-					continue; // like a null: this batch's projects fall back to single resolution
+					resolved = resolveBatch(globalJsonDirectory, chunk);
+				} catch (Exception) {
+					continue; // like a null: this chunk's projects fall back to single resolution
 				}
 				if (resolved == null)
 					continue;
