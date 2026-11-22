@@ -69,7 +69,7 @@
     },
     "integration-stable": {
       "job": "fast",
-      "timeoutMinutes": 55,
+      "timeoutMinutes": 65,
       "entryTimeoutMinutes": 5,
       "needsNuGetCache": true,
       "note": "Entries that passed on every hosted run in which the IDE started (runs 40431285339 through 40461019311): workbench, the stable core journeys, code coverage and the ARM64 unit suites, sharing one preparation. Windows x64 measured about 28 minutes of tests plus ~15 minutes of preparation. Its entries are required on macOS ARM64 and Windows x64 after each passed on the last two hosted runs that completed it there; on Windows ARM64 they are required too, after passing on runs 40444468212, 40461019311 and 40470967407. In focus mode the lane has no entry left and is not scheduled. new-project-dialog-macos joined later: it failed on the hosted runner until cc569fd5a8 and moved here after passing runs 40606824351 and 40615707034."
@@ -406,6 +406,86 @@
         "-p:BuildIntegrationFixtures=false"
       ],
       "note": "The empty-startup journey (Start Page add-in loaded, Start Page is the active view). It shares WorkbenchTests.cs with the workbench-tests entry, whose -class filter does not select it, so it never ran in CI. It needs a fresh application, hence its own entry. Starts as observe."
+    },
+    {
+      "id": "launch-target-tests",
+      "batch": 5,
+      "lane": "integration-stable",
+      "measuredSeconds": 20,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.LaunchTargetTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe",
+        "linux-x64": "observe",
+        "linux-arm64": "observe"
+      },
+      "buildArgs": [
+        "-p:BuildIntegrationFixtures=false"
+      ],
+      "note": "The Debug toolbar launch-target drop-down on a multi-target project: profiles from launchSettings.json, hidden frameworks, adding a profile, choosing a device. It only reads the device list (a simulator is stored by UDID when the machine has one); it never boots or installs anything. Had no CI entry. Starts as observe."
+    },
+    {
+      "id": "performance-gate-tests",
+      "batch": 5,
+      "lane": "integration-stable",
+      "measuredSeconds": 70,
+      "timeoutMinutes": 8,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.PerformanceGateTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe",
+        "linux-x64": "observe",
+        "linux-arm64": "observe"
+      },
+      "buildArgs": [
+        "-p:BuildIntegrationFixtures=false"
+      ],
+      "note": "Regression gates behind the fast-mode work: an idle window and an idle IDE after an ILSpy search stay under a share of one core, and a second build of an unchanged solution skips every project (changed, added and referenced-project changes are rebuilt). The idle thresholds are CPU ratios, not wall-clock times, but a loaded shared runner can still move them, so this stays observe until it has been green on each platform. Had no CI entry."
+    },
+    {
+      "id": "runtime-upgrade-tests",
+      "batch": 5,
+      "lane": "integration-stable",
+      "measuredSeconds": 45,
+      "timeoutMinutes": 8,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
+      "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
+      "args": [
+        "-class",
+        "OpenDevelop.IntegrationTests.RuntimeUpgradeIntegrationTests",
+        "-parallel",
+        "none"
+      ],
+      "platforms": {
+        "windows-x64": "observe",
+        "windows-arm64": "observe",
+        "macos-arm64": "observe",
+        "linux-x64": "observe",
+        "linux-arm64": "observe"
+      },
+      "buildArgs": [
+        "-p:BuildIntegrationFixtures=false"
+      ],
+      "note": "A project targeting a runtime the machine does not have builds but cannot launch, and retargeting its project file fixes it. Skips itself where a .NET 6 runtime is installed. Needs the net6.0 targeting pack from the package source. Had no CI entry. Starts as observe."
     },
     {
       "id": "workbench-tests",

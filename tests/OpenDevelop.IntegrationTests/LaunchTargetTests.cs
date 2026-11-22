@@ -72,7 +72,8 @@ public sealed class LaunchTargetTests : IAsyncDisposable
         Assert.StartsWith("Automatic", DeviceEntries(status).First());
 
         // Choosing a device stores only the device preference: profile and framework stay. Automatic (id null) clears it;
-        // a real simulator, when the machine has one, is stored by its simctl UDID.
+        // a real simulator, when the machine has one, is stored by its UDID. The journey only reads the device list;
+        // it never boots or installs anything, so it does not belong to the device lanes.
         var simulator = DeviceRows(status).FirstOrDefault(row => row.Id != null);
         if (simulator.Id != null) {
             var pick = await _app.InvokeAsync("od.launch-target.select", simulator.Label, ProjectPath);
@@ -225,7 +226,7 @@ public sealed class LaunchTargetTests : IAsyncDisposable
         return status;
     }
 
-    // Device rows depend on the simulators and adb devices of the machine, so they are checked apart.
+    // Device rows depend on the simulators and Android devices of the machine, so they are checked apart.
     static string[] Entries(JsonElement status) => status.GetProperty("entries").EnumerateArray()
         .Where(entry => entry.GetProperty("kind").GetString() != "Device")
         .Select(entry => entry.GetProperty("kind").GetString() + ":" + entry.GetProperty("label").GetString()).ToArray();
