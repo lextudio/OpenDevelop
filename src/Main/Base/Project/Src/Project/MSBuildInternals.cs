@@ -38,6 +38,8 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// SharpDevelop uses one project collection per solution.
 		/// Code accessing one of those collections (even if indirectly through MSBuild) should lock on
 		/// MSBuildInternals.SolutionProjectCollectionLock.
+		/// The one exception is <see cref="ProjectPreEvaluation"/>, which evaluates a not-yet-published
+		/// solution's projects concurrently and relies on MSBuild's own synchronization (see there).
 		/// </summary>
 		public readonly static object SolutionProjectCollectionLock = new object();
 		
