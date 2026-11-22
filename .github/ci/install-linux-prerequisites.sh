@@ -33,5 +33,8 @@ fi
 
 if [[ "$display" == 1 ]]; then
   sudo apt-get update
-  sudo apt-get install -y xvfb libgtk-3-0 libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
+  # The GTK designer host loads GTK 4 (and libadwaita for Adwaita documents). ubuntu-latest
+  # currently happens to include them, but the native Ubuntu ARM64 image does not; install the
+  # complete runtime explicitly so designer lanes do not depend on image drift.
+  sudo apt-get install -y xvfb libgtk-3-0 libgtk-4-1 libadwaita-1-0 libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
 fi
