@@ -187,6 +187,9 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		/// <summary>The files to open once the main window has rendered (decided by <see cref="Run"/>).</summary>
 		List<string> startupFiles = new List<string>();
 		
+		/// <summary>The startup file is the previous session's solution, not a file named on the command line.</summary>
+		bool startupIsPreviousSolution;
+
 		// The startup files' event handler: OpenStartupFilesAsync guards every file and the awaited open never
 		// faults (IProjectService reports its own errors), so async void cannot lose an exception.
 #pragma warning disable VSTHRD100
@@ -194,7 +197,26 @@ namespace ICSharpCode.SharpDevelop.Workbench
 #pragma warning restore VSTHRD100
 		{
 			SD.Workbench.MainWindow.ContentRendered -= OnMainWindowFirstRender;
+			if (startupFiles.Count == 0)
+				return;
 			await OpenStartupFilesAsync(startupFiles);
+			// As when the previous solution was opened before the window existed: if it fails to load, the user
+			// still gets the start page. (Files named on the command line count as loaded either way, as before.)
+			if (startupIsPreviousSolution && SD.ProjectService.CurrentSolution == null)
+				RunNothingLoadedAutostart();
+		}
+
+		/// <summary>The /SharpDevelop/Workbench/AutostartNothingLoaded commands (the start page) and the preload.</summary>
+		void RunNothingLoadedAutostart()
+		{
+			foreach (ICommand command in AddInTree.BuildItems<ICommand>("/SharpDevelop/Workbench/AutostartNothingLoaded", null, false)) {
+				try {
+					command.Execute(null);
+				} catch (Exception ex) {
+					MessageService.ShowException(ex);
+				}
+			}
+			StartPreloadThread();
 		}
 		
 		/// <summary>
@@ -234,22 +256,17 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			// the opening itself happens once the window is up (OpenStartupFilesAsync, on first render), so
 			// a solution loads in the background with its progress visible instead of before the window exists.
 			startupFiles = fileList.ToList();
+			// The previous solution only if it still exists: a deleted one would only fail to load later.
 			if (startupFiles.Count == 0 && SD.PropertyService.Get("SharpDevelop.LoadPrevProjectOnStartup", false)
-			    && SD.FileService.RecentOpen.RecentProjects.Count > 0) {
+			    && SD.FileService.RecentOpen.RecentProjects.Count > 0
+			    && File.Exists(SD.FileService.RecentOpen.RecentProjects[0])) {
 				startupFiles.Add(SD.FileService.RecentOpen.RecentProjects[0].ToString());
+				startupIsPreviousSolution = true;
 			}
-			bool didLoadSolutionOrFile = startupFiles.Count > 0;
-			
-			if (!didLoadSolutionOrFile) {
-				foreach (ICommand command in AddInTree.BuildItems<ICommand>("/SharpDevelop/Workbench/AutostartNothingLoaded", null, false)) {
-					try {
-						command.Execute(null);
-					} catch (Exception ex) {
-						MessageService.ShowException(ex);
-					}
-				}
-				StartPreloadThread();
-			}
+			// Nothing to open: the "nothing loaded" autostart (the start page) runs now. Otherwise it runs once
+			// the startup files have been opened, if none of them loaded (OnMainWindowFirstRender).
+			if (startupFiles.Count == 0)
+				RunNothingLoadedAutostart();
 			
 			if (SD.ParserService is ParserService parserService)
 				parserService.StartParserThread();
