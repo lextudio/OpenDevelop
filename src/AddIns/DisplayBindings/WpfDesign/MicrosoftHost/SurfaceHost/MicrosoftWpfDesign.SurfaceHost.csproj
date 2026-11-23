@@ -25,6 +25,7 @@
     <Compile Include="..\..\WpfDesign.SurfaceHost\MultiDocumentWpfSurfaceHostService.cs" Link="MultiDocumentWpfSurfaceHostService.cs" />
     <Compile Include="..\..\WpfDesign.SurfaceHost\SurfaceTypeFinder.cs" Link="SurfaceTypeFinder.cs" />
     <Compile Include="..\..\WpfDesign.SurfaceHost\MinimalXamlTextPatcher.cs" Link="MinimalXamlTextPatcher.cs" />
+    <Compile Include="..\..\WpfDesign.SurfaceHost\ImplicitXamlNamespaceReader.cs" Link="ImplicitXamlNamespaceReader.cs" />
     <ProjectReference Include="..\Engine\MicrosoftWpfDesign.Engine.csproj" />
     <ProjectReference Include="..\..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
