@@ -7597,8 +7597,9 @@ EndGlobal
             Assert.Fail($"click={click}; afterClick={afterClick};");
         Assert.EndsWith("DebugTestApp.Program.cs", afterClick.GetProperty("fileName").GetString());
         // ComputeGreeting's declaration in the decompiled type. It moved from 17 to 21 when the
-        // fixture's Main gained four locals for the debug visualizer tests.
-        Assert.Equal(21, afterClick.GetProperty("caretLine").GetInt32());
+        // fixture's Main gained four locals for the debug visualizer tests, and from 21 to 26 when
+        // Main gained the lambda, the extra Console.WriteLine calls and the Debugger.IsAttached line.
+        Assert.Equal(26, afterClick.GetProperty("caretLine").GetInt32());
 
         // (6) Multi-select decompilation: several Assemblies-tree nodes selected together must
         // decompile into ONE combined document, not just whichever was selected last. This was, at
