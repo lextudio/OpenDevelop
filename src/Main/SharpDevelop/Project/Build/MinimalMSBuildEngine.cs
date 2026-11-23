@@ -206,6 +206,12 @@ namespace ICSharpCode.SharpDevelop.Project
 			// Determinism is already achieved by the explicit locale, without disabling ICU.
 			psi.EnvironmentVariables["LANG"] = "en_US.UTF-8";
 			psi.EnvironmentVariables["LC_ALL"] = "en_US.UTF-8";
+			// No MSBuild server for anything the IDE starts (issue #38). The server (/nodemode:8) is built to
+			// outlive its client and keeps the evaluation caches of everything it built; started from the IDE
+			// it outlived the IDE too (4 GB after dotnet/aspire). Builds keep reusable worker nodes, which make
+			// the next build faster and exit on their own once idle; reference resolution also drops those
+			// (MakeEphemeral). An inherited "1" from the IDE's own environment must not turn it back on.
+			psi.EnvironmentVariables["DOTNET_CLI_USE_MSBUILD_SERVER"] = "0";
 			// Keep LANG/LC_ALL at en_US for the deterministic internal parsing above, but let
 			// MSBuild's own messages follow the IDE language, so the Output pad is not a mix of
 			// localized IDE lines and English MSBuild/SDK lines. The per-diagnostic lines keep

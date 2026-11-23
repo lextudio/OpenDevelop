@@ -126,6 +126,13 @@ namespace ICSharpCode.SharpDevelop.Startup
 			if (Environment.GetEnvironmentVariable("WINDIR") != windir) {
 				Environment.SetEnvironmentVariable("WINDIR", windir);
 			}
+			// No MSBuild server for any dotnet process the IDE starts, directly or through an add-in
+			// (builds, restores, scaffolding, test hosts, ...): issue #38. The server (/nodemode:8) is built
+			// to outlive its client and keeps its caches, so one started from the IDE outlived the IDE too
+			// (4 GB after dotnet/aspire). Set for the whole process because those launches are spread over
+			// many add-ins; every child inherits it. It only affects the dotnet CLI; reusable worker nodes,
+			// which exit on their own once idle, are untouched.
+			Environment.SetEnvironmentVariable("DOTNET_CLI_USE_MSBUILD_SERVER", "0");
 			return true;
 		}
 		
