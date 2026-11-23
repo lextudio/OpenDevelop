@@ -704,10 +704,30 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
-		[DevFlowAction("od.solution.status", Description = "Get the currently open solution's file path (null when no solution is open)")]
+		[DevFlowAction("od.solution.status", Description = "Get the currently open solution's file path (null when no solution is open) and the solution being loaded in the background, if any")]
 		public static string GetSolutionStatus()
 		{
-			return JsonSerializer.Serialize(new { path = SD.ProjectService.CurrentSolution?.FileName?.ToString() });
+			return JsonSerializer.Serialize(new {
+				path = SD.ProjectService.CurrentSolution?.FileName?.ToString(),
+				loading = SD.ProjectService.LoadingSolution?.ToString(),
+			});
+		}
+
+		[DevFlowAction("od.close-solution", Description = "Close the current solution without prompting (also cancels or invalidates a background load in progress)")]
+		public static string CloseSolution()
+		{
+			try {
+				return JsonSerializer.Serialize(new { success = SD.ProjectService.CloseSolution(allowCancel: false) });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { success = false, error = ex.ToString() });
+			}
+		}
+
+		[DevFlowAction("od.test.solution-publish-delay", Description = "Test only: delay (ms) between a finished background solution build and its publication on the UI thread; 0 turns it off")]
+		public static string SetSolutionPublishDelay(int milliseconds)
+		{
+			ICSharpCode.SharpDevelop.Project.SolutionLoadOptions.TestPublishDelay = TimeSpan.FromMilliseconds(Math.Max(0, milliseconds));
+			return JsonSerializer.Serialize(new { success = true, milliseconds = Math.Max(0, milliseconds) });
 		}
 
 		[DevFlowAction("od.solution.set-configuration", Description = "Set the solution's active configuration/platform (e.g. 'Debug-Unpackaged', 'ARM64'), the same effect as the Standard toolbar's configuration/platform combos - each project's own build type/platform then follows the solution's per-project mapping")]

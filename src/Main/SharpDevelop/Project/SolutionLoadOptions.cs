@@ -20,6 +20,12 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// <summary><c>OD_DEFER_PROJECT_WATCHERS</c>: start project file watchers after the solution-opened handlers.</summary>
 		public static bool DeferProjectWatchers => IsEnabled("OD_DEFER_PROJECT_WATCHERS");
 
+		/// <summary>
+		/// Test only (set through DevFlow's od.test.solution-publish-delay): how long a finished background build
+		/// waits before it is published. It widens the window in which a newer open or a close must invalidate it.
+		/// </summary>
+		public static TimeSpan TestPublishDelay { get; set; }
+
 		static bool IsEnabled(string variable) => Environment.GetEnvironmentVariable(variable) != "0";
 	}
 }

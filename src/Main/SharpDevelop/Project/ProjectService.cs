@@ -167,7 +167,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				ShowNotASolutionOrProjectError(fileName);
 				return false;
 			}
-			solutionBuilder.CancelPending();
+			SupersedeLoadsInProgress();
 			solutionBuilder.WaitUntilIdle();
 			if (!CloseSolution(allowCancel: true))
 				return false;
@@ -222,21 +222,49 @@ namespace ICSharpCode.SharpDevelop.Project
 				// Same reporting as the synchronous open: ObservedLoad informs about I/O-type errors
 				// ("error while loading") and lets anything else propagate to the caller.
 				SD.MainThread.InvokeIfRequired(() => {
+					if (load != loadingSolutionGeneration)
+						return; // superseded: the user has moved on, do not report this load's failure
 					EndLoadingSolution(load);
 					ObservedLoadReportingAllErrors(() => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex).Throw(), fileName);
 				});
 				return false;
 			}
+			if (SolutionLoadOptions.TestPublishDelay > TimeSpan.Zero)
+				await Task.Delay(SolutionLoadOptions.TestPublishDelay).ConfigureAwait(false);
 			// Explicitly back on the UI thread: the caller may have no SynchronizationContext (startup).
 			return SD.MainThread.InvokeIfRequired(() => {
+				if (load != loadingSolutionGeneration) {
+					// Superseded after the build finished but before this ran on the UI thread: a newer open
+					// or a close already happened, and there was no running build left for it to cancel.
+					if (solution != null) {
+						solution.ThreadAffinity.TransferOwnershipToCurrentThread();
+						solution.Dispose();
+					}
+					return false;
+				}
 				EndLoadingSolution(load);
 				return solution != null && CompleteSolutionOpen(solution, fileName); // null: cancelled or superseded
 			});
 		}
 		
-		/// <summary>Counts background loads, so a superseded load cannot clear a newer one's marker (same file or not).</summary>
+		/// <summary>
+		/// Counts background loads, so a superseded load can neither clear a newer one's marker (same file or not)
+		/// nor be published: a newer open or a close advances it (<see cref="SupersedeLoadsInProgress"/>).
+		/// </summary>
 		int loadingSolutionGeneration;
 		
+		/// <summary>
+		/// Called by every open and by <see cref="CloseSolution"/>: cancels a background build still running, and
+		/// invalidates one that has finished but is still waiting to be published on the UI thread, which
+		/// cancellation cannot reach.
+		/// </summary>
+		void SupersedeLoadsInProgress()
+		{
+			solutionBuilder.CancelPending();
+			loadingSolutionGeneration++;
+			LoadingSolution = null;
+		}
+
 		void EndLoadingSolution(int load)
 		{
 			if (load == loadingSolutionGeneration)
@@ -681,7 +709,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		public bool CloseSolution(bool allowCancel = true)
 		{
 			SD.MainThread.VerifyAccess();
-			solutionBuilder.CancelPending();
+			SupersedeLoadsInProgress();
 			var solution = this.CurrentSolution;
 			if (solution == null)
 				return true;
