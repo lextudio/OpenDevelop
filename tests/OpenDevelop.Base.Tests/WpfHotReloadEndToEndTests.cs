@@ -52,7 +52,7 @@ public sealed class WpfHotReloadEndToEndTests
 				public static class Handler { public static void UpdateApplication(Type[] types) => File.WriteAllText(Environment.GetEnvironmentVariable("ENC_PROBE_PATH")!, Target.Value() + ":" + types.Length); }
 				""";
 			await File.WriteAllTextAsync(sourcePath, Source("v1"), token);
-			var references = Directory.EnumerateFiles(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "*.dll")
+			var references = ManagedReferences.RuntimeDirectory()
 				.Select(path => MetadataReference.CreateFromFile(path));
 			CSharpCompilation Compile(string source) => CSharpCompilation.Create("WpfEncProbe",
 				[CSharpSyntaxTree.ParseText(SourceText.From(source, Encoding.UTF8), path: sourcePath)], references,

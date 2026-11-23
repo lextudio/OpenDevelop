@@ -38,7 +38,7 @@ public class RoslynHostProcessTests
 			const string afterStaticConstructor = "public class View<T> { static View() { } public string Text() { var value = \"after\"; System.Func<string> getter = () => value; return getter(); } public string Text(string input) => input; } public class Container { public class Nested { public string Text() => \"after\"; } }";
 			const string afterEvent = "public class View<T> { public event System.EventHandler Changed; public string Text() { var value = \"after\"; System.Func<string> getter = () => value; return getter(); } public string Text(string input) => input; } public class Container { public class Nested { public string Text() => \"after\"; } }";
 			await File.WriteAllTextAsync(sourcePath, before, token);
-			var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+			var references = ManagedReferences.TrustedPlatform()
 				.Select(path => Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(path));
 			var compiler = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("HotReload",
 				new[] { Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
@@ -102,7 +102,7 @@ public class RoslynHostProcessTests
 			var projectPath = Path.Combine(directory.FullName, "Chain.csproj");
 			static string Source(string value) => "public class View { public string Text() => \"" + value + "\"; }";
 			await File.WriteAllTextAsync(sourcePath, Source("v1"), token);
-			var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator)
+			var references = ManagedReferences.TrustedPlatform()
 				.Select(path => Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(path));
 			var compiler = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("Chain",
 				new[] { Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(

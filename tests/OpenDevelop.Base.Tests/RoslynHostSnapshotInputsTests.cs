@@ -80,7 +80,11 @@ public class RoslynHostSnapshotInputsTests
             var with = await Diagnostics("With", new[] { additional });
             Assert.DoesNotContain(with, diagnostic => diagnostic.Contains("Generated_Greeting"));
         }
-        finally { directory.Delete(true); }
+        finally {
+            // The host process has the generator DLL loaded; Windows refuses to delete a loaded file.
+            transport.Dispose();
+            directory.Delete(true);
+        }
     }
 
     static string BuildAdditionalFileGenerator(string directory)
