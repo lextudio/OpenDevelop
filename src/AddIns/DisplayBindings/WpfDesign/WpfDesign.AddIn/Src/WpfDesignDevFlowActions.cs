@@ -885,7 +885,7 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		}
 
 		[DevFlowAction("od.wpf-designer.properties-pad.pick-image", Description = "List an ImageSource row's real project-image drop-down, and when <path> is given select that item as a user pick does")]
-		public static string PickImageThroughPropertiesPad(string propertyName, string path = "")
+		public static async Task<string> PickImageThroughPropertiesPad(string propertyName, string path = "")
 		{
 			var grid = PropertyPadGrid;
 			if (grid?.SelectedObject is not WpfSurfaceElementPropertyAdapter)
@@ -897,7 +897,16 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			if (!string.IsNullOrEmpty(path)) {
 				if (!items.Contains(path))
 					return JsonSerializer.Serialize(new { success = false, error = "Not offered: " + path, items });
+				// Picking an item queues the property edit for the out-of-process designer (WpfImageSourceEditor's
+				// SelectionChanged sets the PropertyItem's Value). Wait for the host to accept it, as the other
+				// Properties pad actions do: returning at once let a caller save before the edit reached the document.
+				var surface = FindWpfViewContent()?.SurfaceControl;
+				var sequence = surface?.PropertyEditSequence ?? 0;
 				combo.SelectedItem = path;
+				var outcome = surface == null ? null : await surface.WaitForPropertyEditsAsync(sequence);
+				if (outcome is { Accepted: false })
+					return JsonSerializer.Serialize(new { success = false, error = outcome.Error, items });
+				return JsonSerializer.Serialize(new { success = true, items, value = path, accepted = outcome?.Accepted == true });
 			}
 			return JsonSerializer.Serialize(new { success = true, items, value = item.Value?.ToString() });
 		}

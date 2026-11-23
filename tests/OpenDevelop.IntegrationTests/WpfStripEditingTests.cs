@@ -1950,6 +1950,8 @@ public abstract class WpfStripEditingTestsBase(OpenDevelopAppFixture fixture) : 
 
             picked = await app.InvokeAsync("od.wpf-designer.properties-pad.pick-image", "Source", "OdPickerImages/dot.png");
             Assert.True(picked.GetProperty("success").GetBoolean(), picked.ToString());
+            // The pick returns only once the designer host accepted the edit; saving before that lost it on slow CI runners.
+            Assert.True(picked.GetProperty("accepted").GetBoolean(), picked.ToString());
             Assert.True((await app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
             Assert.True(System.Text.RegularExpressions.Regex.IsMatch(await File.ReadAllTextAsync(xamlPath), "<Image(?=[^>]*x:Name=\"picture\")(?=[^>]*Source=\"OdPickerImages/dot.png\")"), picked.ToString());
         } finally {
