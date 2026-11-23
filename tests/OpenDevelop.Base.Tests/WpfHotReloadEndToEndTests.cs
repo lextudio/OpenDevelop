@@ -184,6 +184,63 @@ public sealed class WpfHotReloadEndToEndTests
 		}
 	}
 
+	/// <summary>
+	/// The restore after a failed merge is itself a merge and can fail half-way as well (injected with
+	/// WPF_HOTRELOAD_TEST_FAULT_RESTORE_MERGE). The agent then replaces the root's content with a fresh tree of
+	/// the last good text in one assignment, so the window is consistent again: the edit failed, but nothing
+	/// needs a restart, and later edits merge into the replaced tree.
+	/// </summary>
+	[Fact]
+	public async Task FailedRestore_ReplacesTheContentAtomically()
+	{
+		const string faultMarker = "HR_FAULT_AFTER_MERGE";
+		var fixture = LocateFixtureExecutable();
+		Assert.True(File.Exists(fixture), $"The WPF Hot Reload fixture must be built before this test; expected '{fixture}'.");
+		Environment.SetEnvironmentVariable("OD_WPF_HOTRELOAD_AGENT", LocateAgentForTest());
+		var adapter = new WpfApplicationHotReloadAdapter();
+		var startInfo = new ProcessStartInfo(fixture) { UseShellExecute = false };
+		if (OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.Arm64
+			&& Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet") {
+			startInfo.Arguments = "\"" + Path.ChangeExtension(fixture, ".dll") + "\"";
+			startInfo.FileName = Environment.ProcessPath!;
+		}
+		var session = await adapter.StartAsync(
+			new HotReloadLaunchContext(project: null, withDebugger: false), startInfo, CancellationToken.None);
+		await using (session) {
+			startInfo.Environment["WPF_HOTRELOAD_TEST_FAULT_AFTER_MERGE"] = faultMarker;
+			startInfo.Environment["WPF_HOTRELOAD_TEST_FAULT_RESTORE_MERGE"] = "1";
+			var pipeName = startInfo.Environment["WPF_HOTRELOAD_PIPE"];
+			using var app = Process.Start(startInfo);
+			Assert.NotNull(app);
+			try {
+				Assert.True(await session.WaitForReadyAsync(TimeSpan.FromSeconds(60), CancellationToken.None),
+					$"The agent never became ready (state {session.State}, exited {app.HasExited}).");
+				var xamlPath = Path.Combine(RepositoryRoot(), "tests", "fixtures", "WpfHotReloadFixture", "SamplePane.xaml");
+				var original = await File.ReadAllTextAsync(xamlPath);
+				var faulty = original.Replace("Text=\"Sample pane\"", "Text=\"Broken\"") + "<!-- " + faultMarker + " -->";
+
+				var failed = await session.ApplyAsync(
+					new HotReloadDocumentChange(xamlPath, original, faulty, 1, HotReloadChangeKind.FullDocument), CancellationToken.None);
+				Assert.Equal(HotReloadOutcome.Failed, failed.Outcome);
+				Assert.Contains("replaced the content with the last applied state", failed.Message);
+				Assert.DoesNotContain("restart", failed.Message, StringComparison.OrdinalIgnoreCase);
+				Assert.Equal("Sample pane", await QueryAgentAsync(pipeName, "PaneTitle.Text"));
+
+				var good = original.Replace("Text=\"Sample pane\"", "Text=\"Hot reloaded\"");
+				var applied = await session.ApplyAsync(
+					new HotReloadDocumentChange(xamlPath, original, good, 2, HotReloadChangeKind.FullDocument), CancellationToken.None);
+				Assert.True(applied.IsSuccess, applied.Message);
+				Assert.Equal("Hot reloaded", await QueryAgentAsync(pipeName, "PaneTitle.Text"));
+				Assert.False(app.HasExited);
+			} finally {
+				if (!app.HasExited) {
+					app.Kill(entireProcessTree: true);
+					app.WaitForExit(10_000);
+				}
+			}
+		}
+	}
+
 	[Fact]
 	public async Task AppliedXaml_ChangesTheLiveApplication()
 	{

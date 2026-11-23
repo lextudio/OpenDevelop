@@ -10,11 +10,11 @@
          the sharpdbg repository's own workflow (publish-opendevelop-packages.yml). The debugger add-in used
          to build that project from source on every build; it now restores this package and copies the
          adapter out, like the other lextudio packages below. -->
-    <SharpDbgCliVersion>1.0.0-lextudio.45065133674.1</SharpDbgCliVersion>
+    <SharpDbgCliVersion>1.0.0-lextudio.45102390477.1</SharpDbgCliVersion>
     <!-- lextudio's SharpDbg Android debug agents (three NativeAOT ABIs) plus the license and SBOM
          metadata OpenDevelop redistributes with them. Built once by the same sharpdbg workflow, so
          no OpenDevelop job needs the .NET 11 preview SDK, the Android workload or an NDK. -->
-    <SharpDbgAndroidAgentVersion>1.0.0-lextudio.45065133674.1</SharpDbgAndroidAgentVersion>
+    <SharpDbgAndroidAgentVersion>1.0.0-lextudio.45102390477.1</SharpDbgAndroidAgentVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="AltCover" Version="9.0.102" />
@@ -62,7 +62,7 @@
     <PackageVersion Include="LibGhostty.Net" Version="$(LibGhosttyNetVersion)" />
     <PackageVersion Include="Porta.Pty" Version="2.2.3" />
     <PackageVersion Include="LeXtudio.DevFlow.Agent.LibreWpf" Version="0.3.1" />
-    <PackageVersion Include="WpfHotReload.Runtime" Version="0.1.0-ci.2" />
+    <PackageVersion Include="WpfHotReload.Runtime" Version="0.1.0-ci.3" />
     <!-- <PackageVersion Include="LeXtudio.DevFlow.Agent.Wpf" Version="0.3.0" /> -->
     <PackageVersion Include="McMaster.Extensions.CommandLineUtils" Version="5.1.0" />
     <PackageVersion Include="MessagePack" Version="3.1.12" />
