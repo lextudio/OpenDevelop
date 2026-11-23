@@ -2,11 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Project.HotReload;
+using ICSharpCode.SharpDevelop.LanguageServices.Protocol;
 
 using Xunit;
 
@@ -171,6 +176,51 @@ public sealed class HotReloadServiceTests : IDisposable
 		Assert.False(result.IsSuccess);
 	}
 
+	[Fact]
+	public async Task AgentSession_CodeDelta_ProducesAndSendsTheExactAgentPayload()
+	{
+		var pipeName = "odhr-test-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+		var mvid = Guid.NewGuid();
+		var protocol = DeltaProtocol.Create(mvid);
+		using var serverCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+		JsonDocument? deltaRequest = null;
+		var server = Task.Run(async () => {
+			for (var requestNumber = 0; requestNumber != 2; requestNumber++) {
+				using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+				await pipe.WaitForConnectionAsync(serverCts.Token);
+				using var reader = new StreamReader(pipe, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
+				using var writer = new StreamWriter(pipe, new UTF8Encoding(false), bufferSize: 1024, leaveOpen: true) { AutoFlush = true };
+				var line = await reader.ReadLineAsync(serverCts.Token);
+				using var request = JsonDocument.Parse(line!);
+				if (requestNumber == 0) {
+					Assert.Equal("query", request.RootElement.GetProperty("kind").GetString());
+					await writer.WriteLineAsync("{\"result\":\"ok\",\"value\":\"1\"}");
+				} else {
+					deltaRequest = JsonDocument.Parse(request.RootElement.GetRawText());
+					await writer.WriteLineAsync("{\"result\":\"ok: delta applied\"}");
+				}
+			}
+		});
+		var capabilities = new HotReloadCapabilities(HotReloadChangeDelivery.IdePushesEdits, false, true,
+			new[] { HotReloadChangeKind.CodeDelta }, false);
+		await using var session = new AgentPipeHotReloadSession(new FakeAdapter("WPF", true), capabilities,
+			pipeName, null, protocol, new HotReloadProjectId("/tmp/Delta.csproj", "net11.0"));
+
+		var result = await session.ApplyAsync(new HotReloadDocumentChange("/tmp/Delta.cs", "old", "new", 1,
+			HotReloadChangeKind.CodeDelta), CancellationToken.None);
+		await server;
+
+		Assert.Equal(HotReloadOutcome.Applied, result.Outcome);
+		Assert.NotNull(deltaRequest);
+		Assert.Equal("applyDelta", deltaRequest!.RootElement.GetProperty("kind").GetString());
+		Assert.Equal(mvid.ToString("D"), deltaRequest.RootElement.GetProperty("mvid").GetString());
+		Assert.Equal(new byte[] { 1, 2 }, deltaRequest.RootElement.GetProperty("metadata").GetBytesFromBase64());
+		Assert.Equal(new byte[] { 3 }, deltaRequest.RootElement.GetProperty("il").GetBytesFromBase64());
+		Assert.Equal(new byte[] { 4, 5 }, deltaRequest.RootElement.GetProperty("pdb").GetBytesFromBase64());
+		Assert.Equal(new[] { 0x02000002 }, deltaRequest.RootElement.GetProperty("updatedTypeTokens").EnumerateArray().Select(v => v.GetInt32()));
+		deltaRequest.Dispose();
+	}
+
 	[Theory]
 	// A {cs:} expression changed: Route T cannot express it.
 	[InlineData("<Button Content=\"{cs: a + 1}\" />", "<Button Content=\"{cs: a + 2}\" />",
@@ -251,6 +301,24 @@ public sealed class HotReloadServiceTests : IDisposable
 	static HotReloadCapabilities IdeDriven() => new HotReloadCapabilities(
 		HotReloadChangeDelivery.IdePushesEdits, false, true,
 		new[] { HotReloadChangeKind.FullDocument }, false);
+
+	class DeltaProtocol : DispatchProxy
+	{
+		Guid mvid;
+		public static IRoslynLanguageProtocol Create(Guid mvid)
+		{
+			var protocol = DispatchProxy.Create<IRoslynLanguageProtocol, DeltaProtocol>();
+			((DeltaProtocol)(object)protocol).mvid = mvid;
+			return protocol;
+		}
+		protected override object? Invoke(MethodInfo? method, object?[]? arguments)
+		{
+			if (method?.Name == nameof(IRoslynLanguageProtocol.RoslynHotReloadProduceDeltaAsync))
+				return Task.FromResult(new HotReloadDeltaResponse(HotReloadDeltaStatus.Applied,
+					new HotReloadModuleDelta(mvid, new byte[] { 1, 2 }, new byte[] { 3 }, new byte[] { 4, 5 }, new[] { 0x02000002 }), "ok"));
+			throw new NotSupportedException(method?.Name);
+		}
+	}
 
 	sealed class FakeAdapter : IApplicationHotReloadAdapter
 	{
