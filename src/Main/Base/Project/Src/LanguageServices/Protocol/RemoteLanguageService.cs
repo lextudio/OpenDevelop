@@ -15,6 +15,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
         readonly Func<DocumentId, CancellationToken, Task> refreshProject;
         Task updates = Task.CompletedTask;
         long workspaceRevision;
+        long workspaceEpoch;
         bool disposed;
         public IRoslynLanguageProtocol Protocol { get; }
 
@@ -81,6 +82,42 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
             }
         }
 
+        /// <summary>
+        /// The workspace epoch: <see cref="CloseSolutionAsync"/> advances it under the same lock that queues the close. A
+        /// solution push records it when the solution opens and loads through <see cref="TryLoadProjectsAsync"/>, so a load
+        /// that is not yet queued when its solution closes is refused instead of landing in the next solution's workspace.
+        /// That is what lets the close be queued at once, ahead of the next solution's documents, rather than after the
+        /// previous push has finished (which let it dispose the host under those documents' requests and clear their
+        /// buffers).
+        /// </summary>
+        public long WorkspaceEpoch
+        {
+            get { lock (sync) return workspaceEpoch; }
+        }
+
+        /// <summary>
+        /// <see cref="LoadProjectsAsync"/> for a solution push: queues the load only while <paramref name="epoch"/> is still
+        /// the current <see cref="WorkspaceEpoch"/>, and returns false (sending nothing) once the solution has closed.
+        /// </summary>
+        public Task<bool> TryLoadProjectsAsync(IReadOnlyList<LanguageServiceProjectSnapshot> snapshots, long epoch, CancellationToken token)
+        {
+            lock (sync)
+            {
+                ObjectDisposedException.ThrowIf(disposed, this);
+                if (epoch != workspaceEpoch)
+                    return Task.FromResult(false);
+                Interlocked.Increment(ref workspaceRevision);
+                var load = updates = LoadProjectCoreAsync(updates, snapshots, token);
+                return LoadedAsync(load);
+            }
+
+            static async Task<bool> LoadedAsync(Task load)
+            {
+                await load.ConfigureAwait(false);
+                return true;
+            }
+        }
+
         async Task LoadProjectCoreAsync(Task previous, IReadOnlyList<LanguageServiceProjectSnapshot> snapshots, CancellationToken token)
         {
             int timingGeneration;
@@ -134,6 +171,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
                 buffers.Clear();
                 states.Clear();
                 Interlocked.Increment(ref workspaceRevision);
+                workspaceEpoch++;
                 return updates = CloseSolutionCoreAsync(updates, token);
             }
         }

@@ -58,18 +58,19 @@ namespace CSharpBinding
 			if (!(service is RemoteLanguageService remote))
 				return;
 			var generation = Volatile.Read(ref solutionGeneration);
+			var epoch = remote.WorkspaceEpoch;
 			var project = e.Project;
-			solutionSync = PushReloadedProjectAsync(solutionSync, remote, project, generation);
+			solutionSync = PushReloadedProjectAsync(solutionSync, remote, project, generation, epoch);
 		}
 
-		async Task PushReloadedProjectAsync(Task previous, RemoteLanguageService remote, IProject project, long generation)
+		async Task PushReloadedProjectAsync(Task previous, RemoteLanguageService remote, IProject project, long generation, long epoch)
 		{
 			try { await previous; } catch { }
 			if (generation != Volatile.Read(ref solutionGeneration))
 				return;
 			try {
 				var snapshots = await Task.Run(() => LanguageServiceProjectSnapshotFactory.FromProjectAllTargetFrameworks(project));
-				await Task.Run(() => remote.LoadProjectsAsync(snapshots, CancellationToken.None));
+				await Task.Run(() => remote.TryLoadProjectsAsync(snapshots, epoch, CancellationToken.None));
 			} catch (Exception ex) {
 				LoggingService.Warn("Unable to push the reloaded project " + project.Name + " to the Roslyn host: " + ex.Message);
 			}
@@ -78,10 +79,15 @@ namespace CSharpBinding
 		void QueueSolution(ISolution solution)
 		{
 			var generation = Interlocked.Increment(ref solutionGeneration);
-			solutionSync = PushSolutionAsync(solutionSync, solution, generation);
+			// Recorded now, on the UI thread in message order: the previous solution's close has already
+			// advanced the epoch (OnSolutionClosed queues it at once), and this solution's own close will
+			// advance it again, which is what refuses any of this push's loads not yet queued by then.
+			// Read later (when the push actually starts) it could be the NEXT solution's epoch.
+			var epoch = (service as RemoteLanguageService)?.WorkspaceEpoch ?? 0;
+			solutionSync = PushSolutionAsync(solutionSync, solution, generation, epoch);
 		}
 
-		async Task PushSolutionAsync(Task previous, ISolution solution, long generation)
+		async Task PushSolutionAsync(Task previous, ISolution solution, long generation, long epoch)
 		{
 			await previous;
 			if (generation != Volatile.Read(ref solutionGeneration))
@@ -121,7 +127,7 @@ namespace CSharpBinding
 					if (cached != null && cached.Count > 0
 					    && currentKeys.SetEquals(cached.Select(LanguageServiceProjectSnapshotFactory.SnapshotKey))) {
 						var orderedCache = PrioritizeOpenDocuments(cached, out var cachedPriority);
-						if (!await PushSnapshotsAsync(protocol, orderedCache, cachedPriority, generation, "roslyn-cached-open-documents-ready", "roslyn-cached-projects-pushed"))
+						if (!await PushSnapshotsAsync(protocol, orderedCache, cachedPriority, generation, epoch, "roslyn-cached-open-documents-ready", "roslyn-cached-projects-pushed"))
 							return;
 						warm = cached.ToDictionary(LanguageServiceProjectSnapshotFactory.SnapshotKey, SerializeSnapshot);
 					} else {
@@ -149,7 +155,7 @@ namespace CSharpBinding
 				// go first; the rest follow in solution order. Read on the UI thread, which this
 				// continuation is on.
 				snapshots = PrioritizeOpenDocuments(snapshots, out var priorityCount);
-				await PushSnapshotsAsync(protocol, snapshots, priorityCount, generation, "roslyn-open-documents-ready", "roslyn-projects-pushed",
+				await PushSnapshotsAsync(protocol, snapshots, priorityCount, generation, epoch, "roslyn-open-documents-ready", "roslyn-projects-pushed",
 					warm != null ? snapshots.Count + " changed since the cache" : null);
 			} catch (Exception ex) {
 				LoggingService.Warn("Unable to synchronise the Roslyn host project graph: " + ex.Message);
@@ -164,7 +170,7 @@ namespace CSharpBinding
 		const int PushChunkSize = 16;
 
 		async Task<bool> PushSnapshotsAsync(IRoslynLanguageProtocol protocol, IReadOnlyList<LanguageServiceProjectSnapshot> snapshots,
-			int priorityCount, long generation, string priorityMark, string doneMark, string detail = null)
+			int priorityCount, long generation, long epoch, string priorityMark, string doneMark, string detail = null)
 		{
 			var remote = service as RemoteLanguageService;
 			remote?.ResetLoadTimings();
@@ -183,14 +189,20 @@ namespace CSharpBinding
 				chunks.Add(snapshots.Take(priorityCount).ToList());
 			foreach (var chunk in snapshots.Skip(priorityCount).Chunk(PushChunkSize))
 				chunks.Add(chunk);
+			var refused = false;
 			await Task.Run(async () => {
 				foreach (var chunk in chunks) {
 					if (generation != Volatile.Read(ref solutionGeneration))
 						return;
 					var pushing = System.Diagnostics.Stopwatch.StartNew();
-					if (remote != null)
-						await remote.LoadProjectsAsync(chunk, CancellationToken.None).ConfigureAwait(false);
-					else
+					if (remote != null) {
+						// The generation check above is not atomic with queueing the load; the epoch check
+						// inside TryLoadProjectsAsync is, so a close that lands in between refuses this chunk.
+						if (!await remote.TryLoadProjectsAsync(chunk, epoch, CancellationToken.None).ConfigureAwait(false)) {
+							refused = true;
+							return;
+						}
+					} else
 						await protocol.RoslynProjectsLoadAsync(chunk, CancellationToken.None).ConfigureAwait(false);
 					pushTimes.Add((System.IO.Path.GetFileNameWithoutExtension(chunk[0].ProjectFileName) + (chunk.Count > 1 ? " +" + (chunk.Count - 1) : ""), pushing.ElapsedMilliseconds));
 					pushedCount += chunk.Count;
@@ -198,7 +210,7 @@ namespace CSharpBinding
 						PerfTimeline.Mark(PerfTimeline.SolutionOpen, priorityMark, priorityCount + " snapshot(s)");
 				}
 			});
-			if (generation != Volatile.Read(ref solutionGeneration))
+			if (refused || generation != Volatile.Read(ref solutionGeneration))
 				return false;
 			var timings = remote?.GetLoadTimings() ?? (WaitTicks: 0L, RpcTicks: 0L);
 			PerfTimeline.Mark(PerfTimeline.SolutionOpen, doneMark,
@@ -253,13 +265,35 @@ namespace CSharpBinding
 		void OnSolutionClosed(object sender, SolutionClosedMessageEventArgs e)
 		{
 			Interlocked.Increment(ref solutionGeneration);
-			solutionSync = CloseSolutionAsync(solutionSync, e.Solution?.Directory.ToString());
+			if (service is RemoteLanguageService remote) {
+				// Queue the close now, ahead of anything the next solution sends. It used to wait for the
+				// previous solution's push to finish, which takes seconds on a large solution; by then the
+				// next solution's open documents had already been sent and were requesting outlines, and the
+				// late close disposed the host under those requests and cleared their buffers (the folding
+				// of a freshly opened file stayed empty). Waiting existed so that an old load could not land
+				// after the close; TryLoadProjectsAsync now refuses those, because the close advances the
+				// epoch the push recorded. The next push still waits for the previous one to wind down.
+				var closing = remote.CloseSolutionAsync(CancellationToken.None);
+				solutionSync = AfterCloseAsync(solutionSync, closing);
+			} else
+				solutionSync = CloseSolutionAsync(solutionSync, e.Solution?.Directory.ToString());
+		}
+
+		static async Task AfterCloseAsync(Task previous, Task closing)
+		{
+			try { await previous; } catch { }
+			try {
+				await closing;
+			} catch (Exception ex) {
+				LoggingService.Warn("Unable to clear the Roslyn host workspace: " + ex.Message);
+			}
 		}
 
 		async Task CloseSolutionAsync(Task previous, string solutionDirectory)
 		{
-			// An already-issued project load must finish before closing. The next solution load
-			// awaits this task in turn, so a delayed close cannot clear its new workspace.
+			// Without a RemoteLanguageService there is no epoch to refuse a late load, so an
+			// already-issued project load must finish before closing. The next solution load awaits
+			// this task in turn, so a delayed close cannot clear its new workspace.
 			await previous;
 			if (!registry.TryGetProtocol(".cs", out var protocol))
 				return;
