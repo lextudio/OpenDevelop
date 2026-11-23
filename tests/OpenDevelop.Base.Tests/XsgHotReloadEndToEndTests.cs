@@ -36,16 +36,28 @@ public sealed class XsgHotReloadEndToEndTests
 	const string TargetFramework = "net10.0-windows";
 
 	[Fact]
-	public Task CsExpressionEdit_ReachesTheLiveWindowThroughACodeDelta() => RunCsExpressionEditAsync(underDebugger: false);
+	public Task CsExpressionEdit_ReachesTheLiveWindowThroughACodeDelta() => RunAsync(underDebugger: false, CsExpressionEditAsync);
+
+	[Fact]
+	public Task EventHandlerEdit_ReachesTheLiveWindowThroughACodeDelta() => RunAsync(underDebugger: false, EventHandlerEditAsync);
+
+	[Fact]
+	public Task NameRemoval_IsARestartAndLeavesTheSessionUsable() => RunAsync(underDebugger: false, NameRemovalAsync);
+
+	[Fact]
+	public Task EventHandlerEdit_UnderSharpDbg_ReachesTheLiveWindow() => RunAsync(underDebugger: true, EventHandlerEditAsync);
+
+	[Fact]
+	public Task NameRemoval_UnderSharpDbg_IsARestartAndLeavesTheSessionUsable() => RunAsync(underDebugger: true, NameRemovalAsync);
 
 	/// <summary>
 	/// The same edit while the application runs under SharpDbg (E3a): the delta goes through
 	/// <c>sharpdbg/applyDeltas</c> instead of the agent, without the user pausing the debugger first.
 	/// </summary>
 	[Fact]
-	public Task CsExpressionEdit_UnderSharpDbg_ReachesTheLiveWindow() => RunCsExpressionEditAsync(underDebugger: true);
+	public Task CsExpressionEdit_UnderSharpDbg_ReachesTheLiveWindow() => RunAsync(underDebugger: true, CsExpressionEditAsync);
 
-	async Task RunCsExpressionEditAsync(bool underDebugger)
+	async Task RunAsync(bool underDebugger, Func<Scenario, Task> scenario)
 	{
 		var token = TestContext.Current.CancellationToken;
 		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
@@ -56,8 +68,6 @@ public sealed class XsgHotReloadEndToEndTests
 			Assert.Skip($"Build the XSG fixture first: {projectPath} (-c {CurrentConfiguration()}).");
 		var xamlPath = Path.Combine(fixtureDirectory, "MainWindow.xaml");
 		var originalXaml = await File.ReadAllTextAsync(xamlPath, token);
-		const string originalExpression = "{cs: &quot;Hot reload ready&quot;}";
-		Assert.Contains(originalExpression, originalXaml);
 
 		using var transport = new RoslynHostProcessTransport(LocateRoslynHost(), TimeSpan.FromSeconds(60));
 		var protocol = new RemoteRoslynLanguageProtocol(transport);
@@ -93,27 +103,7 @@ public sealed class XsgHotReloadEndToEndTests
 			try {
 				Assert.True(await session.WaitForReadyAsync(TimeSpan.FromSeconds(90), token),
 					$"The agent never became ready (state {session.State}).");
-				Assert.Equal("Hot reload ready", await QueryAsync(pipeName, "Status.Text"));
-
-				var editedXaml = originalXaml.Replace(originalExpression, "{cs: &quot;Hot reload &quot; + &quot;applied&quot;}");
-				Assert.Equal(HotReloadChangeKind.CodeDelta, HotReloadWorkflow.Classify(originalXaml, editedXaml, generatesXamlCode: true));
-				var result = await session.ApplyAsync(
-					new HotReloadDocumentChange(xamlPath, originalXaml, editedXaml, 1, HotReloadChangeKind.CodeDelta), token);
-
-				Assert.True(result.Outcome == HotReloadOutcome.Applied, result.Outcome + ": " + result.Message);
-				Assert.Equal("Hot reload applied", await WaitForStatusAsync(pipeName, "Hot reload applied", token));
-
-				// A second edit and then the revert: each delta must build on the generation the
-				// application now runs, and reverting must converge on the launch state.
-				var secondXaml = originalXaml.Replace(originalExpression, "{cs: &quot;Hot reload &quot; + &quot;again&quot;}");
-				var second = await session.ApplyAsync(
-					new HotReloadDocumentChange(xamlPath, editedXaml, secondXaml, 2, HotReloadChangeKind.CodeDelta), token);
-				Assert.True(second.Outcome == HotReloadOutcome.Applied, second.Outcome + ": " + second.Message);
-				Assert.Equal("Hot reload again", await WaitForStatusAsync(pipeName, "Hot reload again", token));
-				var revert = await session.ApplyAsync(
-					new HotReloadDocumentChange(xamlPath, secondXaml, originalXaml, 3, HotReloadChangeKind.CodeDelta), token);
-				Assert.True(revert.Outcome == HotReloadOutcome.Applied, revert.Outcome + ": " + revert.Message);
-				Assert.Equal("Hot reload ready", await WaitForStatusAsync(pipeName, "Hot reload ready", token));
+				await scenario(new Scenario(session, pipeName, xamlPath, originalXaml, token));
 				if (debugger != null)
 					Assert.False(debugger.IsPaused, "Hot Reload under the debugger must not leave the application paused.");
 			} finally {
@@ -126,6 +116,104 @@ public sealed class XsgHotReloadEndToEndTests
 		}
 		// The edit only ever travelled over the pipe and the host protocol.
 		Assert.Equal(originalXaml, await File.ReadAllTextAsync(xamlPath, token));
+	}
+
+	/// <summary>What a scenario needs from the running fixture.</summary>
+	sealed record Scenario(IHotReloadSession Session, string PipeName, string XamlPath, string OriginalXaml, CancellationToken Token);
+
+	static async Task CsExpressionEditAsync(Scenario s)
+	{
+		const string originalExpression = "{cs: &quot;Hot reload ready&quot;}";
+		Assert.Contains(originalExpression, s.OriginalXaml);
+		Assert.Equal("Hot reload ready", await QueryAsync(s.PipeName, "Status.Text"));
+
+		var editedXaml = s.OriginalXaml.Replace(originalExpression, "{cs: &quot;Hot reload &quot; + &quot;applied&quot;}");
+		Assert.Equal(HotReloadChangeKind.CodeDelta, HotReloadWorkflow.Classify(s.OriginalXaml, editedXaml, generatesXamlCode: true));
+		var result = await s.Session.ApplyAsync(
+			new HotReloadDocumentChange(s.XamlPath, s.OriginalXaml, editedXaml, 1, HotReloadChangeKind.CodeDelta), s.Token);
+
+		Assert.True(result.Outcome == HotReloadOutcome.Applied, result.Outcome + ": " + result.Message);
+		Assert.Equal("Hot reload applied", await WaitForStatusAsync(s.PipeName, "Hot reload applied", s.Token));
+
+		// A second edit and then the revert: each delta must build on the generation the
+		// application now runs, and reverting must converge on the launch state.
+		var secondXaml = s.OriginalXaml.Replace(originalExpression, "{cs: &quot;Hot reload &quot; + &quot;again&quot;}");
+		var second = await s.Session.ApplyAsync(
+			new HotReloadDocumentChange(s.XamlPath, editedXaml, secondXaml, 2, HotReloadChangeKind.CodeDelta), s.Token);
+		Assert.True(second.Outcome == HotReloadOutcome.Applied, second.Outcome + ": " + second.Message);
+		Assert.Equal("Hot reload again", await WaitForStatusAsync(s.PipeName, "Hot reload again", s.Token));
+		var revert = await s.Session.ApplyAsync(
+			new HotReloadDocumentChange(s.XamlPath, secondXaml, s.OriginalXaml, 3, HotReloadChangeKind.CodeDelta), s.Token);
+		Assert.True(revert.Outcome == HotReloadOutcome.Applied, revert.Outcome + ": " + revert.Message);
+		Assert.Equal("Hot reload ready", await WaitForStatusAsync(s.PipeName, "Hot reload ready", s.Token));
+	}
+
+	/// <summary>
+	/// An event handler is generated code too (<c>+=</c> in <c>InitializeComponent</c>). The fixture's root
+	/// grid names <c>OnLoadedA</c>; <c>Loaded</c> fires again for every tree the rerun builds, so the
+	/// handler that wins shows in <c>Marker.Text</c>. Switching the attribute must reach it, and
+	/// reverting must converge on the launch handler.
+	/// </summary>
+	static async Task EventHandlerEditAsync(Scenario s)
+	{
+		const string handlerA = "Loaded=\"OnLoadedA\"";
+		const string handlerB = "Loaded=\"OnLoadedB\"";
+		Assert.Contains(handlerA, s.OriginalXaml);
+		Assert.Equal("handler A", await WaitForAsync(s.PipeName, "Marker.Text", "handler A", s.Token));
+
+		var editedXaml = s.OriginalXaml.Replace(handlerA, handlerB);
+		Assert.Equal(HotReloadChangeKind.CodeDelta, HotReloadWorkflow.Classify(s.OriginalXaml, editedXaml, generatesXamlCode: true));
+		var result = await s.Session.ApplyAsync(
+			new HotReloadDocumentChange(s.XamlPath, s.OriginalXaml, editedXaml, 1, HotReloadChangeKind.CodeDelta), s.Token);
+		Assert.True(result.Outcome == HotReloadOutcome.Applied, result.Outcome + ": " + result.Message);
+		Assert.Equal("handler B", await WaitForAsync(s.PipeName, "Marker.Text", "handler B", s.Token));
+
+		var revert = await s.Session.ApplyAsync(
+			new HotReloadDocumentChange(s.XamlPath, editedXaml, s.OriginalXaml, 2, HotReloadChangeKind.CodeDelta), s.Token);
+		Assert.True(revert.Outcome == HotReloadOutcome.Applied, revert.Outcome + ": " + revert.Message);
+		Assert.Equal("handler A", await WaitForAsync(s.PipeName, "Marker.Text", "handler A", s.Token));
+	}
+
+	/// <summary>
+	/// Removing an <c>x:Name</c> deletes a generated field, which the runtime cannot apply. Two layers must
+	/// agree: the workflow predicts it from the XAML (<c>RestartRequired</c>, nothing is sent), and the
+	/// Roslyn producer, asked anyway, reports the rude edit. Neither may touch the live window or poison the
+	/// delta chain: a valid <c>{cs:}</c> edit still applies afterwards, and reverting converges on launch.
+	/// </summary>
+	static async Task NameRemovalAsync(Scenario s)
+	{
+		const string spare = "x:Name=\"Spare\" ";
+		Assert.Contains(spare, s.OriginalXaml);
+		Assert.Equal("spare", await QueryAsync(s.PipeName, "Spare.Text"));
+
+		var removedXaml = s.OriginalXaml.Replace(spare, "");
+		Assert.Equal(HotReloadChangeKind.RestartRequired, HotReloadWorkflow.Classify(s.OriginalXaml, removedXaml, generatesXamlCode: true));
+
+		// Layer 1: the workflow's verdict short-circuits; nothing reaches the app.
+		var predicted = await s.Session.ApplyAsync(
+			new HotReloadDocumentChange(s.XamlPath, s.OriginalXaml, removedXaml, 1, HotReloadChangeKind.RestartRequired), s.Token);
+		Assert.Equal(HotReloadOutcome.RestartRequired, predicted.Outcome);
+		Assert.Equal("spare", await QueryAsync(s.PipeName, "Spare.Text"));
+		Assert.Equal("Hot reload ready", await QueryAsync(s.PipeName, "Status.Text"));
+
+		// Layer 2: the producer is the authority. Forced through as a code delta it must agree.
+		var forced = await s.Session.ApplyAsync(
+			new HotReloadDocumentChange(s.XamlPath, s.OriginalXaml, removedXaml, 2, HotReloadChangeKind.CodeDelta), s.Token);
+		Assert.True(forced.Outcome == HotReloadOutcome.RestartRequired, forced.Outcome + ": " + forced.Message);
+		Assert.Equal("spare", await QueryAsync(s.PipeName, "Spare.Text"));
+
+		// The chain survives: an unrelated valid edit applies, and reverting reaches the launch state.
+		const string originalExpression = "{cs: &quot;Hot reload ready&quot;}";
+		var editedXaml = s.OriginalXaml.Replace(originalExpression, "{cs: &quot;after rude edit&quot;}");
+		var valid = await s.Session.ApplyAsync(
+			new HotReloadDocumentChange(s.XamlPath, s.OriginalXaml, editedXaml, 3, HotReloadChangeKind.CodeDelta), s.Token);
+		Assert.True(valid.Outcome == HotReloadOutcome.Applied, valid.Outcome + ": " + valid.Message);
+		Assert.Equal("after rude edit", await WaitForStatusAsync(s.PipeName, "after rude edit", s.Token));
+		Assert.Equal("spare", await QueryAsync(s.PipeName, "Spare.Text"));
+		var revert = await s.Session.ApplyAsync(
+			new HotReloadDocumentChange(s.XamlPath, editedXaml, s.OriginalXaml, 4, HotReloadChangeKind.CodeDelta), s.Token);
+		Assert.True(revert.Outcome == HotReloadOutcome.Applied, revert.Outcome + ": " + revert.Message);
+		Assert.Equal("Hot reload ready", await WaitForStatusAsync(s.PipeName, "Hot reload ready", s.Token));
 	}
 
 	/// <summary>
@@ -170,11 +258,14 @@ public sealed class XsgHotReloadEndToEndTests
 	}
 
 	// The handler queues InitializeComponent on the window's dispatcher, so the value arrives later.
-	static async Task<string> WaitForStatusAsync(string pipeName, string expected, CancellationToken token)
+	static Task<string> WaitForStatusAsync(string pipeName, string expected, CancellationToken token)
+		=> WaitForAsync(pipeName, "Status.Text", expected, token);
+
+	static async Task<string> WaitForAsync(string pipeName, string query, string expected, CancellationToken token)
 	{
 		var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
 		string text;
-		while ((text = await QueryAsync(pipeName, "Status.Text")) != expected && DateTime.UtcNow < deadline)
+		while ((text = await QueryAsync(pipeName, query)) != expected && DateTime.UtcNow < deadline)
 			await Task.Delay(200, token);
 		return text;
 	}

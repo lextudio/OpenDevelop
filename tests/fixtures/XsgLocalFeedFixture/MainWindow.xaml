@@ -2,7 +2,11 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="XSG local-feed fixture">
-  <Grid>
-    <TextBlock x:Name="Status" Text="{cs: &quot;Hot reload ready&quot;}" />
+  <Grid Loaded="OnLoadedA">
+    <StackPanel>
+      <TextBlock x:Name="Status" Text="{cs: &quot;Hot reload ready&quot;}" />
+      <TextBlock x:Name="Marker" Text="not loaded" />
+      <TextBlock x:Name="Spare" Text="spare" />
+    </StackPanel>
   </Grid>
 </Window>
