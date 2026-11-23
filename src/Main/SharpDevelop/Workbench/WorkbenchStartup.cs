@@ -186,7 +186,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		
 		/// <summary>The files to open once the main window has rendered (decided by <see cref="Run"/>).</summary>
 		List<string> startupFiles = new List<string>();
-		
+
 		/// <summary>The startup file is the previous session's solution, not a file named on the command line.</summary>
 		bool startupIsPreviousSolution;
 
@@ -218,7 +218,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			}
 			StartPreloadThread();
 		}
-		
+
 		/// <summary>
 		/// Opens the files given on the command line (or the previous solution), in order: a solution is
 		/// awaited, so files given after it open once it has loaded.
@@ -243,7 +243,7 @@ namespace ICSharpCode.SharpDevelop.Workbench
 				NavigationService.ResumeLogging();
 			}
 		}
-		
+
 		public void Run(IList<string> fileList)
 		{
 			// Report the .NET SDK situation before anything is opened. A missing or mismatched SDK

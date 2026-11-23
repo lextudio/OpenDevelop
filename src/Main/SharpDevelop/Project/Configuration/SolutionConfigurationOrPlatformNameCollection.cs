@@ -42,7 +42,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		readonly List<string> list = new List<string>();
 		volatile IReadOnlyList<string> listSnapshot = EmptyList<string>.Instance;
 		readonly ISolution solution;
-		
+
 		ModelThreadAffinity ThreadAffinity {
 			get { return (solution as IHasModelThreadAffinity)?.ThreadAffinity ?? ModelThreadAffinity.MainThread; }
 		}

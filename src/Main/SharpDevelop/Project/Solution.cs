@@ -51,7 +51,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		static readonly Version DefaultMinVSVersion = new Version(10, 0, 40219, 1);
 		
 		readonly ModelThreadAffinity threadAffinity = ModelThreadAffinity.ForCurrentThread();
-		
+
 		/// <summary>
 		/// Ownership of this solution's model: the creating thread until <see cref="Publish"/>, the main
 		/// thread afterwards. Its projects share it (AbstractProject takes it from the load information).
@@ -59,7 +59,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		public ModelThreadAffinity ThreadAffinity {
 			get { return threadAffinity; }
 		}
-		
+
 		/// <summary>
 		/// Hands the solution and all of its projects to the main thread and starts what only a live
 		/// solution needs: the solution and project file watchers. Called on the main thread when the
@@ -74,20 +74,20 @@ namespace ICSharpCode.SharpDevelop.Project
 			fileService.FileRemoved += FileServiceFileRemoved;
 			changeWatcher.Enable();
 		}
-		
+
 		/// <summary>Stops change notifications while the solution writes its own file (no-op before publication).</summary>
 		void SuspendChangeWatcher()
 		{
 			if (threadAffinity.IsPublished)
 				changeWatcher.Disable();
 		}
-		
+
 		void ResumeChangeWatcher()
 		{
 			if (threadAffinity.IsPublished)
 				changeWatcher.Enable();
 		}
-		
+
 		public Solution(FileName fileName, IProjectChangeWatcher changeWatcher, IFileService fileService)
 		{
 			this.msBuildProjectCollection = CreateProjectCollection();

@@ -177,9 +177,9 @@ namespace ICSharpCode.SharpDevelop.Project
 		}
 		
 		readonly BackgroundSolutionBuilder solutionBuilder = new BackgroundSolutionBuilder();
-		
+
 		FileName loadingSolution;
-		
+
 		public FileName LoadingSolution {
 			get { return loadingSolution; }
 			private set {
@@ -190,9 +190,9 @@ namespace ICSharpCode.SharpDevelop.Project
 				}
 			}
 		}
-		
+
 		public event EventHandler LoadingSolutionChanged = delegate { };
-		
+
 		/// <summary>
 		/// Opens a solution without blocking the UI thread: the solution and its projects are built on the
 		/// thread pool (<see cref="BuildSolution"/>, which never touches the UI) and published on the UI thread
@@ -207,7 +207,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				return OpenSynchronouslyReportingAllErrors(fileName);
 			if (!CloseSolution(allowCancel: true))
 				return false;
-			
+
 			BeginSolutionOpen();
 			ResolveProjectBindings();
 			LoadingSolution = fileName;
@@ -246,13 +246,13 @@ namespace ICSharpCode.SharpDevelop.Project
 				return solution != null && CompleteSolutionOpen(solution, fileName); // null: cancelled or superseded
 			});
 		}
-		
+
 		/// <summary>
 		/// Counts background loads, so a superseded load can neither clear a newer one's marker (same file or not)
 		/// nor be published: a newer open or a close advances it (<see cref="SupersedeLoadsInProgress"/>).
 		/// </summary>
 		int loadingSolutionGeneration;
-		
+
 		/// <summary>
 		/// Called by every open and by <see cref="CloseSolution"/>: cancels a background build still running, and
 		/// invalidates one that has finished but is still waiting to be published on the UI thread, which
@@ -270,7 +270,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (load == loadingSolutionGeneration)
 				LoadingSolution = null;
 		}
-		
+
 		/// <summary>Publishes a finished build on the UI thread, which takes the model over.</summary>
 		bool CompleteSolutionOpen(Solution solution, FileName fileName)
 		{
@@ -282,7 +282,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			ObservedLoadReportingAllErrors(() => PublishSolution(solution), fileName);
 			return currentSolution == solution;
 		}
-		
+
 		/// <summary>
 		/// Runs <paramref name="load"/> like the synchronous open does - <see cref="FileUtility.ObservedLoad"/> reports
 		/// I/O-type errors ("error while loading") - and shows any other exception too, instead of letting it
@@ -297,7 +297,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				MessageService.ShowException(ex, "Could not open " + fileName);
 			}
 		}
-		
+
 		bool OpenSynchronouslyReportingAllErrors(FileName fileName)
 		{
 			try {
@@ -307,14 +307,14 @@ namespace ICSharpCode.SharpDevelop.Project
 				return false;
 			}
 		}
-		
+
 		static bool IsSolutionFile(FileName fileName) => fileName.HasExtension(".sln") || fileName.HasExtension(".slnx");
-		
+
 		void ShowNotASolutionOrProjectError(FileName fileName)
 		{
 			MessageService.ShowError(StringParser.Parse("${res:ICSharpCode.SharpDevelop.Commands.OpenCombine.InvalidProjectOrCombine}", new StringTagPair("FileName", fileName)));
 		}
-		
+
 		/// <summary>
 		/// Creates the project bindings' add-in objects on the UI thread before a background build asks them
 		/// to load projects: add-in activation is not meant to race.
@@ -329,7 +329,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				}
 			}
 		}
-		
+
 		void OpenSolutionOrProjectInternal(FileName fileName)
 		{
 			if (IsSolutionFile(fileName)) {
@@ -348,13 +348,13 @@ namespace ICSharpCode.SharpDevelop.Project
 			}
 			PublishSolution(solution);
 		}
-		
+
 		void BeginSolutionOpen()
 		{
 			PerfTimeline.Begin(PerfTimeline.SolutionOpen);
 			ReferenceResolutionDiagnostics.Reset();
 		}
-		
+
 		/// <summary>
 		/// Reads the solution file and constructs the solution with all of its projects, evaluating them in
 		/// parallel. Runs on any thread and never touches the UI: the result is an unpublished model owned by
@@ -367,7 +367,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				return LoadSolution(fileName, progress);
 			}
 		}
-		
+
 		/// <summary>
 		/// Makes a built solution the current one (publishing it to the UI thread) and runs the solution-opened
 		/// work: project behaviors, SolutionOpened handlers and messages, recent list, upgrade/error dialogs.
@@ -825,7 +825,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 			return LoadSolution(fileName, progress);
 		}
-		
+
 		Solution LoadSolution(FileName fileName, IProgressMonitor progress)
 		{
 			if (fileName == null)

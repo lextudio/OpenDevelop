@@ -75,7 +75,7 @@ namespace ICSharpCode.SharpDevelop.Project
 				throw new InvalidOperationException("A published model belongs to the main thread.");
 			ownerThreadId = Environment.CurrentManagedThreadId;
 		}
-		
+
 		/// <summary>
 		/// Hands the model to the main thread. Must be called on the main thread; idempotent.
 		/// </summary>
