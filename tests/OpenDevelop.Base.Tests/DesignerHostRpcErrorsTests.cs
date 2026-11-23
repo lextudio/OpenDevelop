@@ -18,4 +18,17 @@ public sealed class DesignerHostRpcErrorsTests
 		Assert.True(DesignerHostRpcErrors.IsStaleVersion(stale));
 		Assert.False(DesignerHostRpcErrors.IsStaleVersion(other));
 	}
+
+	[Theory]
+	// The hosted-CI failure: the view saves with the version it holds (2) while the host and the recovery snapshot have
+	// already moved to 3. The snapshot is newer, so it answers.
+	[InlineData(3L, 2L, true)]
+	// The window where the host advanced but the snapshot capture has not run yet.
+	[InlineData(2L, 2L, true)]
+	// A snapshot older than the version the view asks for cannot be the accepted source.
+	[InlineData(1L, 2L, false)]
+	// No snapshot yet (before the first open): nothing to fall back to, so the stale error stands.
+	[InlineData(null, 2L, false)]
+	public void RecoveryCanAnswerStaleFlush_OnlyWhenTheSnapshotIsNotOlderThanTheRequest(long? recoveryVersion, long requested, bool expected)
+		=> Assert.Equal(expected, DesignerHostRpcErrors.RecoveryCanAnswerStaleFlush(recoveryVersion, requested));
 }

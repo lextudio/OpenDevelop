@@ -37,11 +37,15 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 					if (edit.Files.Count > 0) return edit.Files[0].Text;
 				} catch (System.IO.IOException) when (!IsAlive) {
 					// The host went down between the check and the flush: same as not running.
-				} catch (System.Exception ex) when (DesignerHostRpcErrors.IsStaleVersion(ex) && RecoverySnapshot?.Version == version) {
+				} catch (System.Exception ex) when (DesignerHostRpcErrors.IsStaleVersion(ex)
+					&& DesignerHostRpcErrors.RecoveryCanAnswerStaleFlush(RecoverySnapshot?.Version, version)) {
 					// A view switch can save while an already-dispatched source update has advanced the
 					// host. The tracked recovery snapshot is the accepted source authority in that
 					// case; letting this expected race escape from SaveInternal takes down the WPF
-					// dispatcher and leaves the DevFlow UI-mutation gate permanently occupied.
+					// dispatcher and leaves the DevFlow UI-mutation gate permanently occupied. The snapshot
+					// is usually already one version AHEAD of the view's (the capture that follows an
+					// accepted mutation runs before the view assigns its state), so it must not be required
+					// to equal the requested version.
 				}
 			}
 			return RecoveryText ?? fallback;
