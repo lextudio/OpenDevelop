@@ -27,6 +27,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using ICSharpCode.SharpDevelop;
+using ICSharpCode.SharpDevelop.LanguageServices.Protocol;
 using Microsoft.Diagnostics.NETCore.Client;
 
 namespace Debugger.AddIn.Service.Dap
@@ -340,17 +341,37 @@ namespace Debugger.AddIn.Service.Dap
 		}
 
 		/// <summary>Applies a Roslyn EnC metadata/IL delta to a stopped SharpDbg debuggee.</summary>
-		public async Task ApplyDeltasAsync(Guid mvid, byte[] metadata, byte[] il, byte[] pdb = null, int[]? updatedMethodTokens = null, CancellationToken cancellationToken = default)
+		/// <remarks>
+		/// <paramref name="lineMaps"/> (the lines the edit kept, per document) let SharpDbg move a frame that is executing an
+		/// updated method onto the new version; an adapter that does not know the argument ignores it, and the frame then
+		/// finishes its old code.
+		/// </remarks>
+		public async Task ApplyDeltasAsync(Guid mvid, byte[] metadata, byte[] il, byte[] pdb = null, int[]? updatedMethodTokens = null,
+			CancellationToken cancellationToken = default, HotReloadSourceLineMap[]? lineMaps = null)
 		{
 			if (client == null) throw new InvalidOperationException("The debug session has not started.");
 			var response = await client.SendRequestAsync("sharpdbg/applyDeltas", new JsonObject {
 				["mvid"] = mvid.ToString("D"), ["metadata"] = Convert.ToBase64String(metadata),
 				["il"] = Convert.ToBase64String(il), ["pdb"] = Convert.ToBase64String(pdb ?? Array.Empty<byte>()),
 				["updatedMethodTokens"] = updatedMethodTokens is { Length: > 0 }
-					? new JsonArray(updatedMethodTokens.Select(token => (JsonNode?)token).ToArray()) : null
+					? new JsonArray(updatedMethodTokens.Select(token => (JsonNode?)token).ToArray()) : null,
+				["lineMaps"] = LineMapsJson(lineMaps)
 			}, cancellationToken).ConfigureAwait(false);
 			if (response?["success"]?.GetValue<bool>() == false)
 				throw new InvalidOperationException(response["message"]?.GetValue<string>() ?? "sharpdbg/applyDeltas failed.");
+		}
+
+		/// <summary>The <c>lineMaps</c> argument of <c>sharpdbg/applyDeltas</c>, or null when there are none.</summary>
+		public static JsonArray? LineMapsJson(HotReloadSourceLineMap[]? lineMaps)
+		{
+			if (lineMaps is not { Length: > 0 })
+				return null;
+			return new JsonArray(lineMaps.Select(map => (JsonNode?)new JsonObject {
+				["documentPath"] = map.DocumentPath,
+				["unchangedLines"] = new JsonArray(map.UnchangedLines.Select(range => (JsonNode?)new JsonObject {
+					["oldStartLine"] = range.OldStartLine, ["newStartLine"] = range.NewStartLine, ["lineCount"] = range.LineCount
+				}).ToArray())
+			}).ToArray());
 		}
 
 		/// <summary>

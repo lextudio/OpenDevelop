@@ -38,7 +38,7 @@ namespace Debugger.AddIn.Service.Dap
 			if (current == null || !current.IsRunning)
 				return new HotReloadApplyResult(HotReloadOutcome.RestartRequired, "The debug session has ended.");
 			try {
-				await current.ApplyDeltasAsync(delta.Mvid, delta.Metadata, delta.IL, delta.Pdb, delta.UpdatedMethodTokens, token).ConfigureAwait(false);
+				await current.ApplyDeltasAsync(delta.Mvid, delta.Metadata, delta.IL, delta.Pdb, delta.UpdatedMethodTokens, token, delta.LineMaps).ConfigureAwait(false);
 				return new HotReloadApplyResult(HotReloadOutcome.Applied, "Applied through SharpDbg.");
 			} catch (Exception ex) {
 				return new HotReloadApplyResult(HotReloadOutcome.Failed, ex.Message, ex.ToString());

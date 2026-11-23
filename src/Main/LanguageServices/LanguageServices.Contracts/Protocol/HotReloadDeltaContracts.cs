@@ -11,6 +11,8 @@
 
 #nullable enable
 
+using System.Collections.Generic;
+
 namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol;
 
 /// <summary>Stable key for one evaluated project/TFM slice in the Roslyn host workspace.</summary>
@@ -47,14 +49,89 @@ public enum HotReloadDeltaStatus
 	Failed,
 }
 
-/// <summary>One serializable CLR metadata update, identified by the loaded module MVID.</summary>
+/// <summary>
+/// One serializable CLR metadata update, identified by the loaded module MVID.
+/// <paramref name="LineMaps"/> are the lines the edit left unchanged in each edited C# document; a debugger uses them
+/// to move a frame that is executing an updated method onto the new version at a statement both versions share.
+/// </summary>
 public sealed record HotReloadModuleDelta(
 	System.Guid Mvid,
 	byte[] Metadata,
 	byte[] IL,
 	byte[] Pdb,
 	int[] UpdatedTypeTokens,
-	int[]? UpdatedMethodTokens = null);
+	int[]? UpdatedMethodTokens = null,
+	HotReloadSourceLineMap[]? LineMaps = null);
+
+/// <summary>
+/// <paramref name="LineCount"/> lines starting at <paramref name="OldStartLine"/> in the text the running code was compiled
+/// from are the same lines starting at <paramref name="NewStartLine"/> in the edited text (1-based).
+/// </summary>
+public sealed record HotReloadUnchangedLines(int OldStartLine, int NewStartLine, int LineCount);
+
+/// <summary>The unchanged lines of one document, keyed by the path its PDB records.</summary>
+public sealed record HotReloadSourceLineMap(string DocumentPath, HotReloadUnchangedLines[] UnchangedLines)
+{
+	/// <summary>Above this many line pairs in the edited middle of a file, only the common start and end count.</summary>
+	const long MaxDiffCells = 4_000_000;
+
+	/// <summary>
+	/// The lines <paramref name="newText"/> keeps from <paramref name="oldText"/>, in order: the common first and last lines,
+	/// and between them a longest common subsequence of lines. The two texts need not share an edit history, which is why
+	/// this compares lines rather than asking for text changes. Errs toward fewer lines: a line it misses only costs a remap.
+	/// </summary>
+	public static HotReloadUnchangedLines[] Compute(string oldText, string newText)
+	{
+		var a = SplitLines(oldText);
+		var b = SplitLines(newText);
+		var prefix = 0;
+		while (prefix < a.Length && prefix < b.Length && a[prefix] == b[prefix])
+			prefix++;
+		var suffix = 0;
+		while (suffix < a.Length - prefix && suffix < b.Length - prefix && a[a.Length - 1 - suffix] == b[b.Length - 1 - suffix])
+			suffix++;
+
+		var pairs = new List<(int Old, int New)>();
+		for (var i = 0; i < prefix; i++)
+			pairs.Add((i, i));
+		int oldCount = a.Length - prefix - suffix, newCount = b.Length - prefix - suffix;
+		if (oldCount > 0 && newCount > 0 && (long)oldCount * newCount <= MaxDiffCells) {
+			var lcs = new int[oldCount + 1, newCount + 1];
+			for (var i = oldCount - 1; i >= 0; i--)
+				for (var j = newCount - 1; j >= 0; j--)
+					lcs[i, j] = a[prefix + i] == b[prefix + j] ? lcs[i + 1, j + 1] + 1 : System.Math.Max(lcs[i + 1, j], lcs[i, j + 1]);
+			for (int i = 0, j = 0; i < oldCount && j < newCount;) {
+				if (a[prefix + i] == b[prefix + j]) {
+					pairs.Add((prefix + i, prefix + j));
+					i++;
+					j++;
+				} else if (lcs[i + 1, j] >= lcs[i, j + 1]) {
+					i++;
+				} else {
+					j++;
+				}
+			}
+		}
+		for (var k = suffix; k > 0; k--)
+			pairs.Add((a.Length - k, b.Length - k));
+
+		var ranges = new List<HotReloadUnchangedLines>();
+		foreach (var (oldLine, newLine) in pairs) {
+			if (ranges.Count > 0) {
+				var last = ranges[ranges.Count - 1];
+				if (last.OldStartLine + last.LineCount == oldLine + 1 && last.NewStartLine + last.LineCount == newLine + 1) {
+					ranges[ranges.Count - 1] = last with { LineCount = last.LineCount + 1 };
+					continue;
+				}
+			}
+			ranges.Add(new HotReloadUnchangedLines(oldLine + 1, newLine + 1, 1));
+		}
+		return ranges.ToArray();
+	}
+
+	// Line breaks as the compiler counts them for sequence points: \r\n, \r or \n.
+	static string[] SplitLines(string text) => text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+}
 
 /// <summary>Host result for baseline capture or delta production.</summary>
 public sealed record HotReloadDeltaResponse(

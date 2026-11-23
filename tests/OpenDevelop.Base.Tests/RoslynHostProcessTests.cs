@@ -74,6 +74,11 @@ public class RoslynHostProcessTests
 			var text = reader.GetTypeDefinition(nested).GetMethods().Single(handle =>
 				reader.GetString(reader.GetMethodDefinition(handle).Name) == "Text");
 			Assert.Contains(MetadataTokens.GetToken(text), delta.Delta.UpdatedMethodTokens!);
+			// The edited file's unchanged lines travel with the delta (for an active-frame remap under SharpDbg);
+			// its only line changed, so none are unchanged.
+			var lineMap = Assert.Single(delta.Delta.LineMaps!);
+			Assert.Equal(sourcePath, lineMap.DocumentPath);
+			Assert.Empty(lineMap.UnchangedLines);
 			await protocol.TextDocumentDidChangeAsync(new TextDocumentIdentifier(sourcePath), afterStaticConstructor, token);
 			var staticConstructorEdit = await protocol.RoslynHotReloadProduceDeltaAsync(new HotReloadDeltaRequest(project), token);
 			Assert.Equal(HotReloadDeltaStatus.RudeEdit, staticConstructorEdit.Status);

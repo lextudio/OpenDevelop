@@ -199,12 +199,38 @@ public sealed class HotReloadDeltaProducer
 			baseline.SetPending(compilation, difference.Baseline!);
 			var updatedMethodTokens = difference.UpdatedMethods.Select(method => MetadataTokens.GetToken(method)).ToArray();
 			return new HotReloadDeltaResponse(HotReloadDeltaStatus.Applied,
-				new HotReloadModuleDelta(baseline.Mvid, metadata.ToArray(), il.ToArray(), pdb.ToArray(), tokens, updatedMethodTokens),
+				new HotReloadModuleDelta(baseline.Mvid, metadata.ToArray(), il.ToArray(), pdb.ToArray(), tokens, updatedMethodTokens,
+					LineMaps(baseline.Compilation, compilation)),
 				$"Produced a delta for {difference.UpdatedMethods.Length} method(s).");
 		}
 	}
 
 	static HotReloadDeltaResponse Failed(string message) => new(HotReloadDeltaStatus.Failed, null, message);
+
+	/// <summary>
+	/// The unchanged lines of each edited source file between the generation the application runs and this one, so a
+	/// debugger can move an active frame onto the new code. Only files on disk: generator output has no file, and XSG
+	/// code reaches the PDB through #line as XAML lines, where one line holds many statements and a line map would mislead.
+	/// </summary>
+	static HotReloadSourceLineMap[]? LineMaps(Compilation previous, Compilation current)
+	{
+		var previousTrees = new Dictionary<string, SyntaxTree>(StringComparer.Ordinal);
+		foreach (var tree in previous.SyntaxTrees)
+			if (IsSourceFile(tree))
+				previousTrees[tree.FilePath] = tree;
+		var maps = new List<HotReloadSourceLineMap>();
+		foreach (var tree in current.SyntaxTrees) {
+			if (!IsSourceFile(tree) || !previousTrees.TryGetValue(tree.FilePath, out var old) || old == tree)
+				continue;
+			var oldText = old.GetText().ToString();
+			var newText = tree.GetText().ToString();
+			if (!string.Equals(oldText, newText, StringComparison.Ordinal))
+				maps.Add(new HotReloadSourceLineMap(tree.FilePath, HotReloadSourceLineMap.Compute(oldText, newText)));
+		}
+		return maps.Count == 0 ? null : maps.ToArray();
+
+		static bool IsSourceFile(SyntaxTree tree) => Path.IsPathRooted(tree.FilePath) && File.Exists(tree.FilePath);
+	}
 
 	static EditAndContinueMethodDebugInformation GetMethodDebugInformation(MetadataReader pdbReader, MethodDefinitionHandle method)
 	{
