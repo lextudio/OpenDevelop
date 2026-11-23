@@ -110,6 +110,61 @@ public sealed class WpfHotReloadJourneyTests
 	}
 
 	/// <summary>
+	/// The reverse control of the journey above: the same project with <c>LibreWpfSimplerXaml</c> switched off. Simpler XAML is
+	/// then off for the project, so the designer must read a document without xmlns as written and fail to load it (it reports a
+	/// load error), while an old-style document of the same project still loads. A copy of the fixture under tmp/ is
+	/// used, so no tracked file is touched.
+	/// </summary>
+	[Fact]
+	public async Task XsgProject_WithSimplerXamlOff_NewStyleXamlDoesNotLoadInTheDesigner()
+	{
+		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
+		var copy = Path.Combine(RepositoryRoot(), "tmp", "xsg-simpler-off-" + Guid.NewGuid().ToString("N")[..8]);
+		Directory.CreateDirectory(copy);
+		try {
+			// Without App.xaml: its new-style root is itself invalid with Simpler XAML off (the designer then fails for the whole
+			// project), which would hide what this test isolates, the document under test.
+			foreach (var file in Directory.EnumerateFiles(fixtureDirectory).Where(f => Path.GetFileName(f) != "App.xaml")) {
+				var target = Path.Combine(copy, Path.GetFileName(file));
+				File.Copy(file, target);
+			}
+			var project = Path.Combine(copy, "XsgLocalFeedFixture.csproj");
+			var text = await File.ReadAllTextAsync(project);
+			const string overall = "<UseLibreWpfXamlSourceGenerator>true</UseLibreWpfXamlSourceGenerator>";
+			Assert.Contains(overall, text);
+			const string appItem = "<None Include=\"App.xaml\" />";
+			Assert.Contains(appItem, text);
+			await File.WriteAllTextAsync(project, text.Replace(appItem, "")
+				.Replace(overall, overall + "<LibreWpfSimplerXaml>false</LibreWpfSimplerXaml>"));
+
+			var opened = await _app.ReopenSolutionAsync(Path.Combine(copy, "XsgLocalFeedFixture.slnx"));
+			Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+
+			var main = Path.Combine(copy, "MainWindow.xaml");
+			await OpenAsActiveDocumentAsync(main);
+			JsonElement status = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				status = await _app.InvokeAsync("od.wpf-designer.status");
+				return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+			}, TimeSpan.FromSeconds(90)), $"old-style MainWindow.xaml must still load: {status}");
+			await _app.InvokeAsync("od.close-active-view");
+
+			var third = Path.Combine(copy, "ThirdWindow.xaml");
+			await OpenAsActiveDocumentAsync(third);
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				status = await _app.InvokeAsync("od.wpf-designer.status");
+				return status.TryGetProperty("loadError", out var error) && error.ValueKind == JsonValueKind.String
+					&& !string.IsNullOrEmpty(error.GetString());
+			}, TimeSpan.FromSeconds(90)), $"new-style ThirdWindow.xaml must not load with Simpler XAML off: {status}");
+			Assert.False(status.GetProperty("designerLoaded").GetBoolean(), status.ToString());
+			Assert.Contains("undeclared prefix", status.GetProperty("loadError").GetString(), StringComparison.Ordinal);
+			await _app.InvokeAsync("od.close-active-view");
+		} finally {
+			try { Directory.Delete(copy, recursive: true); } catch (IOException) { }
+		}
+	}
+
+	/// <summary>
 	/// Route D through the IDE for a project compiled by the XAML source generator: a <c>{cs:}</c>
 	/// edit cannot be pushed as XAML text, so Apply has to classify it as a code delta, have the
 	/// Roslyn host rerun the generator on the unsaved buffer, and send the metadata delta to the
