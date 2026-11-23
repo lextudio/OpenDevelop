@@ -51,15 +51,20 @@ public sealed class WorkbenchTests
         // Project CRUD scenarios may have just completed while their project-system refresh is
         // still draining. A clean-build assertion needs a genuine clean load; reusing that live
         // solution can cause BuildService to observe the previous refresh cancellation token.
-        await _app.ReopenSolutionAsync(_app.SolutionExplorerFixturePath);
+        var reopened = await _app.ReopenSolutionAsync(_app.SolutionExplorerFixturePath);
+        Assert.True(reopened.GetProperty("success").GetBoolean(), "The fixture solution did not reopen: " + reopened);
         await _app.InvokeAsync("od.error-list.clear");
 
         // --- was: BuildSolution_FixtureProjectBuildsSuccessfully ---
         // A rebuild: the assertions below read MSBuild's own log, and a plain build of an unchanged
         // fixture is skipped by the fast up-to-date check without running MSBuild at all.
         var result = await _app.InvokeAsync("od.build-solution", "", "rebuild");
+        // An infrastructure failure ({"success":false,"error":"No solution is open."} and the like) carries no
+        // "result"; reading it unguarded threw KeyNotFoundException and hid the error. Report the response instead.
+        static string? BuildOutcome(JsonElement response)
+            => response.TryGetProperty("result", out var value) ? value.GetString() : null;
         for (var attempt = 1;
-             attempt < 3 && result.GetProperty("result").GetString() == "Cancelled";
+             attempt < 3 && BuildOutcome(result) == "Cancelled";
              attempt++)
         {
             // Project reload completion and BuildService readiness are signaled on different UI
@@ -69,9 +74,10 @@ public sealed class WorkbenchTests
             result = await _app.InvokeAsync("od.build-solution", "", "rebuild");
         }
 
-        Assert.True(result.GetProperty("success").GetBoolean(), "od.build-solution reported an infrastructure failure, not a build failure");
+        Assert.True(result.TryGetProperty("success", out var buildSucceeded) && buildSucceeded.GetBoolean(),
+            "od.build-solution reported an infrastructure failure, not a build failure: " + result);
         // Report the compiler's own output rather than just "Success vs Error" - see DescribeBuildAsync.
-        if (result.GetProperty("result").GetString() != "Success"
+        if (BuildOutcome(result) != "Success"
             || result.GetProperty("errorCount").GetInt32() != 0
             || result.GetProperty("warningCount").GetInt32() != 0)
         {
