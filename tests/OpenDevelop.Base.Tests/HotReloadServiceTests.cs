@@ -249,6 +249,19 @@ public sealed class HotReloadServiceTests : IDisposable
 	// a removed x:Name.
 	[InlineData("<Grid><Button x:Name=\"Ok\" /></Grid>", "<Grid><Button ",
 		HotReloadChangeKind.Property)]
+	// An event handler is generated code (+= in InitializeComponent), so changing, adding or removing
+	// one is a rebuild. Recognised by name and value shape: a text-only diff cannot resolve the type.
+	[InlineData("<Button Click=\"OnA\" />", "<Button Click=\"OnB\" />", HotReloadChangeKind.CodeDelta)]
+	[InlineData("<Button />", "<Button Click=\"OnA\" />", HotReloadChangeKind.CodeDelta)]
+	[InlineData("<Button Click=\"OnA\" />", "<Button />", HotReloadChangeKind.CodeDelta)]
+	[InlineData("<Button PreviewMouseDown=\"OnA\" />", "<Button PreviewMouseDown=\"OnB\" />", HotReloadChangeKind.CodeDelta)]
+	[InlineData("<ListBox SelectionChanged=\"OnA\" />", "<ListBox SelectionChanged=\"OnB\" />", HotReloadChangeKind.CodeDelta)]
+	// Attached events carry the owner's name before the dot.
+	[InlineData("<Button Mouse.MouseEnter=\"OnA\" />", "<Button Mouse.MouseEnter=\"OnB\" />", HotReloadChangeKind.CodeDelta)]
+	// Not events: a property whose value is a bare word, and a binding on an event-looking name.
+	[InlineData("<Button Content=\"Click\" />", "<Button Content=\"Tap\" />", HotReloadChangeKind.Property)]
+	[InlineData("<Button Foreground=\"Red\" />", "<Button Foreground=\"Blue\" />", HotReloadChangeKind.Property)]
+	[InlineData("<Button Click=\"{Binding A}\" />", "<Button Click=\"{Binding B}\" />", HotReloadChangeKind.Property)]
 	// Simpler XAML has no xmlns declarations at all.
 	[InlineData("<Grid><TextBlock Text=\"a\" /></Grid>", "<Grid><TextBlock Text=\"b\" /></Grid>",
 		HotReloadChangeKind.Property)]
@@ -270,6 +283,52 @@ public sealed class HotReloadServiceTests : IDisposable
 		var kind = HotReloadWorkflow.Classify(previous, current);
 		Assert.NotEqual(HotReloadChangeKind.RestartRequired, kind);
 		Assert.NotEqual(HotReloadChangeKind.CodeDelta, kind);
+	}
+
+	[Fact]
+	public void Classify_CustomEventName_IsAnEventWhenTheCodeBehindDeclaresTheHandler()
+	{
+		// "Frobbed" matches no event-name pattern; only the code-behind says OnFrobA/OnFrobB are handlers.
+		const string previous = "<my:Widget Frobbed=\"OnFrobA\" />";
+		const string current = "<my:Widget Frobbed=\"OnFrobB\" />";
+		var handlers = HotReloadWorkflow.HandlerNamesIn(
+			"partial class View { void OnFrobA(object s, EventArgs e) { }\n private async void OnFrobB (object s, EventArgs e) { } }");
+		Assert.Equal(HotReloadChangeKind.Property, HotReloadWorkflow.Classify(previous, current, generatesXamlCode: true));
+		Assert.Equal(HotReloadChangeKind.CodeDelta, HotReloadWorkflow.Classify(previous, current, generatesXamlCode: true, handlers));
+		// A property value that names no method stays a property edit.
+		Assert.Equal(HotReloadChangeKind.Property,
+			HotReloadWorkflow.Classify("<my:Widget Mode=\"Fast\" />", "<my:Widget Mode=\"Slow\" />", generatesXamlCode: true, handlers));
+		Assert.Empty(HotReloadWorkflow.HandlerNamesIn(null));
+	}
+
+	[Fact]
+	public void UsesGeneratedXaml_PrefersTheEvaluatedProperty()
+	{
+		// The evaluated value is what the build used: Directory.Build.props, imported targets and the
+		// environment switch already applied. A project file without the property still opts in.
+		var dir = Path.Combine(Path.GetTempPath(), "od-xsg-" + Guid.NewGuid().ToString("N").Substring(0, 8));
+		Directory.CreateDirectory(dir);
+		try {
+			var plain = Path.Combine(dir, "Plain.csproj");
+			var on = Path.Combine(dir, "On.csproj");
+			File.WriteAllText(plain, "<Project><PropertyGroup><UseWPF>true</UseWPF></PropertyGroup></Project>");
+			File.WriteAllText(on, "<Project><PropertyGroup><UseLibreWpfXamlSourceGenerator>true</UseLibreWpfXamlSourceGenerator></PropertyGroup></Project>");
+			Func<string, string> noEnvironment = _ => null;
+			Func<string, string> Evaluated(string value) => name => name == "UseLibreWpfXamlSourceGenerator" ? value : null;
+
+			Assert.True(HotReloadWorkflow.UsesGeneratedXaml(plain, Evaluated("true"), noEnvironment));
+			// The build said no, so a stray environment switch or a file value the build overrode does not win.
+			Assert.False(HotReloadWorkflow.UsesGeneratedXaml(plain, Evaluated("false"), n => n == "LIBREWPF_USE_XSG" ? "1" : null));
+			Assert.False(HotReloadWorkflow.UsesGeneratedXaml(on, Evaluated("false"), noEnvironment));
+			// No evaluated value (not an MSBuild project, property undefined, evaluation failed): the file and
+			// the environment decide, as before.
+			Assert.True(HotReloadWorkflow.UsesGeneratedXaml(on, Evaluated(""), noEnvironment));
+			Assert.True(HotReloadWorkflow.UsesGeneratedXaml(on, _ => throw new InvalidOperationException("evaluation failed"), noEnvironment));
+			Assert.True(HotReloadWorkflow.UsesGeneratedXaml(on, null, noEnvironment));
+			Assert.False(HotReloadWorkflow.UsesGeneratedXaml(plain, Evaluated(null), noEnvironment));
+		} finally {
+			Directory.Delete(dir, true);
+		}
 	}
 
 	[Fact]

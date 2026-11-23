@@ -90,12 +90,18 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		/// application was compiled from. With the XAML source generator the code-delta path still knows (its
 		/// baseline is the launch compilation), so it takes the edit; a text push has nothing to diff against.
 		/// </summary>
-		public static HotReloadChangeKind ClassifyApply(string previousText, string currentText, bool generatesXamlCode)
+		public static HotReloadChangeKind ClassifyApply(string previousText, string currentText, bool generatesXamlCode,
+			IReadOnlyCollection<string> handlerNames = null)
 			=> previousText == null && generatesXamlCode
 				? HotReloadChangeKind.CodeDelta
-				: Classify(previousText ?? currentText, currentText, generatesXamlCode);
+				: Classify(previousText ?? currentText, currentText, generatesXamlCode, handlerNames);
 
-		public static HotReloadChangeKind Classify(string previousText, string currentText, bool generatesXamlCode)
+		/// <param name="handlerNames">
+		/// Methods the x:Class code-behind declares (<see cref="HandlerNamesIn"/>): an attribute whose value names one is
+		/// an event handler whatever the event is called, which the name heuristic alone cannot know.
+		/// </param>
+		public static HotReloadChangeKind Classify(string previousText, string currentText, bool generatesXamlCode,
+			IReadOnlyCollection<string> handlerNames = null)
 		{
 			if (previousText == null || currentText == null)
 				return HotReloadChangeKind.FullDocument;
@@ -108,12 +114,13 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			// x:Name anywhere in it, template content included. {cs:} values compare in order: moving
 			// one changes the generated code, and a false CodeDelta only costs a rebuild whereas a
 			// missed one loses the edit.
-			var previousFacts = generatesXamlCode ? XamlFacts.TryRead(previousText) : null;
-			var currentFacts = generatesXamlCode ? XamlFacts.TryRead(currentText) : null;
+			var previousFacts = generatesXamlCode ? XamlFacts.TryRead(previousText, handlerNames) : null;
+			var currentFacts = generatesXamlCode ? XamlFacts.TryRead(currentText, handlerNames) : null;
 			if (previousFacts != null && currentFacts != null) {
 				if (previousFacts.XClass != currentFacts.XClass || previousFacts.Names.Except(currentFacts.Names).Any())
 					return HotReloadChangeKind.RestartRequired;
 				if (!previousFacts.CsExpressions.SequenceEqual(currentFacts.CsExpressions)
+					|| !previousFacts.EventHandlers.SequenceEqual(currentFacts.EventHandlers)
 					|| currentFacts.Names.Except(previousFacts.Names).Any())
 					return HotReloadChangeKind.CodeDelta;
 				return previousFacts.ElementCount == currentFacts.ElementCount
@@ -133,6 +140,58 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		/// What a text push cannot carry, read with namespace processing off so Simpler XAML
 		/// (no xmlns declarations) still reads. Null when the text is not well-formed.
 		/// </summary>
+		/// <summary>
+		/// An event attribute is generated code (an += in InitializeComponent), but a text diff cannot resolve
+		/// the element's type to tell it from a property. So: a bare identifier value on a name that reads like
+		/// an event. Over-recognising only costs a rebuild; missing one loses the edit.
+		/// </summary>
+		static bool LooksLikeEventHandler(string localName, string value, IReadOnlyCollection<string> handlerNames)
+		{
+			if (value.Length == 0 || !(char.IsLetter(value[0]) || value[0] == '_'))
+				return false;
+			foreach (var c in value)
+				if (!(char.IsLetterOrDigit(c) || c == '_'))
+					return false;
+			if (handlerNames != null && handlerNames.Contains(value))
+				return true;
+			var dot = localName.LastIndexOf('.');
+			var eventName = dot < 0 ? localName : localName.Substring(dot + 1);
+			if (eventName.StartsWith("Preview", StringComparison.Ordinal) && eventName.Length > "Preview".Length)
+				return true;
+			foreach (var suffix in EventNameSuffixes)
+				if (eventName.Length > suffix.Length && eventName.EndsWith(suffix, StringComparison.Ordinal))
+					return true;
+			return EventNames.Contains(eventName);
+		}
+
+		/// <summary>
+		/// Names of the <c>void</c> methods a code-behind file declares: the candidates for event handlers its XAML names.
+		/// A text scan, not a parse, so it also works on unsaved or half-typed code; a comment or string that looks like a
+		/// declaration only adds a name, which costs at most a rebuild.
+		/// </summary>
+		public static IReadOnlyCollection<string> HandlerNamesIn(string codeBehind)
+		{
+			var names = new HashSet<string>(StringComparer.Ordinal);
+			if (string.IsNullOrEmpty(codeBehind))
+				return names;
+			foreach (System.Text.RegularExpressions.Match match in VoidMethod.Matches(codeBehind))
+				names.Add(match.Groups[1].Value);
+			return names;
+		}
+
+		static readonly System.Text.RegularExpressions.Regex VoidMethod = new System.Text.RegularExpressions.Regex(
+			@"\bvoid\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+		static readonly string[] EventNameSuffixes = {
+			"Changed", "Click", "Down", "Up", "Move", "Enter", "Leave", "Wheel", "Closed", "Closing", "Opened", "Opening"
+		};
+
+		static readonly HashSet<string> EventNames = new HashSet<string>(StringComparer.Ordinal) {
+			"Click", "Loaded", "Unloaded", "Initialized", "Activated", "Deactivated", "GotFocus", "LostFocus",
+			"Checked", "Unchecked", "Indeterminate", "Drop", "DragEnter", "DragLeave", "DragOver", "TextInput",
+			"Expanded", "Collapsed", "Selected", "Unselected", "ContextMenuOpening", "SizeChanged", "Executed", "CanExecute"
+		};
+
 		sealed class XamlFacts
 		{
 			const string XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
@@ -140,9 +199,10 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			public string XClass;
 			public readonly HashSet<string> Names = new HashSet<string>(StringComparer.Ordinal);
 			public readonly List<string> CsExpressions = new List<string>();
+			public readonly List<string> EventHandlers = new List<string>();
 			public int ElementCount;
 
-			public static XamlFacts TryRead(string xaml)
+			public static XamlFacts TryRead(string xaml, IReadOnlyCollection<string> handlerNames)
 			{
 				try {
 					var facts = new XamlFacts();
@@ -175,6 +235,8 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 									facts.Names.Add(value);
 								if (value.StartsWith("{cs:", StringComparison.Ordinal))
 									facts.CsExpressions.Add(value);
+								else if (LooksLikeEventHandler(local, value, handlerNames))
+									facts.EventHandlers.Add(name + "=" + value);
 							}
 							reader.MoveToElement();
 						}
@@ -187,9 +249,31 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		}
 
 		/// <summary>
+		/// Whether the project opted in to the XAML source generator. <paramref name="getEvaluatedProperty"/>
+		/// reads the project's evaluated MSBuild property, the value the build itself uses (with
+		/// Directory.Build.props, imported targets and the environment switch already applied), so a
+		/// non-empty answer from it decides. Without one, the project file and the environment switch decide;
+		/// a value set elsewhere then reads as false, which keeps the text path.
+		/// </summary>
+		public static bool UsesGeneratedXaml(string projectFileName, Func<string, string> getEvaluatedProperty,
+			Func<string, string> getEnvironmentVariable = null)
+		{
+			string evaluated = null;
+			try {
+				evaluated = getEvaluatedProperty?.Invoke("UseLibreWpfXamlSourceGenerator");
+			} catch (Exception ex) when (!(ex is OutOfMemoryException)) {
+				// An evaluation that fails here must not fail an Apply; fall back to the file.
+			}
+			if (!string.IsNullOrWhiteSpace(evaluated))
+				return IsSwitchOn(evaluated);
+			return UsesGeneratedXaml(projectFileName, getEnvironmentVariable);
+		}
+
+		/// <summary>
 		/// Whether the project opted in to the XAML source generator, through the property in its own
 		/// project file or the environment switch the targets also honour. A value set elsewhere
-		/// (Directory.Build.props) is not seen and reads as false, which keeps the text path.
+		/// (Directory.Build.props) is not seen and reads as false, which keeps the text path; prefer the
+		/// overload that takes the evaluated property.
 		/// </summary>
 		public static bool UsesGeneratedXaml(string projectFileName, Func<string, string> getEnvironmentVariable = null)
 		{

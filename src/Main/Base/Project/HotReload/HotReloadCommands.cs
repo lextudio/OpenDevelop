@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -52,9 +53,26 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			var knownPrevious = HotReloadDocumentTracker.GetAcceptedText(fileName) ?? LaunchedText(fileName);
 			var change = new HotReloadDocumentChange(fileName.ToString(), knownPrevious ?? currentText, currentText,
 				editor.Document.Version?.GetHashCode() ?? 0,
-				HotReloadWorkflow.ClassifyApply(knownPrevious, currentText, GeneratesXamlCode(session, fileName)));
+				HotReloadWorkflow.ClassifyApply(knownPrevious, currentText, GeneratesXamlCode(session, fileName),
+					HotReloadWorkflow.HandlerNamesIn(CodeBehindText(fileName))));
 
 			ApplyAsync(session, change, fileName).FireAndForget();
+		}
+
+		// The x:Class code-behind beside the XAML (View.xaml.cs), as the editor has it if it is open: the methods it
+		// declares tell an event attribute from a property one. Null when there is none.
+		static string CodeBehindText(FileName fileName)
+		{
+			var codeBehind = FileName.Create(fileName + ".cs");
+			var editor = SD.FileService.GetOpenedFile(codeBehind)?.RegisteredViewContents
+				.Select(view => view.GetService<ITextEditor>()).FirstOrDefault(e => e != null);
+			if (editor != null)
+				return editor.Document.Text;
+			try {
+				return System.IO.File.Exists(codeBehind) ? System.IO.File.ReadAllText(codeBehind) : null;
+			} catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException) {
+				return null;
+			}
 		}
 
 		// Before the first accepted apply, the application runs what the launch build compiled: the
@@ -76,8 +94,16 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		// Only a WPF session can be on the LibreWPF generator; the environment switch is process-wide and
 		// must not turn the generator's rules on for a WinUI or Uno project.
 		static bool GeneratesXamlCode(IHotReloadSession session, FileName fileName)
-			=> session.Framework == "WPF"
-				&& HotReloadWorkflow.UsesGeneratedXaml(SD.ProjectService.FindProjectContainingFile(fileName)?.FileName);
+		{
+			if (session.Framework != "WPF")
+				return false;
+			var project = SD.ProjectService.FindProjectContainingFile(fileName);
+			// The evaluated property sees Directory.Build.props and imported targets, as the build does.
+			Func<string, string> evaluated = project is MSBuildBasedProject msbuildProject
+				? msbuildProject.GetEvaluatedProperty
+				: null;
+			return HotReloadWorkflow.UsesGeneratedXaml(project?.FileName, evaluated);
+		}
 
 		static async Task ApplyAsync(IHotReloadSession session, HotReloadDocumentChange change, FileName fileName)
 		{
