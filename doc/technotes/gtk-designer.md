@@ -59,6 +59,34 @@ then `MSYS2_ROOT`, `C:\\msys64`, and `C:\\tools\\msys64`. The automatic MSYS2 lo
 architecture-aware: ARM64 uses `clangarm64`; x64 considers `ucrt64`, `mingw64`, then `clang64`.
 An ARM64 host must not load an x64 GTK DLL.
 
+### Where the GIR metadata is found
+
+The `Gtk-4.0.gir` (and `Adw-1.gir`) metadata is found by `GtkGirCatalog.FindGirDirectory`, in this order, and
+the first directory that holds `Gtk-4.0.gir` wins:
+
+1. `GTK4_GIR_DIR`, an explicit directory.
+2. `GTK4_ROOT`: `share/gir-1.0` under it, or beside it when it names the `bin` folder. This is honoured on every
+   OS, like the runtime lookup above.
+3. Windows only: `share/gir-1.0` beside a `PATH` entry that holds `libgtk-4-1.dll`.
+4. Windows only: the default MSYS2 installs, the same roots and environments as the runtime lookup above
+   (`MSYS2_ROOT`, `C:\\msys64`, `C:\\tools\\msys64`; `clangarm64` only in an ARM64 process, otherwise `ucrt64`,
+   `mingw64`, `clang64`).
+5. The OS locations: `/opt/homebrew/share/gir-1.0`, `/usr/local/share/gir-1.0`, `/usr/share/gir-1.0`,
+   `/usr/lib64/gir-1.0`.
+
+The same function runs in two processes: the design host (`GtkDesigner.Host`, which links `GtkGirCatalog.cs`) and the
+IDE process, where the `.ui` language service starts loading the catalogue as soon as a `.ui` document is added,
+before any designer is opened. The IDE process does not get the GTK `bin` folder on its `PATH` (only the host child
+does), so steps 2 and 4 are what let the language service find GIR when GTK is installed in the default MSYS2
+location without being on `PATH`. Before they existed, such a machine had a working designer but a language service
+that reported only `GTK1000` ("GTK introspection data (Gtk-4.0.gir) was not found") and none of the property-level
+diagnostics (`GTK1014`, `GTK1016`, `GTK1017`).
+
+The catalogue is loaded once per process and the result is kept: if GTK is installed or `GTK4_ROOT` is set after
+the IDE has started, restart the IDE. `GtkGirCatalogLocationTests` pins the order (`GTK4_ROOT` without `PATH` or
+`GTK4_GIR_DIR`, the `bin` form, the explicit variable winning, the Windows MSYS2 defaults); the integration test
+`GtkDesigner_UiFilesGetAGtkBuilderLanguageService` covers it through the IDE.
+
 On macOS the host prepares loadable symlinks for Homebrew GTK/libadwaita libraries in its own
 directory because the ordinary `DYLD_LIBRARY_PATH` route is not reliable for this managed host.
 `GtkRuntimeLocator` is the implementation authority. Runtime discovery is covered separately
@@ -396,8 +424,8 @@ Selection synchronizes surface, Outline and Properties by GtkBuilder id/syntax i
 **Implemented (2026-10-01).** `GtkDesigner/GirCatalog.cs` reads the installed `Gtk-4.0.gir` and
 the repositories it includes (pure XML, no GTK; linked into the host and `GtkDesigner.Tests`
 like `GtkUiDocumentEditor.cs`). The host loads it once in the background
-(`GtkDesigner.Host/GtkPropertyMetadata.cs`; GIR is found via `GTK4_GIR_DIR`, else
-`share/gir-1.0` beside the libgtk on `PATH`, else the Homebrew/Linux locations) and reports, for
+(`GtkDesigner.Host/GtkPropertyMetadata.cs`; GIR is found by `GtkGirCatalog.FindGirDirectory`, see
+"Where the GIR metadata is found" under Runtime discovery) and reports, for
 every node, each writable non-deprecated property of the class, its ancestors and its interfaces
 (`GtkOrientable:orientation` on a `GtkBox`), plus anything the file sets that GIR does not know:
 
