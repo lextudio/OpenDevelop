@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 # including ProGPU.Fonts.Inter/Noto and ProGPU.Media.Editing (published since the closure was widened); none comes
 # from nuget.org, and NuGet.config maps ProGPU.* wholesale to the lextudio/local sources.
 $openAvalonPackages = @(
-    'LibreWPF.Interop', 'LibreWPF.ProGPU', 'LibreWPF.Sdk', 'LibreWPF.Transport',
+    'LibreWPF.Interop', 'LibreWPF.ProGPU', 'LibreWPF.Sdk', 'LibreWPF.Transport', 'LibreWPF.Xaml.SourceGenerator',
     'LibreWinForms.ProGPU', 'LibreWinForms.Sdk', 'LibreWinForms.System.Windows.Forms', 'LibreWinForms.WindowsFormsIntegration',
     'ProGPU.Avalonia', 'ProGPU.Backend', 'ProGPU.Backend.Dawn', 'ProGPU.Backend.Dx12', 'ProGPU.Backend.Native', 'ProGPU.Native.Sdk', 'ProGPU.Compute',
     'ProGPU.DirectX', 'ProGPU.Layout', 'ProGPU.Media', 'ProGPU.Media.Scene', 'ProGPU.Scene', 'ProGPU.SkiaSharp',

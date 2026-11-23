@@ -6,10 +6,10 @@ Status (2026-11-22): E0, E1 and E3a are committed and published. OpenDevelop pin
 
 | Repository | Commits | What |
 |---|---|---|
-| OpenDevelop (local, not pushed) | `59366a11e4` E0, `bc6b3839bd` E1+E3a client, `70d3f22794` updated method tokens, `08d12ee36d` host global usings/analyzers/AdditionalFiles, `e498565ea8` delta generations, XAML text, debugger applier, classification, apphost baseline, `504182e9fd` XSG end-to-end tests and docs | producer, agent pipe payload, `DapSession.ApplyDeltasAsync` |
+| OpenDevelop | `59366a11e4` E0, `bc6b3839bd` E1+E3a client, `70d3f22794` updated method tokens, `08d12ee36d` host global usings/analyzers/AdditionalFiles, `e498565ea8` delta generations, XAML text, debugger applier, classification, apphost baseline, `504182e9fd` XSG end-to-end tests and docs | producer, agent pipe payload, `DapSession.ApplyDeltasAsync` |
 | WpfHotReload.Runtime (pushed) | `6f2be2d` `applyDelta`, `502377a` handler callbacks, `9f5f214` startup guard, `be2ba81` restore-on-failure, `runUpdateHandlers`, property query | Tier 1 applier in the agent |
 | sharpdbg (pushed to `main`) | `e0407f8` E2, `e22b991` `sharpdbg/applyDeltas`, `1d01991` attach opt-in, `739eaac` PDB delta symbol fidelity (E3b part), `158e240` apply while running | Tier 2 applier |
-| openavalon/LibreWPF (local, not pushed) | `f5df03025` EnC-safe generator, `b66539625` x:Name Name/NameScope | XAML source generator; the XSG fixture still uses the local-only `LibreWPF.Xaml.SourceGenerator 0.1.0-local.2`, so its tests skip in CI |
+| openavalon/LibreWPF (pushed) | `f5df03025` EnC-safe generator, `b66539625` x:Name Name/NameScope; openavalon `d97e51a` pointer, `71068ac` publishes the generator | XAML source generator, published as `LibreWPF.Xaml.SourceGenerator 0.1.0-preview.69.60.1` |
 
 With the old `0.1.0-ci.1` pin, `WpfHotReloadEndToEndTests.ApplyDelta_UpdatesALiveWpfAssemblyAndRunsItsMetadataHandler`
 failed (`error: invalid request`); with the published packages it passes.

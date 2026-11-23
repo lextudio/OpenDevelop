@@ -28,8 +28,8 @@ namespace OpenDevelop.Base.Tests;
 /// <c>MetadataUpdateHandler</c> reruns <c>InitializeComponent</c>. The assertion reads the live
 /// window, so a delta that applies but changes nothing on screen fails.
 ///
-/// The fixture consumes a local-only generator package (see doc/technotes/xsg-hot-reload.md,
-/// phase 0b), so the test skips where that fixture has not been built.
+/// CI does not build the fixture (it uses the published LibreWPF.Xaml.SourceGenerator package, see
+/// doc/technotes/xsg-hot-reload.md), so the test skips where that fixture has not been built.
 /// </summary>
 public sealed class XsgHotReloadEndToEndTests
 {
@@ -53,7 +53,7 @@ public sealed class XsgHotReloadEndToEndTests
 		var output = Path.Combine(fixtureDirectory, "bin", CurrentConfiguration(), TargetFramework);
 		var executable = Path.Combine(output, OperatingSystem.IsWindows() ? "XsgLocalFeedFixture.exe" : "XsgLocalFeedFixture");
 		if (!File.Exists(executable))
-			Assert.Skip($"Build the local-feed XSG fixture first: {projectPath} (-c {CurrentConfiguration()}).");
+			Assert.Skip($"Build the XSG fixture first: {projectPath} (-c {CurrentConfiguration()}).");
 		var xamlPath = Path.Combine(fixtureDirectory, "MainWindow.xaml");
 		var originalXaml = await File.ReadAllTextAsync(xamlPath, token);
 		const string originalExpression = "{cs: &quot;Hot reload ready&quot;}";

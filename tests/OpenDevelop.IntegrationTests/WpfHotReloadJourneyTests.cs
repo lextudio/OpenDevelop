@@ -89,8 +89,8 @@ public sealed class WpfHotReloadJourneyTests
 	/// agent, whose generated handler rebuilds the window. It covers what the Base-level
 	/// XsgHotReloadEndToEndTests bypass: the IDE's own project evaluation (the generator is a
 	/// package analyzer, the XAML an AdditionalFiles item), the launch baseline capture and the
-	/// classification behind the Apply command. The fixture needs a local-only generator package,
-	/// so the journey skips where it has not been built.
+	/// classification behind the Apply command. CI does not build the fixture, so the journey skips
+	/// where it has not been built.
 	/// </summary>
 	[Fact]
 	public async Task XsgProject_CsExpressionEdit_AppliesAsACodeDelta()
@@ -99,7 +99,7 @@ public sealed class WpfHotReloadJourneyTests
 		var built = Path.Combine(fixtureDirectory, "bin", "Debug", "net10.0-windows",
 			OperatingSystem.IsWindows() ? "XsgLocalFeedFixture.exe" : "XsgLocalFeedFixture");
 		if (!File.Exists(built))
-			Assert.Skip("Build tests/fixtures/XsgLocalFeedFixture (Debug) first; it needs the local XSG generator package.");
+			Assert.Skip("Build tests/fixtures/XsgLocalFeedFixture (Debug) first.");
 		var xaml = Path.Combine(fixtureDirectory, "MainWindow.xaml");
 		var originalXaml = await File.ReadAllTextAsync(xaml);
 

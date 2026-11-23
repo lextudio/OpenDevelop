@@ -15,7 +15,7 @@
   <ItemGroup>
     <!-- Deliberately a package reference: this proves the project-local OpenAvalon NuGet feed
          transports the analyzer rather than accidentally loading the sibling checkout. -->
-    <PackageReference Include="LibreWPF.Xaml.SourceGenerator" Version="0.1.0-local.2" PrivateAssets="all" />
+    <PackageReference Include="LibreWPF.Xaml.SourceGenerator" Version="$(ProGpuPackageVersion)" PrivateAssets="all" />
     <AdditionalFiles Include="MainWindow.xaml" />
     <AdditionalFiles Include="SecondWindow.xaml" />
   </ItemGroup>

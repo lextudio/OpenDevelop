@@ -112,16 +112,11 @@ Generator issue fixed locally in `openavalon/LibreWPF`: element locals now use a
 (`__<Type>_<n>`) in XAML traversal order, rather than a GUID. Rebuilding the minimal source-generator
 fixture no longer creates an artificial whole-method edit just because generation ran again.
 
-Phase 0b prerequisite: the generator is committed locally in `openavalon/LibreWPF` (`f5df03025`, not pushed), and the
-pinned `LibreWPF.Sdk` (`0.1.0-preview.69.58.1`) has no XSG targets. Before publishing, a local-only
-`LibreWPF.Xaml.SourceGenerator.0.1.0-local.1` analyzer package was placed in OpenDevelop's fixed
-`artifacts/openavalon-feed` cache. `tests/fixtures/XsgLocalFeedFixture` restored that exact package,
-compiled two XAML classes while the BAML task was disabled, and its output contains both generated
-`__XsgHotReload` handlers. This is a pre-publish integration check, not a committed fixture: CI's
-GitHub feed deliberately does not contain the local version. `LibreWPF/tmp/xsgtest` is a library built
-from source, not a runnable app. A full real-window XSG journey remains open:
-`RealXamlCompilerHarness` exercises BAML features outside the generator's currently supported subset,
-so it is not a valid minimal XSG fixture.
+Phase 0b prerequisite, now met: the generator is published with the LibreWPF closure as
+`LibreWPF.Xaml.SourceGenerator 0.1.0-preview.69.60.1`, and `tests/fixtures/XsgLocalFeedFixture` (a code-only `WinExe`
+compiled only by the generator, BAML task disabled) restores it; the real-window journeys built on it are described
+under "Route D end to end" and "IDE journey" below. (`RealXamlCompilerHarness` exercises BAML features outside the
+generator's supported subset, so it is not a valid minimal XSG fixture.)
 
 Phase 3 guard: `StartupHook.Initialize` returns unless `PresentationFramework` resolves, so inherited
 `DOTNET_STARTUP_HOOKS` in `dotnet watch` and build hosts no longer start a listener on the app's pipe.
@@ -148,7 +143,7 @@ the new value. Passing on macOS arm64. What it took:
 
 The same test runs under SharpDbg (`CsExpressionEdit_UnderSharpDbg_ReachesTheLiveWindow`, E3a in `sharpdbg-enc.md`).
 
-The test skips where the fixture is not built: the fixture needs the local-only generator package.
+The test skips where the fixture is not built (CI does not build it yet).
 
 ## IDE journey (2026-11-22, local)
 
@@ -192,10 +187,11 @@ the generators: those run lazily, when a compilation is first needed.
 
 ## Local iteration
 
-The agent and SharpDbg are published and pinned (`WpfHotReload.Runtime 0.1.0-ci.2`, `LeXtudio.SharpDbg.*
-1.0.0-lextudio.45065133674.1`). The XAML source generator is not: `tests/fixtures/XsgLocalFeedFixture` references a
-local-only `LibreWPF.Xaml.SourceGenerator 0.1.0-local.2` packed from `../openavalon/LibreWPF/src/LibreWPF.Xaml.SourceGenerator`
-(`dotnet pack -p:Version=...` into `artifacts/openavalon-feed`), so the XSG tests skip wherever it is not built.
+Everything is published and pinned: `WpfHotReload.Runtime 0.1.0-ci.2`, `LeXtudio.SharpDbg.* 1.0.0-lextudio.45065133674.1`,
+and the LibreWPF closure `0.1.0-preview.69.60.1` (openavalon run 45075138396), which now also publishes
+`LibreWPF.Xaml.SourceGenerator` (openavalon `71068ac`); `sync-openavalon-feed.ps1` fetches it with the closure and
+`tests/fixtures/XsgLocalFeedFixture` references that version. CI does not build the fixture yet, so the XSG tests still
+skip there; build it (`dotnet build tests/fixtures/XsgLocalFeedFixture -c Debug`) to run them.
 
 To iterate on an unpublished package, pack it with a new unique version into `artifacts/openavalon-feed`, move the pin
 locally, and bump the version on every repack (NuGet caches a version forever). `sync-openavalon-feed.ps1` refuses a
