@@ -90,18 +90,19 @@ Route T stays the fast path (unsaved buffer, no build). Route D is the slow path
 |---|---|---|---|
 | 0a | Can `dotnet watch` and the OpenDevelop debugger own one process? | superseded: no; the plan replaces `dotnet watch` with an OpenDevelop producer plus agent (no debugger) or SharpDbg (debugger), see `sharpdbg-enc.md` | closed |
 | 0b | A real LibreWPF app with a live window under XSG, Route D | OpenDevelop + openavalon | **done locally** with the OpenDevelop producer instead of `dotnet watch`: `XsgHotReloadEndToEndTests` (see below) |
-| 1 | Generator hot-reload ready in Debug: typed `x:Name` fields, event wiring, DynamicResource via `SetResourceReference`, `[MetadataUpdateHandler]` + weak registry | openavalon | done in the working tree (not committed); typed fields, events, `SetResourceReference`, idempotence, `#line` were already in `f6cf29056` |
-| 2 | `HotReloadWorkflow.Classify` from a real XAML parse diff: Route T / `BuildRequired` (`{cs:}`, events) / `RestartRequired` (`x:Name` removed, `x:Class` changed) | OpenDevelop | done, and only for projects that opted in to XSG (`UseLibreWpfXamlSourceGenerator` in the project file, or the `LIBREWPF_USE_XSG` environment switch; a value set in Directory.Build.props is not seen); BAML and WinUI keep the text path. Event-handler edits are not recognised (text alone cannot tell an event from a property), they still take Route T |
-| 3 | Agent: only start in the target app; atomic apply, last-known-good, serialized queue | WpfHotReload.Runtime | target-process guard published (`9f5f214`). Serialized queue already holds: the pipe server has one instance and handles each request synchronously on the dispatcher. Last-known-good: published (`be2ba81`, `0.1.0-ci.2`). A merge that throws re-applies the last text that applied, or the IDE's `previousXamlText` before any; covered by `WpfHotReloadEndToEndTests.FailedMerge_RestoresTheLastAppliedState` through the test-only `WPF_HOTRELOAD_TEST_FAULT_AFTER_MERGE` marker. Atomicity beyond that (a restore that itself fails) reports "restart the application" |
+| 1 | Generator hot-reload ready in Debug: typed `x:Name` fields, event wiring, DynamicResource via `SetResourceReference`, `[MetadataUpdateHandler]` + weak registry | openavalon | done; typed fields, events, `SetResourceReference`, idempotence, `#line` were already in `f6cf29056` |
+| 2 | `HotReloadWorkflow.Classify` from a real XAML parse diff: Route T / `BuildRequired` (`{cs:}`, events) / `RestartRequired` (`x:Name` removed, `x:Class` changed) | OpenDevelop | done, and only for projects that opted in to XSG. The IDE asks the project's evaluated `UseLibreWpfXamlSourceGenerator` (`MSBuildBasedProject.GetEvaluatedProperty`), so Directory.Build.props, imported targets and the environment switch count as they do for the build; without an evaluated value it falls back to the project file and `LIBREWPF_USE_XSG`. BAML and WinUI keep the text path. Event-handler edits are recognised when the value is a bare identifier that the x:Class code-behind (`View.xaml.cs`, the editor's text if open) declares as a `void` method, so any event name counts; without code-behind, a name heuristic (`Preview*`, `*Changed`, `*Click`, `Loaded`...) is the fallback. Over-recognising only costs a rebuild |
+| 3 | Agent: only start in the target app; atomic apply, last-known-good, serialized queue | WpfHotReload.Runtime | target-process guard published (`9f5f214`). Serialized queue already holds: the pipe server has one instance and handles each request synchronously on the dispatcher. Last-known-good: published (`be2ba81`, `0.1.0-ci.2`). A merge that throws re-applies the last text that applied, or the IDE's `previousXamlText` before any; covered by `WpfHotReloadEndToEndTests.FailedMerge_RestoresTheLastAppliedState` through the test-only `WPF_HOTRELOAD_TEST_FAULT_AFTER_MERGE` marker. A restore that itself fails half-way falls back to replacing the root's content with a fresh tree of the last good text in one assignment (control state is reset, the edit reports `Failed`, no restart); only a root that is not a content control or decorator, or a failing replacement, reports a restart. Covered by `WpfHotReloadEndToEndTests.FailedRestore_ReplacesTheContentAtomically` (test marker `WPF_HOTRELOAD_TEST_FAULT_RESTORE_MERGE`); needs `WpfHotReload.Runtime` 0.1.0-ci.3 or newer (commit `585cf12`), which OpenDevelop pins |
 | 5 | Route D without `dotnet watch`: delta producer (E0), agent `applyDelta` (E1), SharpDbg `sharpdbg/applyDeltas` (E3a), debug-state follow-up (E3b) | OpenDevelop + sharpdbg | E2 done; E0 done locally (host producer, launch DLL/PDB capture, EnC PDB maps); schedule in `sharpdbg-enc.md` |
 | 4 | Convergence tests (apply, revert, compare) and an XSG journey beside `WpfHotReloadJourneyTests` | OpenDevelop | Base-level XSG journey done (`XsgHotReloadEndToEndTests`), including convergence for Route D (edit, second edit, revert reaches the launch text, agent and SharpDbg) and Route T rollback; IDE (DevFlow) journey done locally (`XsgProject_CsExpressionEdit_AppliesAsACodeDelta`) |
 
 Phase 1 delivery: under `#if DEBUG` each generated class carries a nested `__XsgHotReload` registered
 with `[assembly: MetadataUpdateHandler]`. `InitializeComponent` registers `this` (weakly, once);
 `UpdateApplication` re-runs `InitializeComponent` on each live instance through its own dispatcher when
-the updated types are null or include the class. Verified with a Roslyn driver and stub WPF types:
-generated code compiles, an unrelated type is a no-op, own type and null each re-apply. Not yet run
-against real LibreWPF or a real delta.
+the updated types are null or include the class. Verified by behaviour in `openavalon/LibreWPF/src/LibreWPF.Xaml.SourceGenerator.Tests/HotReloadRegistryTests.cs`
+(generated code compiled against WPF stand-ins and run: a collected window is pruned and not re-initialized, a live one
+is, an unrelated type is a no-op, a rerun does not register twice) and against real LibreWPF with real deltas by
+`XsgHotReloadEndToEndTests`.
 
 Deliberately **no** `__WXSG_ApplyHotReload`. The agent treats a `false` return as a final error and
 does not fall back, and a `true` return would claim a text edit was applied when only the compiled graph
@@ -120,8 +121,8 @@ generator's supported subset, so it is not a valid minimal XSG fixture.)
 
 Phase 3 guard: `StartupHook.Initialize` returns unless `PresentationFramework` resolves, so inherited
 `DOTNET_STARTUP_HOOKS` in `dotnet watch` and build hosts no longer start a listener on the app's pipe.
-Not yet exercised against a real `dotnet watch` run (phase 0b). Published in `WpfHotReload.Runtime 0.1.0-ci.2`, which
-OpenDevelop pins (see `sharpdbg-enc.md`, Status).
+Not yet exercised against a real `dotnet watch` run (phase 0b). First published in `WpfHotReload.Runtime 0.1.0-ci.2`; OpenDevelop now pins
+`0.1.0-ci.3` (see `sharpdbg-enc.md`, Status).
 
 ## Route D end to end (2026-11-22, local)
 
@@ -141,9 +142,11 @@ the new value. Passing on macOS arm64. What it took:
   `openavalon/LibreWPF/src/LibreWPF.Xaml.SourceGenerator.Tests` (5).
 - **Agent:** query `<Name>.<Property>` reads any public property of a named element (was a fixed list).
 
+`EventHandlerEdit_ReachesTheLiveWindowThroughACodeDelta` does the same for an event: the fixture's root `Grid` names `OnLoadedA`, `Loaded` fires again for each tree the rerun builds, and switching the attribute to `OnLoadedB` shows in `Marker.Text` (then reverts to `handler A`). The generated `InitializeComponent` builds a fresh element tree each run, so an old handler does not stay attached to the live one.
+
 The same test runs under SharpDbg (`CsExpressionEdit_UnderSharpDbg_ReachesTheLiveWindow`, E3a in `sharpdbg-enc.md`).
 
-The test skips where the fixture is not built (CI does not build it yet).
+The test skips where the fixture is not built, and CI does not build it. That is deliberate for now: putting the fixture into a plan entry's `additionalProjects` (for example `base-tests` on `macos-arm64`) puts it into the workspace archive every lane unpacks, which would also start `WpfHotReloadJourneyTests.XsgProject_CsExpressionEdit_AppliesAsACodeDelta` in `wpf-hot-reload-journeys` (`required` on Windows x64 and macOS ARM64), and the SharpDbg variants `Assert.True` that the debugger add-in is deployed instead of skipping. Neither has run in CI. Enable it as its own observed step (a separate entry, journey held back) before promoting anything.
 
 ## IDE journey (2026-11-22, local)
 
@@ -187,11 +190,10 @@ the generators: those run lazily, when a compilation is first needed.
 
 ## Local iteration
 
-Everything is published and pinned: `WpfHotReload.Runtime 0.1.0-ci.2`, `LeXtudio.SharpDbg.* 1.0.0-lextudio.45065133674.1`,
+Everything is published and pinned: `WpfHotReload.Runtime 0.1.0-ci.3`, `LeXtudio.SharpDbg.* 1.0.0-lextudio.45102390477.1`,
 and the LibreWPF closure `0.1.0-preview.69.60.1` (openavalon run 45075138396), which now also publishes
 `LibreWPF.Xaml.SourceGenerator` (openavalon `71068ac`); `sync-openavalon-feed.ps1` fetches it with the closure and
-`tests/fixtures/XsgLocalFeedFixture` references that version. CI does not build the fixture yet, so the XSG tests still
-skip there; build it (`dotnet build tests/fixtures/XsgLocalFeedFixture -c Debug`) to run them.
+`tests/fixtures/XsgLocalFeedFixture` references that version. CI does not build the fixture yet (see above), so the XSG tests skip there; build it (`dotnet build tests/fixtures/XsgLocalFeedFixture -c Debug`) to run them.
 
 To iterate on an unpublished package, pack it with a new unique version into `artifacts/openavalon-feed`, move the pin
 locally, and bump the version on every repack (NuGet caches a version forever). `sync-openavalon-feed.ps1` refuses a
@@ -201,6 +203,6 @@ so the sync skips it and still fetches everything else. SharpDbg's `iac/pack-ope
 
 ## Open questions
 
-1. ~~Can `dotnet watch` and OpenDevelop's debugger both own the process?~~ Not needed: SharpDbg can apply deltas itself (verified on macOS arm64, method-body edit). Open: breakpoint/PDB fidelity after an edit (E3b).
-2. Should the generator emit a `MetadataUpdateHandler` by default in Debug, or behind a flag?
-3. How does the agent coexist with a delta producer? (Likely: agent handles text-push levels, delta producer handles C# deltas; agent falls back when delta unavailable.)
+1. ~~Can `dotnet watch` and OpenDevelop's debugger both own the process?~~ Not needed: SharpDbg can apply deltas itself (verified on macOS arm64, method-body edit). Breakpoint/PDB fidelity after an edit is verified for updated methods (portable-PDB overlay, source-breakpoint rebind) and an active frame is remapped at an unchanged statement (E3b); still open: the stepping state when a step is in progress as the delta lands.
+2. ~~Should the generator emit a `MetadataUpdateHandler` by default in Debug, or behind a flag?~~ By default, under `#if DEBUG`; Release output has none.
+3. ~~How does the agent coexist with a delta producer?~~ The classification picks one per edit: text push for what a re-parse carries, a code delta for `{cs:}`, events and new names; without a producer a code delta reports `BuildRequired`.

@@ -1,14 +1,14 @@
 # Edit and Continue (EnC) / code-delta Hot Reload for OpenDevelop and SharpDbg
 
-Status (2026-11-22): E0, E1 and E3a are committed and published. OpenDevelop pins `WpfHotReload.Runtime 0.1.0-ci.2`
-(lextudio/WpfHotReload.Runtime run 45065130341, commit `be2ba81`) and SharpDbg `1.0.0-lextudio.45065133674.1`
-(lextudio/sharpdbg run 45065133674, `main` at `158e240`):
+Status (2026-11-23): E0, E1, E3a and E4 are committed and published, and E3b has its active-frame remap. OpenDevelop pins
+`WpfHotReload.Runtime 0.1.0-ci.3` (lextudio/WpfHotReload.Runtime run 45102337541, commit `585cf12`) and SharpDbg
+`1.0.0-lextudio.45102390477.1` (lextudio/sharpdbg run 45102390477, `main` at `1de76e5`):
 
 | Repository | Commits | What |
 |---|---|---|
 | OpenDevelop | `59366a11e4` E0, `bc6b3839bd` E1+E3a client, `70d3f22794` updated method tokens, `08d12ee36d` host global usings/analyzers/AdditionalFiles, `e498565ea8` delta generations, XAML text, debugger applier, classification, apphost baseline, `504182e9fd` XSG end-to-end tests and docs | producer, agent pipe payload, `DapSession.ApplyDeltasAsync` |
 | WpfHotReload.Runtime (pushed) | `6f2be2d` `applyDelta`, `502377a` handler callbacks, `9f5f214` startup guard, `be2ba81` restore-on-failure, `runUpdateHandlers`, property query | Tier 1 applier in the agent |
-| sharpdbg (pushed to `main`) | `e0407f8` E2, `e22b991` `sharpdbg/applyDeltas`, `1d01991` attach opt-in, `739eaac` PDB delta symbol fidelity (E3b part), `158e240` apply while running | Tier 2 applier |
+| sharpdbg (pushed to `main`) | `e0407f8` E2, `e22b991` `sharpdbg/applyDeltas`, `1d01991` attach opt-in, `739eaac` PDB delta symbol fidelity (E3b part), `158e240` apply while running, `67b38d3` active-frame remap, `1de76e5` clear remap plans on module unload | Tier 2 applier |
 | openavalon/LibreWPF (pushed) | `f5df03025` EnC-safe generator, `b66539625` x:Name Name/NameScope; openavalon `d97e51a` pointer, `71068ac` publishes the generator | XAML source generator, published as `LibreWPF.Xaml.SourceGenerator 0.1.0-preview.69.60.1` |
 
 With the old `0.1.0-ci.1` pin, `WpfHotReloadEndToEndTests.ApplyDelta_UpdatesALiveWpfAssemblyAndRunsItsMetadataHandler`
@@ -159,8 +159,8 @@ Status: **done** / **next** / todo. "Done" means committed locally and tested.
 | E0 | Producer protocol in the Roslyn host with tests: method-body edit, add field, rude edits, compile error; capture the actual launch PE/PDB and produce from the host-owned project/TFM compilation. Read PDB slot/lambda maps; move to the Features service if broader rude-edit detection needs it. | done (`59366a11e4`) | medium |
 | E1 | Tier 1: agent `applyDelta` pipe message, `MetadataUpdater.ApplyUpdate`, explicit `[MetadataUpdateHandler]` invocation, `IHotReloadDeltaApplier`, WPF adapter reports `CodeDelta`, `TryConfigureLaunch` sets `DOTNET_MODIFIABLE_ASSEMBLIES=debug`. Cross-platform. | done and published (OpenDevelop `bc6b3839bd`, agent `6f2be2d`/`502377a`, pinned `0.1.0-ci.2`) | low |
 | E3a | SharpDbg DAP request `sharpdbg/applyDeltas` (takes `DapRequestAndRuntimeEventLock`, wraps COM failures, stops and resumes the process), plus `DapSession.ApplyDeltasAsync` and the launch flag that turns `EnableEditAndContinue` on. | done and published (sharpdbg `e22b991`/`1d01991`/`158e240`, OpenDevelop `bc6b3839bd`/`70d3f22794`/`e498565ea8`); **real journey passes** (`XsgHotReloadEndToEndTests.CsExpressionEdit_UnderSharpDbg_ReachesTheLiveWindow`, see below) | medium |
-| E3b | SharpDbg state after an edit: PDB delta merge into `ModuleMetadataReader`, breakpoint rebind, `EditAndContinueRemap`/active statements, stepping state, handler invocation (X2). | partial, committed as sharpdbg `739eaac`: portable-PDB `EncMap` overlay and source-breakpoint rebind are verified in a real debuggee; active-frame remap, stepping-state handling and handler invocation remain | high |
-| E4 | OpenDevelop classification: text push vs delta per edit, rude edit -> `RestartRequired`, compile error -> `BuildRequired`, UI state. | todo | low |
+| E3b | SharpDbg state after an edit: PDB delta merge into `ModuleMetadataReader`, breakpoint rebind, `EditAndContinueRemap`/active statements, stepping state, handler invocation (X2). | partial, committed as sharpdbg `739eaac`: portable-PDB `EncMap` overlay and source-breakpoint rebind are verified in a real debuggee; handler invocation is X2 (done). Active-frame remap (sharpdbg `67b38d3`/`1de76e5`, published in `1.0.0-lextudio.45102390477.1`, sent by OpenDevelop since `b2969f9dfa`): the producer sends each edited C# file's unchanged line ranges (`HotReloadModuleDelta.LineMaps`, `HotReloadSourceLineMap.Compute`) through `sharpdbg/applyDeltas` (`lineMaps`); on `FunctionRemapOpportunity` SharpDbg maps old IL offset -> old sequence point -> unchanged line -> the new sequence point with the same span and calls `RemapFunction` (`ManagedDebugger.MapActiveStatementOffset`). It refuses whenever that cannot be shown to be the same statement (edited line, mid-statement offset, hidden point, moved columns, no map, XSG `#line` code), and the frame then finishes the old code. Tests: sharpdbg `EditAndContinueTests.ApplyDelta_WithLineMaps_RemapsTheActiveFrameAtAnUnchangedStatement` and `..._ToAnActiveFrame_FinishesTheOldCodeAndCallsTheNew`, `ActiveStatementMapTests`, `ProtocolTests`; OpenDevelop `HotReloadLineMapTests`, `RoslynHostProcessTests`. Remaining: stepping state across a remap (a step in progress when the delta lands) | high |
+| E4 | OpenDevelop classification: text push vs delta per edit, rude edit -> `RestartRequired`, compile error -> `BuildRequired`, UI state. | done: `HotReloadWorkflow.Classify` (`{cs:}`, events, x:Name, x:Class), producer `RudeEdit`/`CompilationError` mapped in `AgentPipeHotReloadSession`; both layers agree on a removed x:Name (`XsgHotReloadEndToEndTests.NameRemoval_*`) | low |
 
 Order: E0 -> E1 (XSG `{cs:}` Hot Reload without a debugger) -> E3a (same edits under the debugger, no
 breakpoint fidelity yet) -> E3b -> E4 refinement. E3a before E3b is intentional: an applied delta with stale
@@ -221,7 +221,7 @@ console app that emits v1, launches it under SharpDbg, stops at `Debugger.Break(
   after resuming. The later E3b local work additionally verifies portable-PDB overlay and a moved source breakpoint.
 - Productised in sharpdbg: `ManagedDebugger.EnableEditAndContinue` (opt-in, default off, set before launch) and
   `ManagedDebugger.ApplyDelta(mvid, metadata, il)`, covered by `EditAndContinueTests.ApplyDelta_MethodBodyEdit_TakesEffectAfterResume`.
-- Remaining for E3: `EditAndContinueRemap`/active statements, stepping-state preservation, handler invocation (X2), a real OpenDevelop DAP journey, and review/commit.
+- Remaining for E3 *at the time of the spike* (since done, see the E3a and E3b rows: handler invocation (X2), the OpenDevelop DAP journey, review and commit, and the active-frame remap): `EditAndContinueRemap`/active statements, stepping-state preservation. Only stepping state across a remap is still open.
 
 ## Appendix: Tier 1 spike
 
