@@ -25,11 +25,11 @@
       is what a new SDK is being taken for, and delete the line once the two versions coincide
       again.
     -->
-    <ProGpuWpfLibreWinFormsPackageVersion>0.1.0-preview.69.60.1</ProGpuWpfLibreWinFormsPackageVersion>
+    <ProGpuWpfLibreWinFormsPackageVersion>0.1.0-preview.69.61.1</ProGpuWpfLibreWinFormsPackageVersion>
     <ProGpuWpfUseCanonicalLibreWinForms>true</ProGpuWpfUseCanonicalLibreWinForms>
 
     <!-- Keep the SDK's ProGPU closure explicit at the same published version. -->
-    <ProGpuPackageVersion>0.1.0-preview.69.60.1</ProGpuPackageVersion>
+    <ProGpuPackageVersion>0.1.0-preview.69.61.1</ProGpuPackageVersion>
 
     <!--
       Do NOT try to set ProGpuWpfUseCurrentRuntimeIdentifier here - it has no effect, and the
