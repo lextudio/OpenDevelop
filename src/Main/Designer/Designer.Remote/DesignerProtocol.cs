@@ -164,6 +164,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		public string Language { get; set; } = "CSharp";
 		/// <summary>"Enabled" or "Disabled" (safe mode without project code).</summary>
 		public string ProjectCodeMode { get; set; } = "Enabled";
+		/// <summary>True when the project compiles its XAML with the LibreWPF XAML source generator and has
+		/// Simpler XAML on, so a document may omit the default and <c>x</c> namespace declarations. The XAML
+		/// child then supplies them as the reader's ambient namespace context (never written into the text).
+		/// Additive: a child that does not know it reads false, a stock document.</summary>
+		public bool ImplicitXamlNamespaces { get; set; }
 		public List<DesignerSourceFileSnapshot> Files { get; set; } = new List<DesignerSourceFileSnapshot>();
 	}
 

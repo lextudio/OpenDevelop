@@ -1,0 +1,5 @@
+<Application x:Class="XsgLocalFeedFixture.App">
+  <Application.Resources>
+    <SolidColorBrush x:Key="FixtureBrush" Color="SteelBlue" />
+  </Application.Resources>
+</Application>

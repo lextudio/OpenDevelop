@@ -364,6 +364,9 @@ namespace ICSharpCode.WpfDesign.AddIn
 					project.Items.OfType<FileProjectItem>().Select(item => item.FileName.ToString()));
 		}
 
+		static bool UsesImplicitXamlNamespaces(IProject project)
+			=> project is MSBuildBasedProject msbuild && XsgProjectFeatures.ImplicitXamlNamespaces(msbuild.GetEvaluatedProperty);
+
 		DesignerDocumentSnapshot CreateSnapshot(long version)
 		{
 			var project = SD.ProjectService.FindProjectContainingFile(PrimaryFile.FileName);
@@ -373,7 +376,8 @@ namespace ICSharpCode.WpfDesign.AddIn
 				TargetFramework = (project as MSBuildBasedProject)?.GetEvaluatedProperty("TargetFramework") ?? "",
 				ProjectAssemblyPath = GetManagedAssemblyPath(project),
 				PrimaryFileName = PrimaryFile.FileName.ToString(),
-				Language = ""
+				Language = "",
+				ImplicitXamlNamespaces = UsesImplicitXamlNamespaces(project)
 			};
 			// Do not run MSBuild ResolveAssemblyReferences synchronously from LoadInternal. It can
 			// block the dispatcher indefinitely while project evaluation/build hosts are busy, which

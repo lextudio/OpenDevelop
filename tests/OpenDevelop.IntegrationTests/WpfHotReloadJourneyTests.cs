@@ -83,6 +83,33 @@ public sealed class WpfHotReloadJourneyTests
 	}
 
 	/// <summary>
+	/// The designer on the XSG path. The fixture project enables the generator, so Simpler XAML is on: an
+	/// old-style document (MainWindow, every namespace declared) and a new-style one (ThirdWindow, none)
+	/// both load in the WPF designer, and neither file is rewritten by loading. The BAML case (old-style XAML in a
+	/// project that did not enable XSG) is the rest of the designer journeys.
+	/// </summary>
+	[Fact]
+	public async Task XsgProject_OldAndNewStyleXaml_BothLoadInTheDesigner()
+	{
+		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
+		var opened = await _app.ReopenSolutionAsync(Path.Combine(fixtureDirectory, "XsgLocalFeedFixture.slnx"));
+		Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+
+		foreach (var name in new[] { "MainWindow.xaml", "ThirdWindow.xaml" }) {
+			var xaml = Path.Combine(fixtureDirectory, name);
+			var before = await File.ReadAllTextAsync(xaml);
+			await OpenAsActiveDocumentAsync(xaml);
+			JsonElement status = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				status = await _app.InvokeAsync("od.wpf-designer.status");
+				return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+			}, TimeSpan.FromSeconds(90)), $"{name}: {status}");
+			Assert.Equal(before, await File.ReadAllTextAsync(xaml));
+			await _app.InvokeAsync("od.close-active-view");
+		}
+	}
+
+	/// <summary>
 	/// Route D through the IDE for a project compiled by the XAML source generator: a <c>{cs:}</c>
 	/// edit cannot be pushed as XAML text, so Apply has to classify it as a code delta, have the
 	/// Roslyn host rerun the generator on the unsaved buffer, and send the metadata delta to the

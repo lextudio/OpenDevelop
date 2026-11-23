@@ -235,7 +235,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 				// application-relative pack URIs are mapped to the project assembly at value-conversion
 				// time by SurfaceTypeFinder.ConvertUriToLocalUri.
 				using var stringReader = new StringReader(xaml);
-				using var xmlReader = XmlReader.Create(stringReader);
+				using var xmlReader = ImplicitXamlNamespaceReader.Create(stringReader, snapshot.ImplicitXamlNamespaces);
 				current = new XamlDesignContext(xmlReader, loadSettings);
 				parsedText = xaml;
 				parsedPositionsValid = true;
@@ -527,8 +527,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			if (appFile == null || string.IsNullOrEmpty(appFile.Text))
 				return (null, null);
 
-			var document = new XmlDocument();
-			document.LoadXml(appFile.Text);
+			var document = ImplicitXamlNamespaceReader.LoadDocument(appFile.Text, snapshot.ImplicitXamlNamespaces);
 			var root = document.DocumentElement;
 			if (root == null)
 				return (null, null);
@@ -584,7 +583,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			var dictionaryDocument = new XmlDocument();
 			dictionaryDocument.LoadXml(dictionaryXml);
 			ExpandProjectMergedDictionaries(
-				dictionaryDocument, Path.GetDirectoryName(snapshot.ProjectFileName) ?? "");
+				dictionaryDocument, Path.GetDirectoryName(snapshot.ProjectFileName) ?? "", snapshot.ImplicitXamlNamespaces);
 			// An absolute pack URI with no assembly ("pack://application:,,,/Assets/x.jpg") resolves
 			// against Application.ResourceAssembly - the child host, not the designed project - so
 			// name the project assembly explicitly.
@@ -671,7 +670,7 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 		/// sibling Resources/PageStyles.xaml); App.xaml's own compiled BAML keeps them in one context,
 		/// which is what this reproduces. Absolute/pack Sources and files that do not exist on disk
 		/// are left alone for the normal Source loader.</summary>
-		static void ExpandProjectMergedDictionaries(XmlDocument document, string projectDirectory)
+		static void ExpandProjectMergedDictionaries(XmlDocument document, string projectDirectory, bool implicitNamespaces)
 		{
 			if (string.IsNullOrEmpty(projectDirectory))
 				return;
@@ -690,10 +689,10 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 						projectDirectory, source.Replace('/', Path.DirectorySeparatorChar)));
 					if (!File.Exists(path))
 						continue;
-					var included = new XmlDocument();
+					XmlDocument included;
 					try
 					{
-						included.LoadXml(File.ReadAllText(path));
+						included = ImplicitXamlNamespaceReader.LoadDocument(File.ReadAllText(path), implicitNamespaces);
 					}
 					catch (Exception e)
 					{

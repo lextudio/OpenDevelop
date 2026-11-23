@@ -1,0 +1,5 @@
+<Window x:Class="XsgLocalFeedFixture.ThirdWindow" Title="Simpler XAML fixture">
+  <Grid>
+    <TextBlock x:Name="Greeting" Text="{cs: &quot;Simpler XAML&quot;}" />
+  </Grid>
+</Window>

@@ -18,5 +18,8 @@
     <PackageReference Include="LibreWPF.Xaml.SourceGenerator" Version="$(ProGpuPackageVersion)" PrivateAssets="all" />
     <AdditionalFiles Include="MainWindow.xaml" />
     <AdditionalFiles Include="SecondWindow.xaml" />
+    <AdditionalFiles Include="ThirdWindow.xaml" />
+    <!-- New-style App.xaml, a project item only: the designer reads its resources, the code-only Program does not compile it (see Program.cs). -->
+    <None Include="App.xaml" />
   </ItemGroup>
 </Project>
