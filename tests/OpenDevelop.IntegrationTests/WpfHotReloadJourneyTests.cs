@@ -110,6 +110,60 @@ public sealed class WpfHotReloadJourneyTests
 	}
 
 	/// <summary>
+	/// The XAML source generator's compiled-binding directives, <c>x:DataType</c> and <c>x:CompileBindings</c>, are unknown members to the
+	/// run-time System.Xaml (it throws "Cannot set unknown member"), but the designer reads documents with its own XamlDom parser, which
+	/// skips every attribute of the XAML namespace except <c>x:Name</c>. A document that uses them must therefore still load in the designer
+	/// (old-style and new-style alike), and loading must leave the file byte-identical. Works on a copy of the fixture under tmp/.
+	/// </summary>
+	[Fact]
+	public async Task XsgProject_CompiledBindingDirectives_DoNotStopTheDesigner()
+	{
+		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
+		var copy = Path.Combine(RepositoryRoot(), "tmp", "xsg-directives-" + Guid.NewGuid().ToString("N")[..8]);
+		Directory.CreateDirectory(copy);
+		try {
+			foreach (var file in Directory.EnumerateFiles(fixtureDirectory).Where(f => Path.GetFileName(f) != "App.xaml"))
+				File.Copy(file, Path.Combine(copy, Path.GetFileName(file)));
+			var project = Path.Combine(copy, "XsgLocalFeedFixture.csproj");
+			var projectText = await File.ReadAllTextAsync(project);
+			const string appItem = "<None Include=\"App.xaml\" />";
+			Assert.Contains(appItem, projectText);
+			await File.WriteAllTextAsync(project, projectText.Replace(appItem, ""));
+
+			const string newStyleRoot = "<Window x:Class=\"XsgLocalFeedFixture.ThirdWindow\"";
+			const string oldStyleRoot = "<Window x:Class=\"XsgLocalFeedFixture.MainWindow\"";
+			var directives = " x:DataType=\"x:String\" x:CompileBindings=\"True\"";
+			foreach (var (name, root) in new[] { ("ThirdWindow.xaml", newStyleRoot), ("MainWindow.xaml", oldStyleRoot) }) {
+				var path = Path.Combine(copy, name);
+				var text = await File.ReadAllTextAsync(path);
+				Assert.Contains(root, text);
+				await File.WriteAllTextAsync(path, text.Replace(root, root + directives));
+			}
+
+			var opened = await _app.ReopenSolutionAsync(Path.Combine(copy, "XsgLocalFeedFixture.slnx"));
+			Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+
+			foreach (var name in new[] { "ThirdWindow.xaml", "MainWindow.xaml" }) {
+				var xaml = Path.Combine(copy, name);
+				var before = await File.ReadAllTextAsync(xaml);
+				Assert.Contains("x:CompileBindings", before);
+				await OpenAsActiveDocumentAsync(xaml);
+				JsonElement status = default;
+				Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+					status = await _app.InvokeAsync("od.wpf-designer.status");
+					return status.GetProperty("active").GetBoolean()
+						&& (status.GetProperty("designerLoaded").GetBoolean() || status.TryGetProperty("loadError", out _));
+				}, TimeSpan.FromSeconds(90)), $"{name}: {status}");
+				Assert.True(status.GetProperty("designerLoaded").GetBoolean(), $"{name} with x:DataType/x:CompileBindings did not load: {status}");
+				Assert.Equal(before, await File.ReadAllTextAsync(xaml));
+				await _app.InvokeAsync("od.close-active-view");
+			}
+		} finally {
+			try { Directory.Delete(copy, recursive: true); } catch (IOException) { }
+		}
+	}
+
+	/// <summary>
 	/// The reverse control of the journey above: the same project with <c>LibreWpfSimplerXaml</c> switched off. Simpler XAML is
 	/// then off for the project, so the designer must read a document without xmlns as written and fail to load it (it reports a
 	/// load error), while an old-style document of the same project still loads. A copy of the fixture under tmp/ is
