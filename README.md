@@ -369,6 +369,10 @@ The project intentionally develops these pieces in the open so that individual c
 
 > Note that [Stride Game Studio is shipped in a separate repo](https://github.com/lextudio/stride/tree/librewpf-port/sources/tools/Stride.OpenDevelop.AddIn).
 
+### HTTP Client
+
+> Note that [the HTTP Client add-in is shipped in a separate repo](https://github.com/lextudio/opendevelop-httpclient). It provides `.http` and `.rest` file support with request sending, response viewing, variables, environments, authentication, and code completion.
+
 ## Building OpenDevelop
 
 ### Requirements
