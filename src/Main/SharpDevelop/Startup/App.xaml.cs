@@ -34,14 +34,22 @@ namespace ICSharpCode.SharpDevelop.Startup
 			InitializeComponent();
 			if (IsDevFlowEnabled())
 			{
-				this.AddWpfDevFlowAgent(new AgentOptions {
+				var options = new AgentOptions {
 					Port = GetAgentPort(),
 					// Integration tests deliberately keep a modal command request open while
 					// driving its dialog through another DevFlow request.  There is one
 					// controlled test client in OD_TEST_MODE, so the general-purpose mutation
 					// lease would only deadlock that valid workflow.
 					RequireMutationLease = Environment.GetEnvironmentVariable("OD_TEST_MODE") != "1"
-				});
+				};
+				if (!options.RequireMutationLease) {
+					// The same workflow also needs mutating requests to run concurrently: newer
+					// DevFlow agents admit them one at a time unless told otherwise.  The option
+					// does not exist in older agent packages, hence the lookup by name (this
+					// compiles against both).
+					typeof(AgentOptions).GetProperty("SerializeMutations")?.SetValue(options, false);
+				}
+				this.AddWpfDevFlowAgent(options);
 			}
 			// Log the exception instead of dying silently: an unhandled dispatcher exception
 			// otherwise exits the process without a trace in the captured stdout/stderr (measured
