@@ -16,11 +16,22 @@ means "no code or test found", not "broken".
 | Designer ignores compiled-binding directives (`x:DataType`, `x:CompileBindings`) | done | commit `bc9fee46c3` |
 | LSP: implicit namespaces opt-in per document; `{cs:}` and binding directives raise no false diagnostic | done | winappvsce `ImplicitNamespacePolicyTests`, `CSharpExpressionValueTests` |
 
-## Status update 2026-11-25 (local, uncommitted)
+## Status update 2026-11-25 (committed locally as 81613d72ca, not pushed)
 
-G1, G2 and G3 are largely addressed for the LibreWPF profile (colour, completion, hover, definition, errors with the build's ids, binding
-resolution in the generator); G4 is fixed (expression text shown read-only). See `xsg-maui-alignment-plan.md`, "Progress, editing
-experience and Stage 2" for what is verified and what is not. The text below is the original audit.
+The editing-experience gaps are closed for the LibreWPF profile, in the syntax of .NET MAUI (the private `{cs:}` form is gone):
+
+| Gap | State | Evidence |
+|---|---|---|
+| G1 editor semantics (colour, completion, hover, definition, errors with the build's ids) | closed | winappvsce unit tests; journeys `XsgProject_CsExpressionValue_HasColourCompletionAndDefinitionInTheEditor` |
+| G2 generator diagnostics while typing | closed for LWXSG0011 and LWXSG0012 and the expression errors (LWXSG0013 is reported by the build only) | winappvsce validator tests |
+| G3 compiled bindings (`x:DataType`, path completion) | closed | same journey, `{Nick|}` completes `Nickname` |
+| G4 designer with expressions | closed (shown as written, editable in the Properties pad, undo/redo exact) | `..._IsShownAsWrittenInTheDesigner`, `..._CanBeEditedInTheDesignerAndIsSavedAsTyped` |
+| Hot Reload of expression, event and name edits | closed, also under SharpDbg | `XsgHotReloadEndToEndTests` 9/9, `XsgProject_CsExpressionEdit_AppliesAsACodeDelta` |
+| global-using types | closed in generator, language server and designer | `..._GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns` |
+
+Still open and deliberately not part of this stage: G5 (no CI entry; needs an observed `test-plan.json` entry iterated through pushes, which waits for
+the owner's go-ahead), G6, G7, G8, G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
+See `xsg-maui-alignment-plan.md` for the verified/unverified list per stage. The text below is the original audit.
 
 ## Gaps
 
