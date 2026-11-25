@@ -133,6 +133,18 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			});
 		}
 
+		[DevFlowAction("od.wpf-designer.view-generated-code", Description = "Run the View Generated Code command for the active WPF designer's XAML file: opens the C# the XAML source generator wrote for it, read-only, and reports the file opened (or why not)")]
+		public static async Task<string> ViewGeneratedCodeAsync()
+		{
+			var viewContent = FindWpfViewContent();
+			if (viewContent == null)
+				return JsonSerializer.Serialize(new { active = false });
+			var (path, message) = await ICSharpCode.WpfDesign.AddIn.Commands.ViewGeneratedCode.OpenAsync(viewContent.PrimaryFile.FileName.ToString(), System.Threading.CancellationToken.None);
+			return JsonSerializer.Serialize(new { active = true, opened = path != null, path, message,
+				readOnly = path != null && new System.IO.FileInfo(path).IsReadOnly,
+				text = path != null ? System.IO.File.ReadAllText(path) : null });
+		}
+
 		[DevFlowAction("od.wpf-designer.status", Description = "Inspect the active WPF designer view: whether the design surface loaded, the toolbox's item/group counts, and the outline pad's element tree")]
 		public static string GetDesignerStatus()
 		{

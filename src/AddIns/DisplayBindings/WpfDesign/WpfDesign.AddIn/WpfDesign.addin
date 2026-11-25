@@ -62,6 +62,7 @@
 	-->
 	<Path name="/AddIns/WpfDesign/Designer/ContextMenu">
 		<MenuItem label="${res:ICSharpCode.WPFDesigner.ContextMenu.ViewXAML}" id="viewXaml" icon="Icons.16x16.XMLFileIcon" class="ICSharpCode.WpfDesign.AddIn.Commands.ViewXaml" />
+		<MenuItem label="View Generated Code" id="viewGeneratedCode" icon="Icons.16x16.XMLFileIcon" class="ICSharpCode.WpfDesign.AddIn.Commands.ViewGeneratedCode" />
 		<!--<MenuItem label="seperator1" type="Separator" />
 		<Condition name="IsCutCopyEnabled" action="Disable">
 			<MenuItem id="cut" label="${res:ICSharpCode.WPFDesigner.ContextMenu.Cut}" icon="Icons.16x16.CutIcon" shortcut="Control|X" class="ICSharpCode.WpfDesign.AddIn.Commands.Cut" />

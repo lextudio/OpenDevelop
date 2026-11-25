@@ -361,6 +361,14 @@ public sealed class WpfHotReloadJourneyTests
 			Assert.Contains("MainWindow", mainSource.GetProperty("hintName").GetString());
 			Assert.Contains("InitializeComponent", mainSource.GetProperty("text").GetString());
 			Assert.Contains("FancyOne", mainSource.GetProperty("text").GetString());
+			// The View Generated Code command opens that text as a read-only file in the editor.
+			var viewed = await _app.InvokeAsync("od.wpf-designer.view-generated-code");
+			Assert.True(viewed.GetProperty("opened").GetBoolean(), viewed.ToString());
+			Assert.True(viewed.GetProperty("readOnly").GetBoolean(), viewed.ToString());
+			Assert.EndsWith("MainWindow.g.cs", viewed.GetProperty("path").GetString());
+			Assert.Contains("InitializeComponent", viewed.GetProperty("text").GetString());
+			await _app.InvokeAsync("od.close-active-view");
+			await OpenAsActiveDocumentAsync(xaml);
 			var selected = await _app.InvokeAsync("od.wpf-designer.select", "FancyOne");
 			Assert.True(selected.GetProperty("success").GetBoolean(), "the global-using type is not in the design tree: " + selected);
 			Assert.Equal(before, await File.ReadAllTextAsync(xaml));

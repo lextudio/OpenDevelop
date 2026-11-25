@@ -36,20 +36,21 @@ would produce a project that does not restore for anyone without that feed; revi
 G8 is half done: a generator error now reaches the Error List on the XAML file and line (`XsgProject_GeneratorError_ReachesTheErrorListOnTheXamlLine`). It did not before:
 the generator's diagnostic on an additional file is printed as `CSC : error LWXSG0011: <xaml>(line,col): ...`, which `MinimalMSBuildEngine` did not parse, so only the follow-on CS0103
 errors showed. A second regex (`GeneratorDiagnosticLine`) reads that shape. Still open, with what was found when starting them (2026-11-25):
-- "View generated `.g.cs`": **the plumbing is done, an editor command is not.** The build does not write the generator's output to `obj/` by default (the
-  `obj/**/generated/...` files in the fixture are from a manual build with `EmitCompilerGeneratedFiles`), so the source is the Roslyn host, which already runs the generator over
-  the XAML AdditionalDocuments. New protocol method `roslyn/generatedSources` (`IRoslynLanguageProtocol.RoslynGeneratedSourcesAsync`, dispatcher, `RemoteRoslynLanguageProtocol`,
-  `InProcessRoslynLanguageProtocol`, `Roslyn.Host/Program.cs`, `CSharpVBLanguageService.GetGeneratedSourcesAsync`) returns the generated documents whose `#line` directives name a XAML
-  file, from the compilation, so with unsaved text too. `od.xsg.generated-sources` exposes it. Tests: `XsgHotReloadEndToEndTests.GeneratedSources_OfAXamlFile_AreReadOverTheProtocol` (this
-  file's document only, nothing for a `.cs` file) and the assertion in `XsgProject_GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns` (through the real IDE). Not done: a menu or
-  context-menu command that opens the text in an editor tab.
+- "View generated `.g.cs`": **done.** The build does not write the generator's output to `obj/` by default (the `obj/**/generated/...` files in the fixture are from a manual
+  build with `EmitCompilerGeneratedFiles`), so the source is the Roslyn host, which already runs the generator over the XAML AdditionalDocuments. New protocol method
+  `roslyn/generatedSources` (`IRoslynLanguageProtocol.RoslynGeneratedSourcesAsync`, dispatcher, `RemoteRoslynLanguageProtocol`, `InProcessRoslynLanguageProtocol`,
+  `Roslyn.Host/Program.cs`, `CSharpVBLanguageService.GetGeneratedSourcesAsync`) returns the generated documents whose `#line` directives name a XAML file, from the compilation, so with
+  unsaved text too. `GeneratedSourceService` (Base) wraps it; the designer's context menu has **View Generated Code** (`ViewGeneratedCode`), which writes the text read-only under the user's
+  temp folder and opens it. `od.xsg.generated-sources` and `od.wpf-designer.view-generated-code` expose the two levels. Tests:
+  `XsgHotReloadEndToEndTests.GeneratedSources_OfAXamlFile_AreReadOverTheProtocol` (this file's document only, per-TFM slice, nothing for a `.cs` file) and the assertions in
+  `XsgProject_GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns` (through the real IDE, including the command). Not done: the same item in the XAML text editor's context menu.
 - Breakpoints in an expression: **verified.** `XsgHotReloadEndToEndTests.BreakpointOnAnExpressionLine_HitsInTheXamlFile` sets a breakpoint on the XAML line of
   `Text="{= 'Hot reload ready'}"` through `DapSession`, the application stops there and the top frame is `MainWindow.xaml` at that line (the generator's `#line` makes the XAML the
   document of the generated code). The refusal near `HotReloadDeltaProducer.cs:253` concerns only the Hot Reload active-frame line map, not breakpoints. A step over from that stop
   stops again with reason `step` in `MainWindow.xaml` (the same test): one step over from one stop. Not run: repeated steps, other expression shapes (an event lambda, an interpolation), step into, and an edit while stopped inside an expression.
 
 Still open and deliberately not part of this stage: G5 (no CI entry; needs an observed `test-plan.json` entry iterated through pushes, which waits for
-the owner's go-ahead), G6, G7 (status bar; template blocked on a public feed), G8 (editor command to open the generated code; edit-while-stopped unchecked), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
+the owner's go-ahead), G6, G7 (status bar; template blocked on a public feed), G8 (command in the text editor menu; edit-while-stopped unchecked), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
 See `xsg-maui-alignment-plan.md` for the verified/unverified list per stage. The text below is the original audit.
 
 ## Gaps
