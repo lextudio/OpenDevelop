@@ -108,6 +108,42 @@ public sealed class XsgHotReloadEndToEndTests
 	[Fact]
 	public Task CsExpressionEdit_UnderSharpDbg_ReachesTheLiveWindow() => RunAsync(underDebugger: true, CsExpressionEditAsync);
 
+	/// <summary>
+	/// A breakpoint on the XAML line of an expression binds and hits: the generator's <c>#line</c> makes the XAML the document of the
+	/// generated code, so SharpDbg reports the stop in MainWindow.xaml at that line (G8 of xsg-gaps.md).
+	/// </summary>
+	[Fact]
+	public async Task BreakpointOnAnExpressionLine_HitsInTheXamlFile()
+	{
+		var token = TestContext.Current.CancellationToken;
+		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
+		var output = Path.Combine(fixtureDirectory, "bin", CurrentConfiguration(), TargetFramework);
+		var executable = Path.Combine(output, OperatingSystem.IsWindows() ? "XsgLocalFeedFixture.exe" : "XsgLocalFeedFixture");
+		if (!File.Exists(executable))
+			Assert.Skip($"Build the XSG fixture first: {fixtureDirectory} (-c {CurrentConfiguration()}).");
+		var xamlPath = Path.Combine(fixtureDirectory, "MainWindow.xaml");
+		var line = (await File.ReadAllLinesAsync(xamlPath, token)).Select((text, index) => (text, line: index + 1))
+			.First(l => l.text.Contains("Text=\"{= 'Hot reload ready'}\"")).line;
+
+		UseDeployedSharpDbg();
+		using var debugger = new DapSession();
+		var stopped = new TaskCompletionSource<DapStoppedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+		debugger.Stopped += e => stopped.TrySetResult(e);
+		try {
+			await debugger.StartAsync(executable, output, breakAtBeginning: false, cancellationToken: token);
+			var verified = await debugger.SetBreakpointsAsync(xamlPath, new[] { (line, (string)null, (string)null, (string)null) });
+			await debugger.ConfigurationDoneAsync(token);
+			var hit = await stopped.Task.WaitAsync(TimeSpan.FromSeconds(90), token);
+			var frames = await debugger.GetStackFramesAsync(hit.ThreadId);
+			Assert.NotEmpty(frames);
+			Assert.True(frames[0].FilePath != null && frames[0].FilePath.EndsWith("MainWindow.xaml", StringComparison.Ordinal),
+				"top frame is " + frames[0].FilePath + ":" + frames[0].Line + " (breakpoint verified: " + string.Join(",", verified.Select(v => v.Verified + "@" + v.Line)) + ")");
+			Assert.Equal(line, frames[0].Line);
+		} finally {
+			debugger.Stop();
+		}
+	}
+
 	async Task RunAsync(bool underDebugger, Func<Scenario, Task> scenario)
 	{
 		var token = TestContext.Current.CancellationToken;
