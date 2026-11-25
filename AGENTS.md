@@ -393,8 +393,16 @@ Highlight, Known issues, Full Changelog).
 
 - The workflow checks the tag first: `vMAJOR.MINOR.PATCH[-suffix]`, on `master`, at least one **release-grade** `ci.yml` run
   for that exact commit (one that uploaded the `release-grade` artifact: no `through_batch`/`platforms` narrowing, and whatever it skipped via `CI_SKIP_PLATFORMS` the release skips too, the plan
-  not in focus mode or dispatched with `full=true`, and its plan and build jobs passed), and no release for it yet. A merely
-  green run does not qualify. Run CI on the commit before tagging it; while `"focus": true`, dispatch it with `full=true`.
+  not in focus mode or dispatched with `full=true`, and its plan and build jobs passed), and no **published** release for it
+  yet. A merely green run does not qualify. Run CI on the commit before tagging it; while `"focus": true`, dispatch it with
+  `full=true`. That job's token has `contents: read`, and GitHub hides drafts from it, so this check cannot see a draft.
+- **Re-tagging replaces the draft.** The draft job (which has `contents: write`, so it does see drafts) deletes an existing
+  *draft* of the same tag and creates a fresh one with its assets. That is the supported way to rebuild a release from a newer
+  commit: move the tag, push it, and the run replaces the draft (notes edited in the old draft are discarded). Without this,
+  GitHub accepts a second draft, `gh release create` produces an untagged duplicate, and `gh release upload` resolves the tag
+  to the old draft and fails on the asset names it already holds (run 45544404729). A **published** release is never deleted:
+  both jobs refuse and exit. Delete a draft by hand only when abandoning the tag:
+  `gh api -X DELETE repos/<owner>/<repo>/releases/<id>` — plain `gh release delete <tag>` is ambiguous while a duplicate exists.
 - The packaged-app checks run the same journeys on every platform: `build/verify-packaged-common.sh` (macOS and Linux share it)
   and `build/windows/verify-packaged-app.ps1` (mirrors its DevFlow actions). Add or tighten a journey in both. Windows still
   skips only the per-RID bitness journeys (`-SkipDebugJourneys`).

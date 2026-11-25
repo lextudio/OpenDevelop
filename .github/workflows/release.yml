@@ -2,7 +2,9 @@ name: Release
 
 # Pushing a vMAJOR.MINOR.PATCH[-suffix] tag packages every distribution and leaves a DRAFT release for review. A draft is
 # never "latest", so the IDE's update check (api.github.com/.../releases/latest) is not triggered until someone has read the
-# notes and published it: `gh release edit <tag> --draft=false`, or the Publish button.
+# notes and published it: `gh release edit <tag> --draft=false`, or the Publish button. Pushing the same tag again (a re-tag
+# from a newer commit) replaces that draft and its assets; a published release is never touched, because it is what users
+# download.
 #
 # Conventions carried over from the manual releases (v5.6.0 - v5.6.3): the title is the tag, the assets keep the fixed names
 # OpenDevelop-win.7z, OpenDevelop-macos.dmg, OpenDevelop-linux-x64.tar.xz and OpenDevelop-linux-arm64.tar.xz (so
@@ -123,10 +125,14 @@ jobs:
               echo "::error::No release-grade CI run exists for $GITHUB_SHA. Dispatch ci.yml on this commit with full=true and no through_batch/platforms (a run that skipped a platform via CI_SKIP_PLATFORMS or skip_platforms qualifies only for a release that skips the same platform; a plain push is release-grade only when the plan is not in focus mode)."; exit 1
             fi
           fi
+          # Only a PUBLISHED release is caught here: this job's token has contents: read, and GitHub hides draft
+          # releases from a token without write access, so `gh release view` answers 404 for a draft. The draft the
+          # previous run of this same tag left behind is the draft job's business (see "Replace a draft this tag
+          # already has"), which runs with contents: write and is the authority for drafts.
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "::error::A release for $GITHUB_REF_NAME already exists."; exit 1
+            echo "::error::A published release for $GITHUB_REF_NAME already exists. Publish or delete it yourself; this workflow never touches one."; exit 1
           fi
-          echo "$GITHUB_REF_NAME: on master, $green release-grade CI run(s), no release yet."
+          echo "$GITHUB_REF_NAME: on master, $green release-grade CI run(s), no published release yet."
 
   package-windows:
     name: Package Windows
@@ -358,6 +364,34 @@ jobs:
         name: Render the notes
         shell: pwsh
         run: ./.github/ci/release-notes.ps1 -Tag '${{ github.ref_name }}' -Output release-notes.md
+      # Re-pushing a tag (the same vX.Y.Z rebuilt from a newer commit) leaves the previous run's draft behind, and
+      # GitHub accepts a second draft for a tag: `gh release create` would make an untagged duplicate while
+      # `gh release upload` resolved the tag to the OLD draft and failed on the three asset names it already held
+      # (run 45544404729). Replace the draft instead. Only a draft is ever deleted - a published release is what users
+      # download - and its notes are not preserved, so say so loudly. prepare cannot do this check: its token has
+      # contents: read and GitHub hides drafts from it.
+      - name: Replace a draft this tag already has
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          published=$(jq -r --arg tag "$GITHUB_REF_NAME" \
+            'add | .[] | select(.tag_name == $tag and (.draft | not)) | .html_url' "$RUNNER_TEMP/releases.json")
+          if [[ -n "$published" ]]; then
+            echo "::error::$GITHUB_REF_NAME already has a published release ($published); this workflow never deletes one."; exit 1
+          fi
+          drafts=$(jq -r --arg tag "$GITHUB_REF_NAME" \
+            'add | .[] | select(.tag_name == $tag and .draft) | [.id, .html_url, ([.assets[].name] | join(", "))] | @tsv' \
+            "$RUNNER_TEMP/releases.json")
+          while IFS=$'\t' read -r id url assets; do
+            [[ -n "${id:-}" ]] || continue
+            # Narrow the window in which a draft is published by hand between the listing above and this delete.
+            if [[ "$(gh api "repos/$GITHUB_REPOSITORY/releases/$id" --jq .draft)" != "true" ]]; then
+              echo "::error::Release $id for $GITHUB_REF_NAME was published while this run was replacing drafts; not touching it."; exit 1
+            fi
+            echo "::warning::Replacing the existing draft for $GITHUB_REF_NAME ($url, assets: ${assets:-none}). Notes edited in that draft are discarded with it."
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+          done <<< "$drafts"
       - name: Create the draft and attach every asset
         shell: bash
         run: |
