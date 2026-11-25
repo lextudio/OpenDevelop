@@ -50,7 +50,7 @@ errors showed. A second regex (`GeneratorDiagnosticLine`) reads that shape. Stil
   stops again with reason `step` in `MainWindow.xaml` (the same test), then up to five more steps over, each stopping with reason `step` (and on a XAML line while still inside the window's generated code). Breakpoints on an event lambda and on an interpolation do **not** hit (G14). Not run: step into, and an edit while stopped inside an expression.
 
 Still open and deliberately not part of this stage: G5 (no CI entry; needs an observed `test-plan.json` entry iterated through pushes, which waits for
-the owner's go-ahead), G6, G7 (status bar; template blocked on a public feed), G8 (edit-while-stopped and step into unchecked), G14 (breakpoints on lambda and interpolation expressions did not hit; cause unknown), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
+the owner's go-ahead), G6, G7 (status bar; template blocked on a public feed), G8 (edit-while-stopped and step into unchecked), G14 (breakpoints on lambda and interpolation expressions did not hit; SharpDbg binds one method per source line), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
 See `xsg-maui-alignment-plan.md` for the verified/unverified list per stage. The text below is the original audit.
 
 ## Gaps
@@ -164,7 +164,7 @@ concern; nothing says it is rejected cleanly elsewhere.
 "expects BAML", and that `#line` is "planned". All three are out of date against this repository. Where: openavalon
 (`LibreWPF/Documentation`), through its own publish workflow.
 
-### G14. Breakpoints on lambda and interpolation expressions did not hit in the attempts made (found 2026-11-25, open; cause unknown)
+### G14. Breakpoints on lambda and interpolation expressions did not hit in the attempts made (found 2026-11-25, open; SharpDbg binds one method per line)
 
 The generator writes one `#line N "file.xaml"` per element and per generated method, and the C# compiler numbers every following generated line N+1, N+2, ...
 until the next directive. Only the first statement of a block therefore sits on its XAML line; the rest report lines further down, past the end of the file
@@ -184,12 +184,17 @@ Sequence points of the built fixture (the pinned, unpatched generator), read fro
 and non-hidden points on lines 1 to 32 of a 19-line file (79 of them past line 19), so the drift is real in the PDB, not only in the generated text. Per XAML line, the methods that have a point
 there are: line 8 and line 15, `InitializeComponent` only; line 14, `InitializeComponent` and two compiled-binding closures (`<InitializeComponent>b__13_5`, `b__13_6`); line 16, `InitializeComponent`, two
 closures (`b__13_7`, `b__13_8`) and `__XsgExpression_0` (the method of the `{Age + 1}` expression, whose own element is line 15). The lines that hit (8, 15) are the ones with a single candidate method; the lines
-that did not (14, 16) have several. That is a correlation over four lines, not an explanation: whether SharpDbg binds a breakpoint to only one of several methods mapped to a line is still to be
-checked (log the adapter's `breakpoint` events after the module loads, or set the breakpoint when only one candidate remains).
+that did not (14, 16) have several. That correlation now has an explanation from SharpDbg's source (read, not run under a tracer): `ModuleMetadataReader.ResolveBreakpoint`
+(`sharpdbg/src/SharpDbg.Infrastructure/Debugger/ModuleMetadataReader_ResolveBreakpoint.cs`) collects every method with a sequence point on the requested line of the document and then
+returns **one** of them: with several covering methods it keeps those whose covering point starts latest and applies a netcoredbg containment rule meant for a lambda on the same line as
+its enclosing call (prefer the inner lambda), and `TryBindBreakpoint` creates a single runtime breakpoint for it. For XSG that is the wrong one whenever a XAML line is mapped in more than one
+method (the compiled-binding closures, `__XsgExpression_N`), and the breakpoint is then bound ("verified: true", checked with the module already loaded: lines 8 and 15 hit, 14 and 16 are verified
+yet never hit) on a method that, as far as the journey shows, does not run when the author expects (which method was chosen was not logged: the choice is inferred from the source and the pattern of hits). The journey also showed that setting the breakpoint after the module has loaded changes nothing, so load order is not the cause.
 
-So the generator change is **necessary at best, not sufficient**, and the hypothesis above is not confirmed. What would move this: find out in SharpDbg why those two lines do not bind (exact start line? sequence points of a
-method that runs later? module load order?) with a small debugger test that lists the sequence points of the built fixture; and, for stepping, whether `DebuggerNonUserCode`/`DebuggerHidden` on the
-converter and scaffolding is honoured. Only then is the generator patch worth a LibreWPF publish (1.5 h, then the pins move).
+So the generator change is **necessary at best, not sufficient**, and the line-drift hypothesis above does not by itself explain which lines hit. What would move this: SharpDbg binding a source breakpoint to **every** method that has a point on the line (as Visual Studio does for a line that several compiled bodies share), which is a change in
+`ManagedDebugger.TryBindBreakpoint` and `BreakpointBinding.SourceBound` (one `CorBreakpoint` today) in the sibling `sharpdbg` repository and a package publish; for stepping, whether
+`DebuggerNonUserCode`/`DebuggerHidden` on the converter and scaffolding is honoured. The generator patch is a separate, smaller improvement (the lines would at least sit on their XAML line) and is
+not worth a LibreWPF publish (1.5 h, then the pins move) before the debugger side is settled.
 
 ## Alignment with .NET MAUI (web check, 2026-11-25)
 
