@@ -178,6 +178,19 @@
       "note": "499 tests (9 skipped) when measured on macOS arm64. On the Windows runner one WinUI Hot Reload case (x86 probe) intermittently reports hr=0x80070490 because the probe can run before the live application applies the change; x64 and ARM64 pass. Windows ARM64 and macOS ARM64 (formerly the separate base-tests-arm entry, merged so each suite is one entry with every platform): macOS ARM64: 490 passed, 9 platform-specific skips. Windows ARM64: the two Hot Reload end-to-end cases failed until 1966db2a72 (the WinUI ARM64 fixture is built on x64 and the WPF fixture runs through dotnet there); 499 tests passed in runs 40662664664 and 40671568295. Linux starts as observe."
     },
     {
+      "id": "xsg-end-to-end",
+      "batch": 5,
+      "lane": "unit",
+      "measuredSeconds": 33,
+      "kind": "xunit-exe",
+      "project": "tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj",
+      "target": "tests/OpenDevelop.Base.Tests/bin/Debug/net11.0-windows/OpenDevelop.Base.Tests.dll",
+      "args": ["-method", "OpenDevelop.Base.Tests.XsgHotReloadEndToEndTests.CsExpressionEdit_ReachesTheLiveWindowThroughACodeDelta", "-method", "OpenDevelop.Base.Tests.XsgHotReloadEndToEndTests.CompoundExpressionEdit_ReachesTheLiveWindowThroughACodeDelta", "-method", "OpenDevelop.Base.Tests.XsgHotReloadEndToEndTests.EventHandlerEdit_ReachesTheLiveWindowThroughACodeDelta", "-method", "OpenDevelop.Base.Tests.XsgHotReloadEndToEndTests.ExpressionOverTheDataContext_IsComputedByTheLiveWindow", "-method", "OpenDevelop.Base.Tests.XsgHotReloadEndToEndTests.NameRemoval_IsARestartAndLeavesTheSessionUsable", "-method", "OpenDevelop.Base.Tests.XsgHotReloadEndToEndTests.GeneratedSources_OfAXamlFile_AreReadOverTheProtocol", "-parallel", "none"],
+      "additionalProjects": [{ "project": "tests/fixtures/XsgLocalFeedFixture/XsgLocalFeedFixture.csproj", "platforms": ["linux-x64"], "optional": true }],
+      "platforms": { "linux-x64": "observe" },
+      "note": "The XAML source generator (XSG) end to end: the built XsgLocalFeedFixture runs under the Hot Reload agent and the Roslyn host, edits of an expression, an event handler and a removed name reach the live window, and the host hands back the generated C# of a XAML file (G5 of doc/technotes/xsg-gaps.md). Linux x64 only, on purpose: the fixture is an additional project of the platform archive, and on Windows and macOS it would also start XsgProject_CsExpressionEdit_AppliesAsACodeDelta inside the required wpf-hot-reload-journeys lane (that journey skips today because the fixture is not built); Linux has no such required lane. The fixture is 'optional': a failed build of it is a warning, not a failed build job (build-binaries.ps1, checked by .github/ci/tests/verify-optional-additional-project.ps1), because whether net10.0-windows and the lextudio feed work on a Linux runner is unproven. Building the fixture also makes base-tests (observe on linux-x64) run its unselected UnderSharpDbg, breakpoint and step XSG cases, which need the deployed SharpDbg and may fail there. Run locally with exactly this command line on macOS arm64: 6 passed, 0 skipped, 33 s. Never run on a hosted runner: a push is the run, and it counts only after two green runs. Not selected: the three UnderSharpDbg variants and the breakpoint and step journeys."
+    },
+    {
       "id": "vseditorcompat-tests",
       "batch": 1,
       "lane": "unit",

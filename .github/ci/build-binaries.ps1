@@ -72,8 +72,16 @@ foreach ($entry in $entries) {
     if (-not $entry.PSObject.Properties['additionalProjects']) { continue }
     foreach ($item in @($entry.additionalProjects)) {
         if ($item.PSObject.Properties['platforms'] -and $Platform -notin @($item.platforms)) { continue }
-        if (@($builds | Where-Object { $_.Project -eq $item.project }).Count -eq 0) {
-            $builds += [pscustomobject]@{ Project = $item.project; Args = [string[]]@(); First = $false }
+        # "optional": true on an additional project means a failed build of it is reported (an ::warning:: annotation and a 'failed' row)
+        # but does not fail the build job: an observe entry that depends on a fixture which may not build on a platform must not take
+        # down every lane of that platform with it. The entry itself then fails visibly when it runs (a missing fixture skips or fails its tests).
+        $isOptional = [bool]($item.PSObject.Properties['optional'] -and $item.optional)
+        $existing = @($builds | Where-Object { $_.Project -eq $item.project })
+        if ($existing.Count -eq 0) {
+            $builds += [pscustomobject]@{ Project = $item.project; Args = [string[]]@(); First = $false; Optional = $isOptional }
+        } elseif (-not $isOptional) {
+            # A project some entry needs without "optional" stays a hard requirement, whichever entry named it first.
+            foreach ($build in $existing) { $build | Add-Member -NotePropertyName Optional -NotePropertyValue $false -Force }
         }
     }
 }
@@ -156,6 +164,10 @@ foreach ($build in $builds) {
     if ($project -like '*Terminal.csproj' -or ($project -like '*SharpDevelop.csproj' -and $verb -eq 'publish')) { $requiresHostPayloadValidation = $true }
     $rows += [pscustomobject]@{ Project = $project; Seconds = $seconds; Outcome = $(if ($exit -eq 0) { 'passed' } else { 'failed' }); HostDeps = $depsState }
     if ($exit -ne 0) {
+        if ($build.PSObject.Properties['Optional'] -and $build.Optional) {
+            Write-Host "::warning title=optional build failed::$project exited with $exit after ${seconds}s; it is an optional additional project, so the build job continues."
+            continue
+        }
         $failed += $project
         Write-Host "::error title=build failed::$project exited with $exit after ${seconds}s."
         # Building the rest against a host that did not build would only produce untrimmed, misleading output.
