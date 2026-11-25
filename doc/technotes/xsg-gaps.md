@@ -50,7 +50,7 @@ errors showed. A second regex (`GeneratorDiagnosticLine`) reads that shape. Stil
   stops again with reason `step` in `MainWindow.xaml` (the same test), then up to five more steps over, each stopping with reason `step` (and on a XAML line while still inside the window's generated code). Breakpoints on an event lambda and on an interpolation do **not** hit (G14). Not run: step into, and an edit while stopped inside an expression.
 
 Still open and deliberately not part of this stage: G5 (no CI entry; needs an observed `test-plan.json` entry iterated through pushes, which waits for
-the owner's go-ahead), G6, G7 (status bar; template blocked on a public feed), G8 (edit-while-stopped and step into unchecked), G14 (`#line` drift: lambda and interpolation breakpoints), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
+the owner's go-ahead), G6, G7 (status bar; template blocked on a public feed), G8 (edit-while-stopped and step into unchecked), G14 (breakpoints on lambda and interpolation expressions did not hit; cause unknown), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
 See `xsg-maui-alignment-plan.md` for the verified/unverified list per stage. The text below is the original audit.
 
 ## Gaps
@@ -164,18 +164,25 @@ concern; nothing says it is rejected cleanly elsewhere.
 "expects BAML", and that `#line` is "planned". All three are out of date against this repository. Where: openavalon
 (`LibreWPF/Documentation`), through its own publish workflow.
 
-### G14. `#line` covers a block, so later statements drift off their XAML line (found 2026-11-25, open, generator side)
+### G14. Breakpoints on lambda and interpolation expressions did not hit in the attempts made (found 2026-11-25, open; cause unknown)
 
 The generator writes one `#line N "file.xaml"` per element and per generated method, and the C# compiler numbers every following generated line N+1, N+2, ...
 until the next directive. Only the first statement of a block therefore sits on its XAML line; the rest report lines further down, past the end of the file
 for the last elements (a step in `MainWindow.xaml`'s `{Age + 1}` block stopped on "line 20" of a 19-line file). Measured with `BreakpointOnAnExpressionLine_HitsInTheXamlFile`:
 a breakpoint on a constant expression and on `{Age + 1}` hits on its line (the committed test covers only those). The same test extended locally to an event lambda
-(`Loaded="{(s, e) => ...}"`) and to an interpolation (`{$'{Label}: {Age}'}`) saw no stop within 90 s; those two cases are deliberately not committed because they fail. The likely
-cause is the numbering above: the lambda body is the fourth statement after `#line 14`, and the evaluation method's `return` is the fifth line after the signature, so neither sits
-on the XAML line. Not proven: the generated line positions were measured, but no breakpoint on a drifted line was shown to hit, and the lambda could also miss for another reason; a build with a
-`#line` per statement is what would confirm it. Fix belongs in `openavalon/LibreWPF/src/LibreWPF.Xaml.SourceGenerator`:
-emit `#line N "file"` (or a `(line,col)-(line,col)` span) right before each statement or expression that has a XAML position, and `#line hidden` for scaffolding such as
-the name-scope registration. It needs a LibreWPF publish (1.5 h) and then moves the pins; OpenDevelop needs nothing but the tests below to be extended to the two failing shapes.
+(`Loaded="{(s, e) => ...}"`) and to an interpolation (`{$'{Label}: {Age}'}`) saw no stop within 90 s; those two cases are deliberately not committed because they fail. A likely
+contributor is the numbering above: the lambda body is the fourth statement after `#line 14`, and the evaluation method's `return` is the fifth line after the signature, so neither sits
+on the XAML line. That is a hypothesis, and the next paragraph tests it.
+
+Tried the same day, not committed (the patch is `tmp/xsg-g14-generator.patch`, 119 lines, generator and its unit tests; reverted from both working trees): `#line hidden` for the expression method's
+scaffolding, a `#line` right before its `return`, and a `#line` for the attribute right before an event lambda's statement. The generated text came out as intended (the generator's 213
+unit tests pass, including two new ones on the placement). Built into the fixture through a locally packed generator, the journey showed: breakpoints on the lambda and the interpolation
+did not hit (the debugger had reported them "not processed" at set time, as it does for the lines that do hit, so the reason is not known), and the first step over `{Age + 1}` now stopped in
+generated code (`..._MainWindow.g.cs`, a virtual path) instead of a XAML line; why was not measured (stepping out of the last mapped statement into unmapped converter code is one possibility).
+
+So the generator change is **necessary at best, not sufficient**, and the hypothesis above is not confirmed. What would move this: find out in SharpDbg why those two lines do not bind (exact start line? sequence points of a
+method that runs later? module load order?) with a small debugger test that lists the sequence points of the built fixture; and, for stepping, whether `DebuggerNonUserCode`/`DebuggerHidden` on the
+converter and scaffolding is honoured. Only then is the generator patch worth a LibreWPF publish (1.5 h, then the pins move).
 
 ## Alignment with .NET MAUI (web check, 2026-11-25)
 
