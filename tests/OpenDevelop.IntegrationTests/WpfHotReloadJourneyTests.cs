@@ -345,6 +345,12 @@ public sealed class WpfHotReloadJourneyTests
 				return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
 			}, TimeSpan.FromSeconds(90)), status.ToString());
 
+			// The support question "is this project XSG or BAML, and what is on" is answerable without reading the csproj.
+			var xsg = await _app.InvokeAsync("od.wpf-designer.xsg-status");
+			Assert.Equal("xsg", xsg.GetProperty("compileMode").GetString());
+			Assert.True(xsg.GetProperty("simplerXaml").GetBoolean(), xsg.ToString());
+			Assert.True(xsg.GetProperty("cSharpExpressions").GetBoolean(), xsg.ToString());
+			Assert.Contains("XsgLocalFeedFixture.Controls", xsg.GetProperty("globalUsingNamespaces").EnumerateArray().Select(e => e.GetString()));
 			var selected = await _app.InvokeAsync("od.wpf-designer.select", "FancyOne");
 			Assert.True(selected.GetProperty("success").GetBoolean(), "the global-using type is not in the design tree: " + selected);
 			Assert.Equal(before, await File.ReadAllTextAsync(xaml));

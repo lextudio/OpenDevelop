@@ -23,6 +23,7 @@ using ICSharpCode.SharpDevelop;
 using ICSharpCode.SharpDevelop.Designer.Presentation;
 using ICSharpCode.SharpDevelop.Designer.Remote;
 using ICSharpCode.SharpDevelop.Gui;
+using ICSharpCode.SharpDevelop.Project;
 using ICSharpCode.SharpDevelop.Designer.Shell;
 using ICSharpCode.SharpDevelop.Designer.Surface;
 using ICSharpCode.WpfDesign.AddIn.OutOfProcess;
@@ -109,6 +110,27 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 		public static string GetMenuTypeHereHotspotStatus()
 		{
 			return JsonSerializer.Serialize(FindWpfViewContent()?.SurfaceControl?.MenuTypeHereHotspotStatus);
+		}
+
+		[DevFlowAction("od.wpf-designer.xsg-status", Description = "Report whether the project of the active WPF designer compiles XAML with the LibreWPF source generator (XSG) or BAML, which XSG features (Simpler XAML, C# expressions) are on, and the namespaces its global using directives name")]
+		public static string GetXsgStatus()
+		{
+			var viewContent = FindWpfViewContent();
+			if (viewContent == null)
+				return JsonSerializer.Serialize(new { active = false });
+			var project = SD.ProjectService.FindProjectContainingFile(viewContent.PrimaryFile.FileName);
+			if (project == null)
+				return JsonSerializer.Serialize(new { active = true, project = (string)null });
+			var evaluated = project is MSBuildBasedProject msbuild ? (Func<string, string>)msbuild.GetEvaluatedProperty : null;
+			var (xsg, simpler, expressions) = XsgProjectFeatures.Describe(evaluated);
+			return JsonSerializer.Serialize(new {
+				active = true,
+				project = project.FileName.ToString(),
+				compileMode = xsg ? "xsg" : "baml",
+				simplerXaml = simpler,
+				cSharpExpressions = expressions,
+				globalUsingNamespaces = xsg ? XsgProjectFeatures.GlobalUsingNamespaces(project) : new List<string>(),
+			});
 		}
 
 		[DevFlowAction("od.wpf-designer.status", Description = "Inspect the active WPF designer view: whether the design surface loaded, the toolbox's item/group counts, and the outline pad's element tree")]

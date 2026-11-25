@@ -93,6 +93,20 @@ namespace ICSharpCode.WpfDesign.AddIn
 			return result;
 		}
 
+		/// <summary>Whether the project compiles XAML with the LibreWPF source generator (XSG) rather than BAML, and which XSG features are on.
+		/// A read-only summary for support questions and tests.</summary>
+		public static (bool Xsg, bool SimplerXaml, bool CSharpExpressions) Describe(Func<string, string> evaluated)
+			=> (evaluated != null && SafeIsTrue(evaluated, "UseLibreWpfXamlSourceGenerator"), ImplicitXamlNamespaces(evaluated), CSharpExpressions(evaluated));
+
+		static bool SafeIsTrue(Func<string, string> evaluated, string name)
+		{
+			try {
+				return IsTrue(evaluated(name));
+			} catch (Exception ex) when (ex is not OutOfMemoryException) {
+				return false;
+			}
+		}
+
 		static bool IsTrue(string value) => string.Equals(value?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
 	}
 }

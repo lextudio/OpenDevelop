@@ -29,8 +29,11 @@ The editing-experience gaps are closed for the LibreWPF profile, in the syntax o
 | Hot Reload of expression, event and name edits | closed, also under SharpDbg | `XsgHotReloadEndToEndTests` 9/9, `XsgProject_CsExpressionEdit_AppliesAsACodeDelta` |
 | global-using types | closed in generator, language server and designer | `..._GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns` |
 
+G7 is half done: the read-only DevFlow action `od.wpf-designer.xsg-status` reports XSG or BAML, Simpler XAML, C# expressions and the global-using namespaces of
+the active designer's project (asserted in `XsgProject_GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns`); a project template and a status-bar entry are still open.
+
 Still open and deliberately not part of this stage: G5 (no CI entry; needs an observed `test-plan.json` entry iterated through pushes, which waits for
-the owner's go-ahead), G6, G7, G8, G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
+the owner's go-ahead), G6, G7 (template and status bar), G8, G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
 See `xsg-maui-alignment-plan.md` for the verified/unverified list per stage. The text below is the original audit.
 
 ## Gaps
