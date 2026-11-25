@@ -919,7 +919,8 @@ public sealed class ProfilerIntegrationTests : IAsyncDisposable
 		var values = gen0.GetProperty("points").EnumerateArray().Select(point => point.GetProperty("value").GetDouble()).ToList();
 		Assert.True(values.Count >= 2, gen0.ToString());
 		// The counter is the number of collections in each interval, so a program that allocates all the time never reads 0.
-		Assert.All(values, value => Assert.True(value > 100, "generation 0 collections per interval: " + string.Join(", ", values)));
+		// The rate depends on the machine (a hosted runner read 84-88 per interval), so only the never-zero property is asserted.
+		Assert.All(values, value => Assert.True(value > 0, "generation 0 collections per interval: " + string.Join(", ", values)));
 		var last = gen0.GetProperty("points").EnumerateArray().Last();
 		var hovered = await HoverAsync("counter:gen-0-gc-count", last.GetProperty("x").GetDouble(), last.GetProperty("y").GetDouble());
 		Assert.True(hovered.GetProperty("hit").GetBoolean(), hovered.ToString());
