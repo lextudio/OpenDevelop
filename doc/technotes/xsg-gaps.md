@@ -30,7 +30,8 @@ The editing-experience gaps are closed for the LibreWPF profile, in the syntax o
 | global-using types | closed in generator, language server and designer | `..._GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns` |
 
 G7 is half done: the read-only DevFlow action `od.wpf-designer.xsg-status` reports XSG or BAML, Simpler XAML, C# expressions and the global-using namespaces of
-the active designer's project (asserted in `XsgProject_GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns`); a project template and a status-bar entry are still open.
+the active designer's project (asserted in `XsgProject_GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns`); a status-bar entry is still open. A project template is **blocked, not forgotten**: `LibreWPF.Sdk` and the generator are published only to lextudio GitHub Packages (see `AGENTS.md`), so a template
+would produce a project that does not restore for anyone without that feed; revisit when the packages are on a public feed.
 
 G8 is half done: a generator error now reaches the Error List on the XAML file and line (`XsgProject_GeneratorError_ReachesTheErrorListOnTheXamlLine`). It did not before:
 the generator's diagnostic on an additional file is printed as `CSC : error LWXSG0011: <xaml>(line,col): ...`, which `MinimalMSBuildEngine` did not parse, so only the follow-on CS0103
@@ -42,11 +43,11 @@ errors showed. A second regex (`GeneratorDiagnosticLine`) reads that shape. Stil
   host's wire shape, then an editor command and an `od.*` action.
 - Breakpoints in an expression: **verified.** `XsgHotReloadEndToEndTests.BreakpointOnAnExpressionLine_HitsInTheXamlFile` sets a breakpoint on the XAML line of
   `Text="{= 'Hot reload ready'}"` through `DapSession`, the application stops there and the top frame is `MainWindow.xaml` at that line (the generator's `#line` makes the XAML the
-  document of the generated code). The refusal near `HotReloadDeltaProducer.cs:253` concerns only the Hot Reload active-frame line map, not breakpoints. Not run: stepping
-  through a multi-name expression (a single line holds several statements) and an edit while stopped inside one.
+  document of the generated code). The refusal near `HotReloadDeltaProducer.cs:253` concerns only the Hot Reload active-frame line map, not breakpoints. A step over from that stop
+  stops again with reason `step` in `MainWindow.xaml` (the same test): one step over from one stop. Not run: repeated steps, other expression shapes (an event lambda, an interpolation), step into, and an edit while stopped inside an expression.
 
 Still open and deliberately not part of this stage: G5 (no CI entry; needs an observed `test-plan.json` entry iterated through pushes, which waits for
-the owner's go-ahead), G6, G7 (template and status bar), G8 (generated-code view; stepping and edit-while-stopped unchecked), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
+the owner's go-ahead), G6, G7 (status bar; template blocked on a public feed), G8 (generated-code view; edit-while-stopped unchecked), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
 See `xsg-maui-alignment-plan.md` for the verified/unverified list per stage. The text below is the original audit.
 
 ## Gaps

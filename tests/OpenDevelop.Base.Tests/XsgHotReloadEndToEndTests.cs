@@ -128,7 +128,7 @@ public sealed class XsgHotReloadEndToEndTests
 		UseDeployedSharpDbg();
 		using var debugger = new DapSession();
 		var stopped = new TaskCompletionSource<DapStoppedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
-		debugger.Stopped += e => stopped.TrySetResult(e);
+		debugger.Stopped += e => Volatile.Read(ref stopped).TrySetResult(e);
 		try {
 			await debugger.StartAsync(executable, output, breakAtBeginning: false, cancellationToken: token);
 			var verified = await debugger.SetBreakpointsAsync(xamlPath, new[] { (line, (string)null, (string)null, (string)null) });
@@ -139,6 +139,16 @@ public sealed class XsgHotReloadEndToEndTests
 			Assert.True(frames[0].FilePath != null && frames[0].FilePath.EndsWith("MainWindow.xaml", StringComparison.Ordinal),
 				"top frame is " + frames[0].FilePath + ":" + frames[0].Line + " (breakpoint verified: " + string.Join(",", verified.Select(v => v.Verified + "@" + v.Line)) + ")");
 			Assert.Equal(line, frames[0].Line);
+
+			// One step over from the stop: the next stop is again reported in the XAML file (the statements around the expression map back to it through #line).
+			// Repeated steps, step into and other expression shapes are not exercised here.
+			Volatile.Write(ref stopped, new TaskCompletionSource<DapStoppedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously));
+			debugger.StepOver();
+			var stepped = await stopped.Task.WaitAsync(TimeSpan.FromSeconds(60), token);
+			Assert.Equal("step", stepped.Reason);
+			var after = await debugger.GetStackFramesAsync(stepped.ThreadId);
+			Assert.True(after[0].FilePath != null && after[0].FilePath.EndsWith("MainWindow.xaml", StringComparison.Ordinal),
+				"after a step the top frame is " + after[0].FilePath + ":" + after[0].Line);
 		} finally {
 			debugger.Stop();
 		}
