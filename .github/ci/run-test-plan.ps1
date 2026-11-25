@@ -95,6 +95,19 @@ function Read-NewLines($state, [System.Collections.Generic.List[string]]$lines, 
     $state.Text = if ($Final) { '' } else { $parts[$parts.Count - 1] }
 }
 
+# The shared NuGet package folder must not change while a lane runs. Fixture builds in wpf-hot-reload-journeys have failed
+# with MSB3030 for files of progpu.native.sdk that the unpacked cache did contain; report the first entry after which any
+# file of that package has vanished, and which ones, so the culprit is named in the log.
+function Get-PackageFileSet([string]$name) {
+    $root = $env:NUGET_PACKAGES
+    if (-not $root) { return $null }
+    $folder = Join-Path $root $name
+    if (-not (Test-Path -LiteralPath $folder)) { return $null }
+    $set = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($file in Get-ChildItem -LiteralPath $folder -Recurse -File -ErrorAction SilentlyContinue) { [void]$set.Add($file.FullName.Substring($folder.Length)) }
+    return ,$set
+}
+
 # A hung entry is often a modal error dialog the IDE raised, which only the screen shows; capture it before the kill.
 # Best effort: a failed capture is reported and never changes the entry's outcome.
 function Save-Screenshot([string]$path) {
@@ -185,6 +198,8 @@ Write-Host "Platform=$Platform Lane=$Lane ThroughBatch=$ThroughBatch -> $($selec
 if ($selected.Count -eq 0) { throw "The plan enables nothing in lane '$Lane' for $Platform up to batch $ThroughBatch." }
 
 $results = @()
+$packageBaseline = Get-PackageFileSet 'progpu.native.sdk'
+if ($packageBaseline) { Write-Host "progpu.native.sdk: $($packageBaseline.Count) files before the lane starts." }
 # A lane's timeoutMinutes is its budget even when several lanes share one CI job (whose own timeout is only the sum of them
 # plus headroom): once it is spent, the entries not started yet are skipped, so a slow lane cannot use up the time of the
 # lanes after it. A skipped 'required' entry fails the lane, an 'observe' one only warns.
@@ -218,6 +233,14 @@ foreach ($entry in $selected) {
     $output = $run.Output
     $watch.Stop()
     Write-Host '::endgroup::'
+    if ($packageBaseline) {
+        $now = Get-PackageFileSet 'progpu.native.sdk'
+        $gone = @($packageBaseline | Where-Object { -not $now -or -not $now.Contains($_) })
+        if ($gone.Count -gt 0) {
+            Write-Host "::warning title=$($entry.id)::progpu.native.sdk lost $($gone.Count) files while this entry ran, for example: $(($gone | Select-Object -First 5) -join ', ')"
+            $packageBaseline = $now
+        }
+    }
 
     $seconds = [int][math]::Round($watch.Elapsed.TotalSeconds)
     $tests = Get-TestTotal $entry $output
