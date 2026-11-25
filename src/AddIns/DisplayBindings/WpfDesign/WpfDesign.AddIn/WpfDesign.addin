@@ -28,6 +28,7 @@
 	</Path>
 	<Path name="/SharpDevelop/Autostart">
 		<Class id="ICSharpCode.WpfDesign.AddIn.RegisterXamlLanguageServersCommand" class="ICSharpCode.WpfDesign.AddIn.RegisterXamlLanguageServersCommand" />
+		<Class id="ICSharpCode.WpfDesign.AddIn.XsgStatusBarIndicator" class="ICSharpCode.WpfDesign.AddIn.XsgStatusBarIndicator" />
 	</Path>
 	<Path name="/SharpDevelop/Workbench/DisplayBindings">
 		<!--<DisplayBinding id    = "WPFDesigner"

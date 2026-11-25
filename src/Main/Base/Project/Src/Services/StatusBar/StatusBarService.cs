@@ -63,6 +63,10 @@ namespace ICSharpCode.SharpDevelop.Gui
 		/// <param name="action">Action run when the optional action button is clicked.</param>
 		void SetMessage(string message, bool highlighted = false, IImage icon = null,
 			string actionText = null, Action action = null);
+
+		/// <summary>The text last set with <see cref="SetMessage"/>, as shown; null when the service does not keep it. Lets a component take down its own message
+		/// without clearing one another component has put there since.</summary>
+		string CurrentMessage => null;
 		
 		/// <summary>
 		/// Creates a new <see cref="IProgressMonitor"/> that can be used to report

@@ -29,8 +29,8 @@ The editing-experience gaps are closed for the LibreWPF profile, in the syntax o
 | Hot Reload of expression, event and name edits | closed, also under SharpDbg | `XsgHotReloadEndToEndTests` 9/9, `XsgProject_CsExpressionEdit_AppliesAsACodeDelta` |
 | global-using types | closed in generator, language server and designer | `..._GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns` |
 
-G7 is half done: the read-only DevFlow action `od.wpf-designer.xsg-status` reports XSG or BAML, Simpler XAML, C# expressions and the global-using namespaces of
-the active designer's project (asserted in `XsgProject_GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns`); a status-bar entry is still open. A project template is **blocked, not forgotten**: `LibreWPF.Sdk` and the generator are published only to lextudio GitHub Packages (see `AGENTS.md`), so a template
+G7 is mostly done: the read-only DevFlow action `od.wpf-designer.xsg-status` reports XSG or BAML, Simpler XAML, C# expressions and the global-using namespaces of
+the active designer's project (asserted in `XsgProject_GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns`); the **status bar** now says so (`XsgStatusBarIndicator`, an Autostart command: when the active document is a `.xaml` file of an XSG project the left-most pane reads "XAML compiled by the LibreWPF source generator (Simpler XAML, C# expressions)" with a **View Generated Code** button; BAML projects get nothing; asserted in `XsgProject_GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns` through the new `od.status-bar.message` action; the message is replaced by whatever sets the pane next, it is not a permanent item). A project template is **blocked, not forgotten**: `LibreWPF.Sdk` and the generator are published only to lextudio GitHub Packages (see `AGENTS.md`), so a template
 would produce a project that does not restore for anyone without that feed; revisit when the packages are on a public feed.
 
 G8 is half done: a generator error now reaches the Error List on the XAML file and line (`XsgProject_GeneratorError_ReachesTheErrorListOnTheXamlLine`). It did not before:
@@ -50,7 +50,7 @@ errors showed. A second regex (`GeneratorDiagnosticLine`) reads that shape. Stil
   stops again with reason `step` in `MainWindow.xaml` (the same test), then up to five more steps over, each stopping with reason `step` (and on a XAML line while still inside the window's generated code). Breakpoints on an event lambda and on an interpolation do **not** hit (G14). Not run: step into, and an edit while stopped inside an expression.
 
 Still open and deliberately not part of this stage: G5 (no CI entry; needs an observed `test-plan.json` entry iterated through pushes, which waits for
-the owner's go-ahead), G6, G7 (status bar; template blocked on a public feed), G8 (edit-while-stopped and step into unchecked), G14 (breakpoints on lambda and interpolation expressions: fixed in `sharpdbg` locally, waits for a SharpDbg publish and the pin), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
+the owner's go-ahead), G6, G7 (project template blocked on a public feed), G8 (edit-while-stopped and step into unchecked), G14 (breakpoints on lambda and interpolation expressions: fixed in `sharpdbg` locally, waits for a SharpDbg publish and the pin), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
 See `xsg-maui-alignment-plan.md` for the verified/unverified list per stage. The text below is the original audit.
 
 ## Gaps

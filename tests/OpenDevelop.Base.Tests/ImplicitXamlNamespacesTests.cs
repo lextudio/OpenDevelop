@@ -242,4 +242,18 @@ public sealed class ImplicitXamlNamespacesTests
 		Assert.Equal(new[] { "System.Text", "Sample.Controls", "Spaced.Name", "Qualified.Name" }, XsgProjectFeatures.ParseGlobalUsings(source));
 		Assert.Empty(XsgProjectFeatures.ParseGlobalUsings(null));
 	}
+
+	[Fact]
+	public void StatusBarText_IsOnlyForAProjectCompiledWithTheGenerator()
+	{
+		// A BAML project (no generator) gets no message, whatever the feature properties say, so the status pane is left alone.
+		Assert.Null(XsgStatusBarIndicator.StatusText(false, false, false));
+		Assert.Null(XsgStatusBarIndicator.StatusText(false, true, true));
+		Assert.Equal("XAML compiled by the LibreWPF source generator", XsgStatusBarIndicator.StatusText(true, false, false));
+		Assert.Equal("XAML compiled by the LibreWPF source generator (Simpler XAML)", XsgStatusBarIndicator.StatusText(true, true, false));
+		Assert.Equal("XAML compiled by the LibreWPF source generator (C# expressions)", XsgStatusBarIndicator.StatusText(true, false, true));
+		Assert.Equal("XAML compiled by the LibreWPF source generator (Simpler XAML, C# expressions)", XsgStatusBarIndicator.StatusText(true, true, true));
+		// A file that is not XAML never reaches the project lookup.
+		Assert.Null(XsgStatusBarIndicator.Describe(ICSharpCode.Core.FileName.Create("/work/Program.cs")));
+	}
 }

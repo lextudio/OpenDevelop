@@ -73,6 +73,9 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
                 return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean()
                     && status.GetProperty("diagnostics").GetArrayLength() == 0;
             }, TimeSpan.FromSeconds(90)), status.ToString());
+            // This sample compiles XAML to BAML: whatever message an XSG document left in the status bar is gone, and none is added.
+            var statusBar = await app.InvokeAsync("od.status-bar.message");
+            Assert.DoesNotContain("LibreWPF source generator", statusBar.GetProperty("message").GetString() ?? "");
             await Select("target");
 
             // Transform editor.

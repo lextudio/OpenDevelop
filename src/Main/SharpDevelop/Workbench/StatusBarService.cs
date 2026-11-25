@@ -105,8 +105,14 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			refreshMode();
 		}
 
+		/// <summary>The message and action label last set on the left-most pane, as shown (for diagnostics and integration tests).</summary>
+		internal (string Message, string ActionText) CurrentMessageAndAction { get; private set; }
+
+		string IStatusBarService.CurrentMessage => CurrentMessageAndAction.Message;
+
 		public void SetMessage(string message, bool highlighted, IImage icon, string actionText, Action action)
 		{
+			CurrentMessageAndAction = (StringParser.Parse(message), actionText == null ? null : StringParser.Parse(actionText));
 			// Only re-render a ${res:...} template; a message the caller already resolved to plain
 			// text has nothing to re-localize (and re-parsing it could expand stray ${...}). The
 			// optional action label follows the same rule: both pieces must change language together.

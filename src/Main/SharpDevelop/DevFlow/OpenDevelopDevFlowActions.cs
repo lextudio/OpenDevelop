@@ -2210,6 +2210,15 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.status-bar.message", Description = "Get the message and the action label last set on the status bar's left-most pane")]
+		public static string GetStatusBarMessage()
+		{
+			if (SD.StatusBar is not ICSharpCode.SharpDevelop.Workbench.StatusBarService service)
+				return JsonSerializer.Serialize(new { available = false });
+			var (message, actionText) = service.CurrentMessageAndAction;
+			return JsonSerializer.Serialize(new { available = true, message, actionText });
+		}
+
 		[DevFlowAction("od.document-outline", Description = "Get the document outline (symbol tree) for a file")]
 		public static async Task<string> GetDocumentOutlineAsync(string fileName)
 		{

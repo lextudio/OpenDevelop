@@ -351,6 +351,16 @@ public sealed class WpfHotReloadJourneyTests
 			Assert.True(xsg.GetProperty("simplerXaml").GetBoolean(), xsg.ToString());
 			Assert.True(xsg.GetProperty("cSharpExpressions").GetBoolean(), xsg.ToString());
 			Assert.Contains("XsgLocalFeedFixture.Controls", xsg.GetProperty("globalUsingNamespaces").EnumerateArray().Select(e => e.GetString()));
+		// The status bar says this XAML is compiled by the generator, with the features on, and offers the generated code.
+			JsonElement statusBar = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				statusBar = await _app.InvokeAsync("od.status-bar.message");
+				return statusBar.TryGetProperty("message", out var message) && (message.GetString() ?? "").Contains("LibreWPF source generator");
+			}, TimeSpan.FromSeconds(30)), "no XSG status bar message: " + statusBar);
+			Assert.Contains("Simpler XAML", statusBar.GetProperty("message").GetString());
+			Assert.Contains("C# expressions", statusBar.GetProperty("message").GetString());
+			Assert.Equal("View Generated Code", statusBar.GetProperty("actionText").GetString());
+
 			// The generated C# of this window, read from the Roslyn host's compilation (the build does not write it to obj/ by default).
 			JsonElement generated = default;
 			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
