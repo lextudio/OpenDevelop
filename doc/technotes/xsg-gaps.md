@@ -50,7 +50,7 @@ errors showed. A second regex (`GeneratorDiagnosticLine`) reads that shape. Stil
   stops again with reason `step` in `MainWindow.xaml` (the same test), then up to five more steps over, each stopping with reason `step` (and on a XAML line while still inside the window's generated code). Breakpoints on an event lambda and on an interpolation do **not** hit (G14). Not run: step into, and an edit while stopped inside an expression.
 
 Still open and deliberately not part of this stage: G5 (no CI entry; needs an observed `test-plan.json` entry iterated through pushes, which waits for
-the owner's go-ahead), G6, G7 (status bar; template blocked on a public feed), G8 (edit-while-stopped and step into unchecked), G14 (breakpoints on lambda and interpolation expressions did not hit; SharpDbg binds one method per source line), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
+the owner's go-ahead), G6, G7 (status bar; template blocked on a public feed), G8 (edit-while-stopped and step into unchecked), G14 (breakpoints on lambda and interpolation expressions: fixed in `sharpdbg` locally, waits for a SharpDbg publish and the pin), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
 See `xsg-maui-alignment-plan.md` for the verified/unverified list per stage. The text below is the original audit.
 
 ## Gaps
@@ -164,7 +164,7 @@ concern; nothing says it is rejected cleanly elsewhere.
 "expects BAML", and that `#line` is "planned". All three are out of date against this repository. Where: openavalon
 (`LibreWPF/Documentation`), through its own publish workflow.
 
-### G14. Breakpoints on lambda and interpolation expressions did not hit in the attempts made (found 2026-11-25, open; SharpDbg binds one method per line)
+### G14. Breakpoints on lambda and interpolation expressions did not hit in the attempts made (found 2026-11-25; fixed in sharpdbg, local commit, not yet in the pinned package)
 
 The generator writes one `#line N "file.xaml"` per element and per generated method, and the C# compiler numbers every following generated line N+1, N+2, ...
 until the next directive. Only the first statement of a block therefore sits on its XAML line; the rest report lines further down, past the end of the file
@@ -195,6 +195,15 @@ So the generator change is **necessary at best, not sufficient**, and the line-d
 `ManagedDebugger.TryBindBreakpoint` and `BreakpointBinding.SourceBound` (one `CorBreakpoint` today) in the sibling `sharpdbg` repository and a package publish; for stepping, whether
 `DebuggerNonUserCode`/`DebuggerHidden` on the converter and scaffolding is honoured. The generator patch is a separate, smaller improvement (the lines would at least sit on their XAML line) and is
 not worth a LibreWPF publish (1.5 h, then the pins move) before the debugger side is settled.
+
+**Fixed in sharpdbg (commit `5404477` in the sibling repository, local, not pushed or published).** For a document that is not a compiled-language source (`.cs .vb .fs .fsi .fsx` are
+excluded, so the same-line-lambda rule is unchanged for them), `ModuleMetadataReader.ResolveAdditionalBreakpoints` returns every other method with a covering point, `ManagedDebugger.TryBindBreakpoint` binds
+a runtime breakpoint for each (`BreakpointBinding.SourceBound.AlsoBound`), and Hot Reload rebinding and runtime-breakpoint sharing handle the extra locations. Verified: with the reflection probe on the fixture's PDB (line 14 resolves to
+`b__13_6` plus `InitializeComponent` and `b__13_5`, line 16 to `b__13_8` plus `InitializeComponent`, `__XsgExpression_0` and `b__13_7`; lines 8 and 15 unchanged), and with
+`BreakpointOnAnExpressionLine_HitsInTheXamlFile` run against a SharpDbg overlaid with the new build and the two extra cases (the event lambda and the interpolation): **4/4 hit in `MainWindow.xaml` on their line**, where
+before the change those two timed out. `SharpDbg.Cli.Tests` `BreakpointResolveTests`, `LambdaStepTests` and `EditAndContinueTests` still pass (6/6). Not yet in OpenDevelop: the two extra cases are not committed to the test
+(they fail against the pinned SharpDbg package) and the stepping stop in generated converter code is unchanged. To finish: publish SharpDbg (`publish-opendevelop-packages.yml`), move `SharpDbgCliVersion` and
+`SharpDbgAndroidAgentVersion` together, run the feed sync, then add the two cases to the test.
 
 ## Alignment with .NET MAUI (web check, 2026-11-25)
 
