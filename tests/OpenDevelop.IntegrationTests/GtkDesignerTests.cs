@@ -146,9 +146,14 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var fitted = await app.InvokeAsync("od.gtk-designer.fit"); Assert.True(fitted.GetProperty("measured").GetBoolean(), fitted.ToString()); // The fit scale is the viewport divided by the frame, so it moves whenever the frame does -
 		// adding the host-composed title bar made it 630 tall instead of 600 and took the scale just
 		// under a hard .25. Assert what fit means (a sensible scale that shows the design), not a bound
-		// that the frame height can push it past.
+		// that the frame height can push it past. Nor can any lower bound hold: the hosted Windows runners
+		// have a 1024x768 screen, where the maximized window leaves the design pane only about 470x120 beside
+		// the side pads, bottom pads and the source split, so fit legitimately lands near 0.09. A bound on the
+		// number therefore tests the runner's display, not Fit.
 		var fitZoom = fitted.GetProperty("zoom").GetDouble();
-		Assert.True(fitZoom is >= .1 and <= 2, $"Fit zoom {fitZoom} is outside 0.1..2; maximize reported {sized}; fit reported {fitted}");
+		Assert.True(fitZoom is > 0 and <= 2, $"Fit zoom {fitZoom} is outside (0, 2]; maximize reported {sized}; fit reported {fitted}");
+		status = await app.InvokeAsync("od.gtk-designer.status");
+		Assert.Contains("fit=True", status.GetProperty("canvasDisplay").GetString());
 		// The shared DesignerCanvas toolbar's Fit button/action bypasses the Zoom combo entirely -
 		// without syncing the combo back, it kept showing the last manually-picked percentage while
 		// the canvas visibly rendered at Fit scale (observed live: combo stuck on "100%").

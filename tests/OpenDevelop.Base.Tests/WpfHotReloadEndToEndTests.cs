@@ -78,7 +78,9 @@ public sealed class WpfHotReloadEndToEndTests
 			var difference = v2.EmitDifference(baseline, [edit], _ => false, md, il, pdb);
 			Assert.True(difference.Success, string.Join(Environment.NewLine, difference.Diagnostics));
 			Environment.SetEnvironmentVariable("OD_WPF_HOTRELOAD_AGENT", LocateAgentForTest());
-			var startInfo = new ProcessStartInfo(LocateFixtureExecutable()) { UseShellExecute = false };
+			var fixture = LocateFixtureExecutable();
+			var startInfo = new ProcessStartInfo(fixture) { UseShellExecute = false };
+			UsePortableLaunchOnArm64(startInfo, fixture);
 			var adapter = new WpfApplicationHotReloadAdapter();
 			await using var session = await adapter.StartAsync(new HotReloadLaunchContext(project: null, withDebugger: false), startInfo, token);
 			var agentSession = Assert.IsType<AgentPipeHotReloadSession>(session);
@@ -115,11 +117,7 @@ public sealed class WpfHotReloadEndToEndTests
 		Environment.SetEnvironmentVariable("OD_WPF_HOTRELOAD_AGENT", LocateAgentForTest());
 		var adapter = new WpfApplicationHotReloadAdapter();
 		var startInfo = new ProcessStartInfo(fixture) { UseShellExecute = false };
-		if (OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.Arm64
-			&& Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet") {
-			startInfo.Arguments = "\"" + Path.ChangeExtension(fixture, ".dll") + "\"";
-			startInfo.FileName = Environment.ProcessPath!;
-		}
+		UsePortableLaunchOnArm64(startInfo, fixture);
 		var session = await adapter.StartAsync(
 			new HotReloadLaunchContext(project: null, withDebugger: false), startInfo, CancellationToken.None);
 		await using (session) {
@@ -199,11 +197,7 @@ public sealed class WpfHotReloadEndToEndTests
 		Environment.SetEnvironmentVariable("OD_WPF_HOTRELOAD_AGENT", LocateAgentForTest());
 		var adapter = new WpfApplicationHotReloadAdapter();
 		var startInfo = new ProcessStartInfo(fixture) { UseShellExecute = false };
-		if (OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.Arm64
-			&& Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet") {
-			startInfo.Arguments = "\"" + Path.ChangeExtension(fixture, ".dll") + "\"";
-			startInfo.FileName = Environment.ProcessPath!;
-		}
+		UsePortableLaunchOnArm64(startInfo, fixture);
 		var session = await adapter.StartAsync(
 			new HotReloadLaunchContext(project: null, withDebugger: false), startInfo, CancellationToken.None);
 		await using (session) {
@@ -257,11 +251,7 @@ public sealed class WpfHotReloadEndToEndTests
 		// The fixture's apphost has the architecture of the machine that built it, and CI builds once on
 		// Windows x64 for both Windows lanes; an ARM64 runner has no x64 runtime for that apphost. The
 		// fixture assembly itself is portable, so run it with this test's own dotnet host there.
-		if (OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.Arm64
-			&& Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet") {
-			startInfo.Arguments = "\"" + Path.ChangeExtension(fixture, ".dll") + "\"";
-			startInfo.FileName = Environment.ProcessPath!;
-		}
+		UsePortableLaunchOnArm64(startInfo, fixture);
 		var session = await adapter.StartAsync(
 			new HotReloadLaunchContext(project: null, withDebugger: false), startInfo, CancellationToken.None);
 		await using (session) {
@@ -362,6 +352,18 @@ public sealed class WpfHotReloadEndToEndTests
 		var configuration = CurrentConfiguration();
 		return Path.Combine(RepositoryRoot(), "src", "Main", "HotReload", "WpfHotReload.Agent",
 			"bin", configuration, "net10.0-windows", "WpfHotReload.Agent.dll");
+	}
+
+	// The fixture apphost has the architecture of the machine that built it, and CI builds once on Windows x64 for both Windows
+	// lanes; an ARM64 runner has no x64 runtime for that apphost. The fixture assembly is portable, so run it with this test's
+	// own dotnet host there (the adapter adds its environment to the same ProcessStartInfo, so agent injection still applies).
+	static void UsePortableLaunchOnArm64(ProcessStartInfo startInfo, string fixture)
+	{
+		if (OperatingSystem.IsWindows() && RuntimeInformation.OSArchitecture == Architecture.Arm64
+			&& Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet") {
+			startInfo.Arguments = "\"" + Path.ChangeExtension(fixture, ".dll") + "\"";
+			startInfo.FileName = Environment.ProcessPath!;
+		}
 	}
 
 	static string CurrentConfiguration() =>

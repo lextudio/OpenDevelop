@@ -581,12 +581,27 @@ public sealed class DebuggerFeatureIntegrationTests
                     && bookmark.GetProperty("line").GetInt32() == line);
             }
 
+            // The editor can still be scrolling to the caret an earlier test left (measured: the same gutter line moved
+            // 148 px, eight lines, after the point was read, so the press landed on line 2). Aim only once the point has
+            // stopped moving across several reads.
             async Task<(double x, double y)> GutterPointAsync()
             {
-                var point = await _app.InvokeAsync("od.editor.icon-bar-line-point", line);
-                Assert.True(point.GetProperty("success").GetBoolean(), point.ToString());
-				Assert.Equal(line, point.GetProperty("mappedLine").GetInt32());
-                return (point.GetProperty("x").GetDouble(), point.GetProperty("y").GetDouble());
+                (double x, double y) last = default;
+                var stableReads = 0;
+                var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+                while (true)
+                {
+                    var point = await _app.InvokeAsync("od.editor.icon-bar-line-point", line);
+                    Assert.True(point.GetProperty("success").GetBoolean(), point.ToString());
+                    Assert.Equal(line, point.GetProperty("mappedLine").GetInt32());
+                    var current = (x: point.GetProperty("x").GetDouble(), y: point.GetProperty("y").GetDouble());
+                    stableReads = stableReads > 0 && current == last ? stableReads + 1 : 1;
+                    last = current;
+                    if (stableReads >= 5)
+                        return current;
+                    Assert.True(DateTime.UtcNow < deadline, $"The Icon Bar point for line {line} never settled; last read {current}.");
+                    await Task.Delay(200);
+                }
             }
 
             Assert.False(await HasBreakpointAsync());
