@@ -180,6 +180,13 @@ unit tests pass, including two new ones on the placement). Built into the fixtur
 did not hit (the debugger had reported them "not processed" at set time, as it does for the lines that do hit, so the reason is not known), and the first step over `{Age + 1}` now stopped in
 generated code (`..._MainWindow.g.cs`, a virtual path) instead of a XAML line; why was not measured (stepping out of the last mapped statement into unmapped converter code is one possibility).
 
+Sequence points of the built fixture (the pinned, unpatched generator), read from its portable PDB with a throw-away test (not committed): the document `MainWindow.xaml` carries 59 hidden points
+and non-hidden points on lines 1 to 32 of a 19-line file (79 of them past line 19), so the drift is real in the PDB, not only in the generated text. Per XAML line, the methods that have a point
+there are: line 8 and line 15, `InitializeComponent` only; line 14, `InitializeComponent` and two compiled-binding closures (`<InitializeComponent>b__13_5`, `b__13_6`); line 16, `InitializeComponent`, two
+closures (`b__13_7`, `b__13_8`) and `__XsgExpression_0` (the method of the `{Age + 1}` expression, whose own element is line 15). The lines that hit (8, 15) are the ones with a single candidate method; the lines
+that did not (14, 16) have several. That is a correlation over four lines, not an explanation: whether SharpDbg binds a breakpoint to only one of several methods mapped to a line is still to be
+checked (log the adapter's `breakpoint` events after the module loads, or set the breakpoint when only one candidate remains).
+
 So the generator change is **necessary at best, not sufficient**, and the hypothesis above is not confirmed. What would move this: find out in SharpDbg why those two lines do not bind (exact start line? sequence points of a
 method that runs later? module load order?) with a small debugger test that lists the sequence points of the built fixture; and, for stepping, whether `DebuggerNonUserCode`/`DebuggerHidden` on the
 converter and scaffolding is honoured. Only then is the generator patch worth a LibreWPF publish (1.5 h, then the pins move).
