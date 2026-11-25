@@ -417,6 +417,9 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 		[DevFlowAction("od.wpf-designer.flush-pending-transaction", Description = "No-op under the out-of-process WPF designer")]
 		public static string WpfDesignerFlushPendingTransaction() => InvokeWpfDesignerDevFlowAction("FlushPendingTransaction");
 
+		[DevFlowAction("od.wpf-designer.properties-pad.get", Description = "Read a property's current value from the Properties pad row of the selected WPF design item")]
+		public static string WpfDesignerGetPropertyThroughPropertiesPad(string propertyName) => InvokeWpfDesignerDevFlowAction("GetPropertyThroughPropertiesPad", propertyName);
+
 		[DevFlowAction("od.wpf-designer.properties-pad.edit", Description = "Edit a property through the Properties pad")]
 		public static Task<string> WpfDesignerEditPropertyThroughPropertiesPad(string propertyName, string value) => InvokeWpfDesignerDevFlowActionAsync("EditPropertyThroughPropertiesPad", propertyName, value);
 

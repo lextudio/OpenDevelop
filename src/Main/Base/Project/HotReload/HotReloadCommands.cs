@@ -78,7 +78,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		// Before the first accepted apply, the application runs what the launch build compiled: the
 		// file on disk, unless it was saved after the launch (then it is unknown: null). Falling back to
 		// the editor buffer instead made previous and current equal, so the first apply of a session was
-		// never classified (a {cs:} edit went out as plain text).
+		// never classified (a C# expression edit went out as plain text).
 		static string LaunchedText(FileName fileName)
 		{
 			try {

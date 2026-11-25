@@ -110,6 +110,330 @@ public sealed class WpfHotReloadJourneyTests
 	}
 
 	/// <summary>
+	/// What the designer shows for a C# expression value (<c>Text="{= 'Hot reload ready'}"</c>, the syntax of .NET MAUI that the
+	/// source generator follows): the Properties pad row after selecting the element, with a literal as the control.
+	/// </summary>
+	[Fact]
+	public async Task XsgProject_CsExpressionValue_IsShownAsWrittenInTheDesigner()
+	{
+		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
+		var opened = await _app.ReopenSolutionAsync(Path.Combine(fixtureDirectory, "XsgLocalFeedFixture.slnx"));
+		Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+
+		var xaml = Path.Combine(fixtureDirectory, "MainWindow.xaml");
+		var before = await File.ReadAllTextAsync(xaml);
+		await OpenAsActiveDocumentAsync(xaml);
+		JsonElement status = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			status = await _app.InvokeAsync("od.wpf-designer.status");
+			return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+		}, TimeSpan.FromSeconds(90)), status.ToString());
+
+		var selected = await _app.InvokeAsync("od.wpf-designer.select", "Status");
+		Assert.True(selected.GetProperty("success").GetBoolean(), selected.ToString());
+		JsonElement text = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			text = await _app.InvokeAsync("od.wpf-designer.properties-pad.get", "Text");
+			return text.GetProperty("success").GetBoolean();
+		}, TimeSpan.FromSeconds(30)), text.ToString());
+
+		// The designer cannot evaluate the expression, so it shows the authored text (an empty field would invite typing over it). The design
+		// instance keeps its default and the attribute is never rewritten by loading (asserted at the end).
+		Assert.Equal("{= 'Hot reload ready'}", text.GetProperty("value").GetString());
+		Assert.False(text.GetProperty("isReadOnly").GetBoolean(), text.ToString());
+
+		// The control: the same read on a literal returns the literal, so the empty value above is the expression's, not the action's.
+		var marker = await _app.InvokeAsync("od.wpf-designer.select", "Marker");
+		Assert.True(marker.GetProperty("success").GetBoolean(), marker.ToString());
+		JsonElement literal = default;
+		Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+			literal = await _app.InvokeAsync("od.wpf-designer.properties-pad.get", "Text");
+			return literal.GetProperty("success").GetBoolean() && literal.GetProperty("selectedName").GetString() == "Marker";
+		}, TimeSpan.FromSeconds(30)), literal.ToString());
+		Assert.Equal("not loaded", literal.GetProperty("value").GetString());
+		Assert.Equal(before, await File.ReadAllTextAsync(xaml));
+		await _app.InvokeAsync("od.close-active-view");
+	}
+
+	/// <summary>
+	/// Editing a C# expression value (<c>Text="{OnLoadedB}"</c>, the syntax of .NET MAUI that the XAML source generator follows) in the
+	/// text editor: the real language server colours it as C# (strings, names), completes names from the page's x:Class, reports the
+	/// generator's errors while typing, shows a hover, and goes to the member's definition in the code-behind. Works on a copy of the fixture under tmp/.
+	/// </summary>
+	[Fact]
+	public async Task XsgProject_CsExpressionValue_HasColourCompletionAndDefinitionInTheEditor()
+	{
+		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
+		var copy = Path.Combine(RepositoryRoot(), "tmp", "xsg-editing-" + Guid.NewGuid().ToString("N")[..8]);
+		Directory.CreateDirectory(copy);
+		try {
+			foreach (var file in Directory.EnumerateFiles(fixtureDirectory).Where(f => Path.GetFileName(f) != "App.xaml"))
+				File.Copy(file, Path.Combine(copy, Path.GetFileName(file)));
+			var project = Path.Combine(copy, "XsgLocalFeedFixture.csproj");
+			var projectText = await File.ReadAllTextAsync(project);
+			const string appItem = "<None Include=\"App.xaml\" />";
+			Assert.Contains(appItem, projectText);
+			await File.WriteAllTextAsync(project, projectText.Replace(appItem, ""));
+
+			// The fixtures folder turns central package versions off for the projects under it; the copy sits outside it.
+			File.Copy(Path.Combine(fixtureDirectory, "..", "Directory.Packages.props"), Path.Combine(copy, "Directory.Packages.props"));
+			// The language server loads the project for its types (x:Class members), which needs a restored copy.
+			var restore = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("dotnet") {
+				ArgumentList = { "restore", project },
+				RedirectStandardOutput = true,
+				RedirectStandardError = true,
+				UseShellExecute = false,
+			})!;
+			var restoreOutput = await restore.StandardOutput.ReadToEndAsync();
+			Assert.True(restore.WaitForExit(180_000) && restore.ExitCode == 0, "dotnet restore failed: " + restoreOutput);
+
+			await File.WriteAllTextAsync(Path.Combine(copy, "Customer.cs"),
+				"namespace XsgLocalFeedFixture;\npublic class Customer { public string Nickname { get; set; } = \"\"; public int Visits { get; set; } }\n");
+			var xaml = Path.Combine(copy, "MainWindow.xaml");
+			await File.WriteAllTextAsync(xaml, """
+				<Window x:Class="XsgLocalFeedFixture.MainWindow"
+				        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+				        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+				        xmlns:local="clr-namespace:XsgLocalFeedFixture"
+				        Title="expressions">
+				  <Grid Loaded="OnLoadedA" x:DataType="local:Customer">
+				    <StackPanel>
+				      <TextBlock x:Name="Status" Text="{= 'Hot reload ready'}" />
+				      <TextBlock x:Name="Marker" Text="not loaded" />
+				      <TextBlock x:Name="Spare" Text="{OnLoadedB}" />
+				      <TextBlock x:Name="Probe" Text="{OnLo}" />
+				      <TextBlock x:Name="Mine" Text="{Visits + 1}" />
+				      <TextBlock x:Name="Typing" Text="{Nick}" />
+				      <Button x:Name="Saver" Click="{async (s, e) => await System.Threading.Tasks.Task.Delay(1)}" />
+				    </StackPanel>
+				  </Grid>
+				</Window>
+				""");
+
+			var opened = await _app.ReopenSolutionAsync(Path.Combine(copy, "XsgLocalFeedFixture.slnx"));
+			Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+			Assert.True((await _app.InvokeAsync("od.open-file", xaml)).GetProperty("opened").GetBoolean());
+
+			var lines = (await File.ReadAllTextAsync(xaml)).Replace("\r\n", "\n").Split('\n');
+			int LineOf(string needle) => Array.FindIndex(lines, l => l.Contains(needle, StringComparison.Ordinal)) + 1;
+			int ColumnAfter(int line, string needle) => lines[line - 1].IndexOf(needle, StringComparison.Ordinal) + needle.Length + 1;
+
+			// Completion: the caret after "{OnLo" offers the page's methods.
+			var probeLine = LineOf("x:Name=\"Probe\"");
+			JsonElement completions = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				completions = await _app.InvokeAsync("od.completions", xaml, probeLine, ColumnAfter(probeLine, "{OnLo"));
+				return completions.TryGetProperty("count", out var count) && count.GetInt32() > 0;
+			}, TimeSpan.FromSeconds(90)), "no completions inside the expression: " + completions);
+			var names = completions.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("displayText").GetString()).ToArray();
+			Assert.Contains("OnLoadedA", names);
+			Assert.Contains("OnLoadedB", names);
+
+			// The DataContext (x:DataType) is searched first: its members complete, and hover and definition find them in its type.
+			var typingLine = LineOf("x:Name=\"Typing\"");
+			JsonElement dataContext = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				dataContext = await _app.InvokeAsync("od.completions", xaml, typingLine, ColumnAfter(typingLine, "{Nick"));
+				return dataContext.TryGetProperty("count", out var count) && count.GetInt32() > 0;
+			}, TimeSpan.FromSeconds(60)), "no DataContext completions: " + dataContext);
+			Assert.Contains("Nickname", dataContext.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("displayText").GetString()));
+			var mineLine = LineOf("x:Name=\"Mine\"");
+			JsonElement visits = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				visits = await _app.InvokeAsync("od.quick-info", xaml, mineLine, ColumnAfter(mineLine, "{Vis") + 1);
+				return visits.TryGetProperty("found", out var f) && f.GetBoolean();
+			}, TimeSpan.FromSeconds(60)), "no hover on a DataContext member: " + visits);
+			Assert.Contains("Visits", visits.GetProperty("text").GetString());
+			var customerDefinition = await _app.InvokeAsync("od.go-to-definition", xaml, mineLine, ColumnAfter(mineLine, "{Vis") + 1);
+			Assert.True(customerDefinition.TryGetProperty("count", out var customerFound) && customerFound.GetInt32() > 0, customerDefinition.ToString());
+			Assert.EndsWith("Customer.cs", customerDefinition.GetProperty("targets")[0].GetProperty("filePath").GetString());
+
+			// Colour: the string of the explicit expression and the name of the bare one are C# tokens.
+			var statusLine = LineOf("x:Name=\"Status\"");
+			var spareLine = LineOf("x:Name=\"Spare\"");
+			var tokens = await _app.InvokeAsync("od.semantic-tokens", xaml);
+			Assert.False(tokens.TryGetProperty("error", out _), tokens.ToString());
+			var all = tokens.GetProperty("tokens").EnumerateArray()
+				.Select(t => (Line: t.GetProperty("startLine").GetInt32(), Column: t.GetProperty("startColumn").GetInt32(), Type: t.GetProperty("type").GetString()))
+				.ToArray();
+			Assert.Contains(all, t => t.Line == statusLine && t.Type == "string");
+			Assert.Contains(all, t => t.Line == spareLine && t.Type == "variable");
+
+			// Diagnostics: the generator's own error for an async event lambda (LWXSG0011), shown while typing with the build's id.
+			JsonElement diagnostics = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				diagnostics = await _app.InvokeAsync("od.diagnostics", xaml);
+				return diagnostics.TryGetProperty("diagnostics", out var list) && list.EnumerateArray().Any(d => d.GetProperty("id").GetString() == "LWXSG0011");
+			}, TimeSpan.FromSeconds(60)), "no LWXSG0011 for the async lambda: " + diagnostics);
+
+			// Hover: the member under the caret, described from the code-behind.
+			JsonElement quickInfo = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				quickInfo = await _app.InvokeAsync("od.quick-info", xaml, spareLine, ColumnAfter(spareLine, "{OnLoaded") + 1);
+				return quickInfo.TryGetProperty("found", out var f) && f.GetBoolean();
+			}, TimeSpan.FromSeconds(60)), "no hover on the expression's name: " + quickInfo);
+			Assert.Contains("OnLoadedB", quickInfo.GetProperty("text").GetString());
+
+			// Go to definition: the method in the code-behind.
+			var definition = await _app.InvokeAsync("od.go-to-definition", xaml, spareLine, ColumnAfter(spareLine, "{OnLoaded") + 1);
+			Assert.True(definition.TryGetProperty("count", out var found) && found.GetInt32() > 0, definition.ToString());
+			Assert.EndsWith("MainWindow.xaml.cs", definition.GetProperty("targets")[0].GetProperty("filePath").GetString());
+		} finally {
+			try { await _app.InvokeAsync("od.close-active-view"); } catch { }
+			try { Directory.Delete(copy, recursive: true); } catch { }
+		}
+	}
+
+	/// <summary>
+	/// Simpler XAML as in .NET MAUI: a control of the project's own <c>global using</c> namespace is written without an <c>xmlns</c>
+	/// (<c>&lt;Fancy/&gt;</c>), and the WPF designer finds it. The project is built so the designer can load its assembly; the file stays
+	/// byte-identical. Works on a copy of the fixture under tmp/.
+	/// </summary>
+	[Fact]
+	public async Task XsgProject_GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns()
+	{
+		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
+		var copy = Path.Combine(RepositoryRoot(), "tmp", "xsg-globalusing-" + Guid.NewGuid().ToString("N")[..8]);
+		Directory.CreateDirectory(copy);
+		try {
+			foreach (var file in Directory.EnumerateFiles(fixtureDirectory).Where(f => Path.GetFileName(f) != "App.xaml"))
+				File.Copy(file, Path.Combine(copy, Path.GetFileName(file)));
+			File.Copy(Path.Combine(fixtureDirectory, "..", "Directory.Packages.props"), Path.Combine(copy, "Directory.Packages.props"));
+			var project = Path.Combine(copy, "XsgLocalFeedFixture.csproj");
+			var projectText = await File.ReadAllTextAsync(project);
+			const string appItem = "<None Include=\"App.xaml\" />";
+			Assert.Contains(appItem, projectText);
+			await File.WriteAllTextAsync(project, projectText.Replace(appItem, ""));
+			await File.WriteAllTextAsync(Path.Combine(copy, "Fancy.cs"),
+				"namespace XsgLocalFeedFixture.Controls;\npublic class Fancy : System.Windows.Controls.TextBlock { }\n");
+			await File.WriteAllTextAsync(Path.Combine(copy, "GlobalUsings.cs"), "global using XsgLocalFeedFixture.Controls;\n");
+
+			var xaml = Path.Combine(copy, "MainWindow.xaml");
+			await File.WriteAllTextAsync(xaml, """
+				<Window x:Class="XsgLocalFeedFixture.MainWindow"
+				        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+				        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+				        Title="global using">
+				  <Grid Loaded="OnLoadedA">
+				    <StackPanel>
+				      <TextBlock x:Name="Status" Text="x" />
+				      <TextBlock x:Name="Marker" Text="not loaded" />
+				      <TextBlock x:Name="Spare" Text="spare" />
+				      <Fancy x:Name="FancyOne" Text="from a global using" />
+				    </StackPanel>
+				  </Grid>
+				</Window>
+				""");
+
+			// The designer loads the project's built assembly.
+			var build = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("dotnet") {
+				ArgumentList = { "build", project, "-c", "Debug" },
+				RedirectStandardOutput = true,
+				RedirectStandardError = true,
+				UseShellExecute = false,
+			})!;
+			var buildOutput = await build.StandardOutput.ReadToEndAsync();
+			Assert.True(build.WaitForExit(240_000) && build.ExitCode == 0, "dotnet build failed: " + buildOutput);
+
+			var opened = await _app.ReopenSolutionAsync(Path.Combine(copy, "XsgLocalFeedFixture.slnx"));
+			Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+			var before = await File.ReadAllTextAsync(xaml);
+			await OpenAsActiveDocumentAsync(xaml);
+			JsonElement status = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				status = await _app.InvokeAsync("od.wpf-designer.status");
+				return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+			}, TimeSpan.FromSeconds(90)), status.ToString());
+
+			var selected = await _app.InvokeAsync("od.wpf-designer.select", "FancyOne");
+			Assert.True(selected.GetProperty("success").GetBoolean(), "the global-using type is not in the design tree: " + selected);
+			Assert.Equal(before, await File.ReadAllTextAsync(xaml));
+		} finally {
+			try { await _app.InvokeAsync("od.close-active-view"); } catch { }
+			try { Directory.Delete(copy, recursive: true); } catch { }
+		}
+	}
+
+	/// <summary>
+	/// A C# expression typed into the Properties pad is written as the attribute text exactly as typed (a plain string with a leading brace
+	/// would be escaped as <c>{}</c> literal text), and a literal typed over an expression replaces it. Works on a copy of the fixture under tmp/;
+	/// the saved file differs from the original by exactly the edited attribute.
+	/// </summary>
+	[Fact]
+	public async Task XsgProject_CsExpressionValue_CanBeEditedInTheDesignerAndIsSavedAsTyped()
+	{
+		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
+		var copy = Path.Combine(RepositoryRoot(), "tmp", "xsg-pad-edit-" + Guid.NewGuid().ToString("N")[..8]);
+		Directory.CreateDirectory(copy);
+		try {
+			foreach (var file in Directory.EnumerateFiles(fixtureDirectory).Where(f => Path.GetFileName(f) != "App.xaml"))
+				File.Copy(file, Path.Combine(copy, Path.GetFileName(file)));
+			var project = Path.Combine(copy, "XsgLocalFeedFixture.csproj");
+			var projectText = await File.ReadAllTextAsync(project);
+			const string appItem = "<None Include=\"App.xaml\" />";
+			Assert.Contains(appItem, projectText);
+			await File.WriteAllTextAsync(project, projectText.Replace(appItem, ""));
+
+			var xaml = Path.Combine(copy, "MainWindow.xaml");
+			var original = await File.ReadAllTextAsync(xaml);
+			const string expression = "Text=\"{= 'Hot reload ready'}\"";
+			Assert.Contains(expression, original);
+
+			var opened = await _app.ReopenSolutionAsync(Path.Combine(copy, "XsgLocalFeedFixture.slnx"));
+			Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+			await OpenAsActiveDocumentAsync(xaml);
+			JsonElement status = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				status = await _app.InvokeAsync("od.wpf-designer.status");
+				return status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean();
+			}, TimeSpan.FromSeconds(90)), status.ToString());
+
+			async Task<JsonElement> EditStatusText(string value)
+			{
+				JsonElement selected = default;
+				Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+					selected = await _app.InvokeAsync("od.wpf-designer.select", "Status");
+					return selected.GetProperty("success").GetBoolean();
+				}, TimeSpan.FromSeconds(30)), selected.ToString());
+				JsonElement edit = default;
+				Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+					edit = await _app.InvokeAsync("od.wpf-designer.properties-pad.edit", "Text", value);
+					return edit.GetProperty("success").GetBoolean();
+				}, TimeSpan.FromSeconds(30)), "the Properties pad did not take '" + value + "': " + edit);
+				return edit;
+			}
+
+			var typed = await EditStatusText("{= 'edited in the pad'}");
+			Assert.Equal("{= 'edited in the pad'}", typed.GetProperty("after").GetString());
+			var saved = await _app.InvokeAsync("od.file.save", xaml);
+			Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+			Assert.Equal(original.Replace(expression, "Text=\"{= 'edited in the pad'}\""), await File.ReadAllTextAsync(xaml));
+
+			// A literal typed over the expression replaces it, and an expression typed over a literal is written as typed too.
+			await EditStatusText("plain text");
+			await EditStatusText("{Count + 1}");
+			saved = await _app.InvokeAsync("od.file.save", xaml);
+			Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+			Assert.Equal(original.Replace(expression, "Text=\"{Count + 1}\""), await File.ReadAllTextAsync(xaml));
+
+			// Undo and redo bring the expression text back as written (the same undo action as any property edit).
+			var undone = await _app.InvokeAsync("od.wpf-designer.undo");
+			Assert.True(undone.GetProperty("success").GetBoolean(), undone.ToString());
+			saved = await _app.InvokeAsync("od.file.save", xaml);
+			Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+			Assert.Equal(original.Replace(expression, "Text=\"plain text\""), await File.ReadAllTextAsync(xaml));
+			var redone = await _app.InvokeAsync("od.wpf-designer.redo");
+			Assert.True(redone.GetProperty("success").GetBoolean(), redone.ToString());
+			saved = await _app.InvokeAsync("od.file.save", xaml);
+			Assert.True(saved.GetProperty("success").GetBoolean(), saved.ToString());
+			Assert.Equal(original.Replace(expression, "Text=\"{Count + 1}\""), await File.ReadAllTextAsync(xaml));
+		} finally {
+			try { await _app.InvokeAsync("od.close-active-view"); } catch { }
+			try { Directory.Delete(copy, recursive: true); } catch { }
+		}
+	}
+
+	/// <summary>
 	/// The XAML source generator's compiled-binding directives, <c>x:DataType</c> and <c>x:CompileBindings</c>, are unknown members to the
 	/// run-time System.Xaml (it throws "Cannot set unknown member"), but the designer reads documents with its own XamlDom parser, which
 	/// skips every attribute of the XAML namespace except <c>x:Name</c>. A document that uses them must therefore still load in the designer
@@ -219,7 +543,7 @@ public sealed class WpfHotReloadJourneyTests
 	}
 
 	/// <summary>
-	/// Route D through the IDE for a project compiled by the XAML source generator: a <c>{cs:}</c>
+	/// Route D through the IDE for a project compiled by the XAML source generator: a C# expression
 	/// edit cannot be pushed as XAML text, so Apply has to classify it as a code delta, have the
 	/// Roslyn host rerun the generator on the unsaved buffer, and send the metadata delta to the
 	/// agent, whose generated handler rebuilds the window. It covers what the Base-level
@@ -250,7 +574,7 @@ public sealed class WpfHotReloadJourneyTests
 			Assert.Equal("Hot reload ready", await QueryAgentAsync(endpoint!, "Status.Text"));
 
 			var replaced = await _app.InvokeAsync("od.file.replace-text", xaml,
-				"{cs: &quot;Hot reload ready&quot;}", "{cs: &quot;Hot reload from &quot; + &quot;the IDE&quot;}");
+				"{= 'Hot reload ready'}", "{= 'Hot reload from ' + 'the IDE'}");
 			Assert.True(replaced.GetProperty("success").GetBoolean(), replaced.ToString());
 			var applied = await _app.InvokeAsync("od.hot-reload.apply-command");
 			Assert.True(applied.GetProperty("success").GetBoolean(), applied.ToString());

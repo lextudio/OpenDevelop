@@ -138,7 +138,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			if (change.Kind == HotReloadChangeKind.CodeDelta) {
 				if (!Capabilities.Supports(HotReloadChangeKind.CodeDelta))
 					return new HotReloadApplyResult(HotReloadOutcome.BuildRequired,
-						"This edit adds an x:Name or changes a {cs:} expression; rebuild the application to apply it.");
+						"This edit adds an x:Name or changes a C# expression; rebuild the application to apply it.");
 				return await ApplyCodeDeltaAsync(change, token).ConfigureAwait(false);
 			}
 

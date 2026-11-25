@@ -698,6 +698,35 @@ namespace ICSharpCode.WpfDesign.AddIn.DevFlow
 			=> candidate.PropertyName == propertyName
 				|| (candidate.PropertyDescriptor as WpfSurfacePropertyDescriptor)?.ProtocolName == propertyName;
 
+		[DevFlowAction("od.wpf-designer.properties-pad.get", Description = "Read a property's current value from the real Xceed Properties pad row of the selected WPF design item, without changing the document (select the element first)")]
+		public static string GetPropertyThroughPropertiesPad(string propertyName)
+		{
+			var grid = PropertyPadGrid;
+			if (grid == null)
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad is not available" });
+			if (!(grid.SelectedObject is WpfSurfaceElementPropertyAdapter selectedObject))
+				return JsonSerializer.Serialize(new { success = false, error = "Properties pad has no selected WPF design item" });
+
+			var item = grid.Properties?.OfType<PropertyItem>()
+				.FirstOrDefault(candidate => IsPropertyItem(candidate, propertyName));
+			if (item == null)
+				return JsonSerializer.Serialize(new {
+					success = false,
+					error = "Properties pad property not found: " + propertyName,
+					propertyCount = grid.Properties?.Count ?? 0
+				});
+
+			var value = item.Value;
+			return JsonSerializer.Serialize(new {
+				success = true,
+				selectedName = selectedObject.GetComponentName(),
+				propertyName = item.PropertyName,
+				isReadOnly = item.PropertyDescriptor?.IsReadOnly == true,
+				valueType = value?.GetType().FullName,
+				value = value?.ToString()
+			});
+		}
+
 		[DevFlowAction("od.wpf-designer.properties-pad.edit", Description = "Edit a property through the real Xceed Properties pad PropertyItem; does not access the DDP property list directly")]
 		public static async Task<string> EditPropertyThroughPropertiesPad(string propertyName, string value)
 		{

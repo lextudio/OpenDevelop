@@ -223,8 +223,8 @@ public sealed class HotReloadServiceTests : IDisposable
 	}
 
 	[Theory]
-	// A {cs:} expression changed: Route T cannot express it.
-	[InlineData("<Button Content=\"{cs: a + 1}\" />", "<Button Content=\"{cs: a + 2}\" />",
+	// A C# expression changed: Route T cannot express it.
+	[InlineData("<Button Content=\"{= a + 1}\" />", "<Button Content=\"{= a + 2}\" />",
 		HotReloadChangeKind.CodeDelta)]
 	// A new x:Name is a new field.
 	[InlineData("<Grid><Button /></Grid>", "<Grid><Button x:Name=\"Ok\" /></Grid>",
@@ -276,7 +276,7 @@ public sealed class HotReloadServiceTests : IDisposable
 	[InlineData("<Grid><Button x:Name=\"Ok\" /></Grid>", "<Grid><Button /></Grid>")]
 	[InlineData("<Grid><Button Name=\"Ok\" /></Grid>", "<Grid><Button /></Grid>")]
 	[InlineData("<Window x:Class=\"A.B\" />", "<Window x:Class=\"A.C\" />")]
-	[InlineData("<Button Content=\"{cs: a + 1}\" />", "<Button Content=\"{cs: a + 2}\" />")]
+	[InlineData("<Button Content=\"{= a + 1}\" />", "<Button Content=\"{= a + 2}\" />")]
 	public void Classify_WithoutGeneratedXaml_KeepsTheTextPath(string previous, string current)
 	{
 		// A re-parse carries these under BAML and WinUI, so reporting them as structural would block a

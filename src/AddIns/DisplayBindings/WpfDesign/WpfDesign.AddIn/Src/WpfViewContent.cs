@@ -377,8 +377,11 @@ namespace ICSharpCode.WpfDesign.AddIn
 				ProjectAssemblyPath = GetManagedAssemblyPath(project),
 				PrimaryFileName = PrimaryFile.FileName.ToString(),
 				Language = "",
-				ImplicitXamlNamespaces = UsesImplicitXamlNamespaces(project)
+				ImplicitXamlNamespaces = UsesImplicitXamlNamespaces(project),
+				CSharpExpressions = project is MSBuildBasedProject expressionProject && XsgProjectFeatures.CSharpExpressions(expressionProject.GetEvaluatedProperty)
 			};
+			if (snapshot.ImplicitXamlNamespaces)
+				snapshot.GlobalUsingNamespaces.AddRange(XsgProjectFeatures.GlobalUsingNamespaces(project));
 			// Do not run MSBuild ResolveAssemblyReferences synchronously from LoadInternal. It can
 			// block the dispatcher indefinitely while project evaluation/build hosts are busy, which
 			// also makes every DevFlow request time out. Copy-local DLLs beside an already-built

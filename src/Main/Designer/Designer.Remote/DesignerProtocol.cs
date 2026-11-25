@@ -169,6 +169,14 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 		/// child then supplies them as the reader's ambient namespace context (never written into the text).
 		/// Additive: a child that does not know it reads false, a stock document.</summary>
 		public bool ImplicitXamlNamespaces { get; set; }
+		/// <summary>The namespaces of the project's <c>global using</c> directives (no alias, no <c>static</c>), sent with
+		/// <see cref="ImplicitXamlNamespaces"/>: Simpler XAML, as in .NET MAUI, finds a type of one of them in the default namespace without
+		/// an <c>xmlns</c> declaration. Additive: a child that does not know it reads an empty list.</summary>
+		public List<string> GlobalUsingNamespaces { get; set; } = new List<string>();
+		/// <summary>The project has LibreWPF's C# expressions on (the XAML source generator and <c>LibreWpfCSharpExpressions</c>): an attribute
+		/// value such as <c>{Items.Count}</c> that is not a markup extension is an expression, not an unknown extension. Additive: a child that
+		/// does not know it reads false.</summary>
+		public bool CSharpExpressions { get; set; }
 		public List<DesignerSourceFileSnapshot> Files { get; set; } = new List<DesignerSourceFileSnapshot>();
 	}
 

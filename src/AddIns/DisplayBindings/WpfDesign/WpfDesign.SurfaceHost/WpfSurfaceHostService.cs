@@ -213,7 +213,9 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					: new SurfaceTypeFinder(projectAssemblyPath, snapshot.ReferencedAssemblyPaths);
 				if (typeFinder?.ProjectAssembly == null)
 					Console.Error.WriteLine($"design-host: project assembly unavailable; snapshot path='{projectAssemblyPath}'.");
+				AddGlobalUsingLookups(typeFinder, snapshot);
 				var loadSettings = typeFinder == null ? new XamlLoadSettings() : new XamlLoadSettings { TypeFinder = typeFinder };
+				loadSettings.TypeFinder.CSharpExpressions = snapshot.CSharpExpressions;
 				ResolveThemes(typeFinder?.ProjectAssembly);
 				state.SupportsThemeSwitch = themeSources != null;
 				state.DesignThemes = themeSources?.Keys.ToArray() ?? Array.Empty<string>();
@@ -972,6 +974,9 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 					// text into the live value with the document's context.
 					if (property.ReturnType != null && typeof(ImageSource).IsAssignableFrom(property.ReturnType) && !string.IsNullOrWhiteSpace(value))
 						property.SetValue(value.Trim());
+					// A C# expression ({Count + 1}, {= Foo}) is written as the attribute text as typed, not converted to the property's type.
+					else if (ICSharpCode.WpfDesign.XamlDom.XamlExpressionSyntax.IsExpression(value))
+						property.SetValue(new ICSharpCode.WpfDesign.XamlDom.XamlExpressionSyntax.Text(value.Trim()));
 					else
 						property.SetValue(ConvertValue(property.ReturnType, value));
 				}
@@ -4269,6 +4274,23 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			return info;
 		}
 
+		/// <summary>Simpler XAML as in .NET MAUI: with implicit namespaces on, a type of one of the project's <c>global using</c> namespaces is
+		/// found in the default namespace. Lookup only, in the project and its references; nothing is written into the document.</summary>
+		static void AddGlobalUsingLookups(SurfaceTypeFinder? typeFinder, DesignerDocumentSnapshot snapshot)
+		{
+			if (typeFinder == null || !snapshot.ImplicitXamlNamespaces || snapshot.GlobalUsingNamespaces.Count == 0)
+				return;
+			var assemblies = new List<System.Reflection.Assembly>();
+			if (typeFinder.ProjectAssembly != null)
+				assemblies.Add(typeFinder.ProjectAssembly);
+			assemblies.AddRange(typeFinder.RegisteredAssemblies.Where(a => !ReferenceEquals(a, typeFinder.ProjectAssembly)
+				&& !a.GetName().Name!.StartsWith("System", StringComparison.Ordinal) && !a.GetName().Name!.StartsWith("Presentation", StringComparison.Ordinal)
+				&& a.GetName().Name != "WindowsBase" && a.GetName().Name != "mscorlib"));
+			foreach (var clrNamespace in snapshot.GlobalUsingNamespaces)
+				foreach (var assembly in assemblies)
+					typeFinder.AddLookupNamespace(ImplicitXamlNamespaceReader.PresentationNamespace, assembly, clrNamespace);
+		}
+
 		/// <summary>An unset or attribute-text <see cref="ImageSource"/> (Image.Source, Window.Icon...)
 		/// gets the IDE's project-image picker. The picker only offers candidates; the write is the
 		/// usual design/set-property, which keeps an image URI as its authored text.</summary>
@@ -4300,6 +4322,16 @@ namespace ICSharpCode.WpfDesign.SurfaceHost
 			};
 			try
 			{
+				// A C# expression ({Count + 1}, {= Foo}: the syntax of .NET MAUI that the XAML source generator follows) cannot be
+				// evaluated at design time. Its text is shown and edited as it was written; the design instance stays at its default,
+				// and a value typed back into the field is written as text again (design/set-property).
+				if (property.IsSet && property.TextValue is { } expressionText
+					&& ICSharpCode.WpfDesign.XamlDom.XamlExpressionSyntax.IsExpression(expressionText))
+				{
+					info.Kind = "String";
+					info.Value = expressionText;
+					return info;
+				}
 				// DesignItemProperty.Value is the design-model value.  ValueOnInstance can flatten
 				// a Binding to its runtime string representation, which is useful for display but
 				// loses the distinction between editable literal text and an object reference.

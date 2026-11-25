@@ -1,5 +1,9 @@
 # XAML Source Generator (XSG) Hot Reload
 
+> **Syntax update (2026-11-25, local, uncommitted).** The generator no longer reads `{cs: ...}`; it follows .NET MAUI's
+> expression syntax (`{= Foo}`, a bare `{Foo}`, single-quoted strings, event lambdas). Every `{cs:}` below means such an
+> expression, and `{cs: "x"}` is now `{= 'x'}`. See `xsg-maui-alignment-plan.md` and `xsg-gaps.md`.
+
 Status: research. Applies to LibreWPF's optional `LibreWPF.Xaml.SourceGenerator` path
 (`UseLibreWpfXamlSourceGenerator=true` / `LIBREWPF_USE_XSG=1`).
 

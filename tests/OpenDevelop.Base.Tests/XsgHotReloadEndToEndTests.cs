@@ -23,7 +23,7 @@ namespace OpenDevelop.Base.Tests;
 /// <summary>
 /// Route D for the XAML source generator (XSG), end to end and without a debugger: a real LibreWPF
 /// app compiled by the generator runs with the Hot Reload agent, the real Roslyn host captures the
-/// launch baseline, a <c>{cs:}</c> edit in the unsaved XAML buffer is turned into a metadata delta
+/// launch baseline, a C# expression edit in the unsaved XAML buffer is turned into a metadata delta
 /// (the host reruns the generator on that text), the agent applies it and the generated
 /// <c>MetadataUpdateHandler</c> reruns <c>InitializeComponent</c>. The assertion reads the live
 /// window, so a delta that applies but changes nothing on screen fails.
@@ -37,6 +37,57 @@ public sealed class XsgHotReloadEndToEndTests
 
 	[Fact]
 	public Task CsExpressionEdit_ReachesTheLiveWindowThroughACodeDelta() => RunAsync(underDebugger: false, CsExpressionEditAsync);
+
+	/// <summary>
+	/// C# expressions over the DataContext, in the syntax of .NET MAUI: <c>{Age + 1}</c> and <c>{$'{Label}: {Age}'}</c> under
+	/// <c>x:DataType="local:Probe"</c> are MultiBindings with a generated converter, and the live window shows the values the converter
+	/// computed from the DataContext (the real LibreWPF binding engine, not a stand-in).
+	/// </summary>
+	[Fact]
+	public Task ExpressionOverTheDataContext_IsComputedByTheLiveWindow() => RunAsync(underDebugger: false, async s => {
+		// The control: a plain {Binding} on the same DataContext, so a failure below is the expression's and not the environment's.
+		Assert.Equal("41", await WaitForAsync(s.PipeName, "Classic.Text", "41", s.Token));
+		// A simple path and the explicit {.Name} are bindings; an event lambda is a handler that runs when the event fires (Loaded).
+		Assert.Equal("Ada", await WaitForAsync(s.PipeName, "Simple.Text", "Ada", s.Token));
+		Assert.Equal("Ada", await WaitForAsync(s.PipeName, "Explicit.Text", "Ada", s.Token));
+		Assert.Equal("lambda ran", await WaitForAsync(s.PipeName, "LambdaRan.Text", "lambda ran", s.Token));
+		Assert.Equal("42", await WaitForAsync(s.PipeName, "Computed.Text", "42", s.Token));
+		Assert.Equal("Ada: 41", await WaitForAsync(s.PipeName, "Described.Text", "Ada: 41", s.Token));
+	});
+
+	/// <summary>
+	/// Editing a compound expression over the DataContext reaches the live window: the evaluation is a method of the page, updated in place by the
+	/// delta (a lambda would be lost and the old tree would crash calling it), and the rerun builds a MultiBinding that computes the new value.
+	/// An edit that changes how many DataContext names it reads, and the revert, must converge too.
+	/// </summary>
+	[Fact]
+	public Task CompoundExpressionEdit_ReachesTheLiveWindowThroughACodeDelta() => RunAsync(underDebugger: false, CompoundExpressionEditAsync);
+
+	/// <summary>The same compound-expression edits while the application runs under SharpDbg.</summary>
+	[Fact]
+	public Task CompoundExpressionEdit_UnderSharpDbg_ReachesTheLiveWindow() => RunAsync(underDebugger: true, CompoundExpressionEditAsync);
+
+	static async Task CompoundExpressionEditAsync(Scenario s)
+	{
+		Assert.Equal("42", await WaitForAsync(s.PipeName, "Computed.Text", "42", s.Token));
+		const string original = "Text=\"{Age + 1}\"";
+		Assert.Contains(original, s.OriginalXaml);
+
+		var first = s.OriginalXaml.Replace(original, "Text=\"{Age + 2}\"");
+		Assert.Equal(HotReloadChangeKind.CodeDelta, HotReloadWorkflow.Classify(s.OriginalXaml, first, generatesXamlCode: true));
+		var applied = await s.Session.ApplyAsync(new HotReloadDocumentChange(s.XamlPath, s.OriginalXaml, first, 1, HotReloadChangeKind.CodeDelta), s.Token);
+		Assert.True(applied.Outcome == HotReloadOutcome.Applied, applied.Outcome + ": " + applied.Message);
+		Assert.Equal("43", await WaitForAsync(s.PipeName, "Computed.Text", "43", s.Token));
+
+		var second = s.OriginalXaml.Replace(original, "Text=\"{$'{Label} is {Age + 1}'}\"");
+		var again = await s.Session.ApplyAsync(new HotReloadDocumentChange(s.XamlPath, first, second, 2, HotReloadChangeKind.CodeDelta), s.Token);
+		Assert.True(again.Outcome == HotReloadOutcome.Applied, again.Outcome + ": " + again.Message);
+		Assert.Equal("Ada is 42", await WaitForAsync(s.PipeName, "Computed.Text", "Ada is 42", s.Token));
+
+		var revert = await s.Session.ApplyAsync(new HotReloadDocumentChange(s.XamlPath, second, s.OriginalXaml, 3, HotReloadChangeKind.CodeDelta), s.Token);
+		Assert.True(revert.Outcome == HotReloadOutcome.Applied, revert.Outcome + ": " + revert.Message);
+		Assert.Equal("42", await WaitForAsync(s.PipeName, "Computed.Text", "42", s.Token));
+	}
 
 	[Fact]
 	public Task EventHandlerEdit_ReachesTheLiveWindowThroughACodeDelta() => RunAsync(underDebugger: false, EventHandlerEditAsync);
@@ -123,11 +174,11 @@ public sealed class XsgHotReloadEndToEndTests
 
 	static async Task CsExpressionEditAsync(Scenario s)
 	{
-		const string originalExpression = "{cs: &quot;Hot reload ready&quot;}";
+		const string originalExpression = "{= 'Hot reload ready'}";
 		Assert.Contains(originalExpression, s.OriginalXaml);
 		Assert.Equal("Hot reload ready", await QueryAsync(s.PipeName, "Status.Text"));
 
-		var editedXaml = s.OriginalXaml.Replace(originalExpression, "{cs: &quot;Hot reload &quot; + &quot;applied&quot;}");
+		var editedXaml = s.OriginalXaml.Replace(originalExpression, "{= 'Hot reload ' + 'applied'}");
 		Assert.Equal(HotReloadChangeKind.CodeDelta, HotReloadWorkflow.Classify(s.OriginalXaml, editedXaml, generatesXamlCode: true));
 		var result = await s.Session.ApplyAsync(
 			new HotReloadDocumentChange(s.XamlPath, s.OriginalXaml, editedXaml, 1, HotReloadChangeKind.CodeDelta), s.Token);
@@ -137,7 +188,7 @@ public sealed class XsgHotReloadEndToEndTests
 
 		// A second edit and then the revert: each delta must build on the generation the
 		// application now runs, and reverting must converge on the launch state.
-		var secondXaml = s.OriginalXaml.Replace(originalExpression, "{cs: &quot;Hot reload &quot; + &quot;again&quot;}");
+		var secondXaml = s.OriginalXaml.Replace(originalExpression, "{= 'Hot reload ' + 'again'}");
 		var second = await s.Session.ApplyAsync(
 			new HotReloadDocumentChange(s.XamlPath, editedXaml, secondXaml, 2, HotReloadChangeKind.CodeDelta), s.Token);
 		Assert.True(second.Outcome == HotReloadOutcome.Applied, second.Outcome + ": " + second.Message);
@@ -178,7 +229,7 @@ public sealed class XsgHotReloadEndToEndTests
 	/// Removing an <c>x:Name</c> deletes a generated field, which the runtime cannot apply. Two layers must
 	/// agree: the workflow predicts it from the XAML (<c>RestartRequired</c>, nothing is sent), and the
 	/// Roslyn producer, asked anyway, reports the rude edit. Neither may touch the live window or poison the
-	/// delta chain: a valid <c>{cs:}</c> edit still applies afterwards, and reverting converges on launch.
+	/// delta chain: a valid C# expression edit still applies afterwards, and reverting converges on launch.
 	/// </summary>
 	static async Task NameRemovalAsync(Scenario s)
 	{
@@ -203,8 +254,8 @@ public sealed class XsgHotReloadEndToEndTests
 		Assert.Equal("spare", await QueryAsync(s.PipeName, "Spare.Text"));
 
 		// The chain survives: an unrelated valid edit applies, and reverting reaches the launch state.
-		const string originalExpression = "{cs: &quot;Hot reload ready&quot;}";
-		var editedXaml = s.OriginalXaml.Replace(originalExpression, "{cs: &quot;after rude edit&quot;}");
+		const string originalExpression = "{= 'Hot reload ready'}";
+		var editedXaml = s.OriginalXaml.Replace(originalExpression, "{= 'after rude edit'}");
 		var valid = await s.Session.ApplyAsync(
 			new HotReloadDocumentChange(s.XamlPath, s.OriginalXaml, editedXaml, 3, HotReloadChangeKind.CodeDelta), s.Token);
 		Assert.True(valid.Outcome == HotReloadOutcome.Applied, valid.Outcome + ": " + valid.Message);

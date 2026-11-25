@@ -44,6 +44,15 @@ public sealed class ImplicitXamlNamespacesTests
 	}
 
 	[Fact]
+	public void CSharpExpressions_NeedTheXsgSwitch_AndFollowIt()
+	{
+		Assert.False(XsgProjectFeatures.CSharpExpressions(Properties()));
+		Assert.False(XsgProjectFeatures.CSharpExpressions(Properties(("LibreWpfCSharpExpressions", "true"))));
+		Assert.True(XsgProjectFeatures.CSharpExpressions(Properties(("UseLibreWpfXamlSourceGenerator", "true"))));
+		Assert.False(XsgProjectFeatures.CSharpExpressions(Properties(("UseLibreWpfXamlSourceGenerator", "true"), ("LibreWpfCSharpExpressions", "false"))));
+	}
+
+	[Fact]
 	public void AFeatureSetWithoutTheOverallSwitch_DoesNothing()
 	{
 		Assert.False(XsgProjectFeatures.ImplicitXamlNamespaces(Properties(("LibreWpfSimplerXaml", "true"))));
@@ -215,5 +224,22 @@ public sealed class ImplicitXamlNamespacesTests
 		Assert.True(JsonSerializer.Deserialize<DesignerDocumentSnapshot>(json)!.ImplicitXamlNamespaces);
 		// A message from an older host does not carry it: it reads as a stock document.
 		Assert.False(JsonSerializer.Deserialize<DesignerDocumentSnapshot>("{\"ProjectFileName\":\"a.csproj\"}")!.ImplicitXamlNamespaces);
+	}
+
+	[Fact]
+	public void GlobalUsings_AreTheNamespaceDirectivesWithoutAliasOrStatic()
+	{
+		const string source = """
+			global using System.Text;
+			global using Sample.Controls;
+			   global   using   Spaced.Name ;
+			global using global::Qualified.Name;
+			global using Alias = Sample.Other;
+			global using static Sample.Helper;
+			using Plain.Using;
+			namespace Sample { class C { } }
+			""";
+		Assert.Equal(new[] { "System.Text", "Sample.Controls", "Spaced.Name", "Qualified.Name" }, XsgProjectFeatures.ParseGlobalUsings(source));
+		Assert.Empty(XsgProjectFeatures.ParseGlobalUsings(null));
 	}
 }

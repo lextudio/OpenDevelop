@@ -4,7 +4,7 @@
     <OutputType>WinExe</OutputType>
     <UseWPF>true</UseWPF>
     <UseLibreWpfXamlSourceGenerator>true</UseLibreWpfXamlSourceGenerator>
-    <!-- XSG is the sole XAML compiler for this fixture; the BAML task does not understand {cs:}. -->
+    <!-- XSG is the sole XAML compiler for this fixture; the BAML task does not understand C# expressions. -->
     <ProGpuWpfUseWpfMarkup>false</ProGpuWpfUseWpfMarkup>
     <!-- LibreWPF.Sdk's portable markup target owns the traditional WinFX import.  Keeping this
          true makes the fixture prove that the analyzer, not PresentationBuildTasks, compiled XAML. -->

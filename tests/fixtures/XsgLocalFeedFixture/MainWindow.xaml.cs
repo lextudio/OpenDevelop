@@ -4,7 +4,11 @@ namespace XsgLocalFeedFixture;
 
 public partial class MainWindow : Window
 {
-    public MainWindow() => InitializeComponent();
+    public MainWindow()
+    {
+        DataContext = new Probe();
+        InitializeComponent();
+    }
 
     // Loaded fires again on every tree InitializeComponent builds for the live window, so which
     // handler the XAML names is observable through Marker without any input injection. The

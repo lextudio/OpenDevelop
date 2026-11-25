@@ -80,7 +80,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 
 		/// <param name="generatesXamlCode">
 		/// True when the project compiles its XAML to C# (the LibreWPF XAML source generator): only then
-		/// does an x:Name own a generated field and a {cs:} attribute own generated code, so only then is
+		/// does an x:Name own a generated field and a C# expression attribute ({Foo}, {= Foo}, an event lambda) own generated code, so only then is
 		/// removing a name a restart and changing an expression a rebuild. For BAML and WinUI a re-parse
 		/// carries those edits, and reporting them as structural would block a reload that works.
 		/// </param>
@@ -111,7 +111,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			// Edits a text push cannot express. Needs both sides to parse: text typed half-way is
 			// invalid XML all the time, and that must not be mistaken for a structural change.
 			// Names are collected from the whole file because the generator emits one field per
-			// x:Name anywhere in it, template content included. {cs:} values compare in order: moving
+			// x:Name anywhere in it, template content included. Expression values compare in order: moving
 			// one changes the generated code, and a false CodeDelta only costs a rebuild whereas a
 			// missed one loses the edit.
 			var previousFacts = generatesXamlCode ? XamlFacts.TryRead(previousText, handlerNames) : null;
@@ -119,7 +119,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			if (previousFacts != null && currentFacts != null) {
 				if (previousFacts.XClass != currentFacts.XClass || previousFacts.Names.Except(currentFacts.Names).Any())
 					return HotReloadChangeKind.RestartRequired;
-				if (!previousFacts.CsExpressions.SequenceEqual(currentFacts.CsExpressions)
+				if (!previousFacts.Expressions.SequenceEqual(currentFacts.Expressions)
 					|| !previousFacts.EventHandlers.SequenceEqual(currentFacts.EventHandlers)
 					|| currentFacts.Names.Except(previousFacts.Names).Any())
 					return HotReloadChangeKind.CodeDelta;
@@ -198,7 +198,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 
 			public string XClass;
 			public readonly HashSet<string> Names = new HashSet<string>(StringComparer.Ordinal);
-			public readonly List<string> CsExpressions = new List<string>();
+			public readonly List<string> Expressions = new List<string>();
 			public readonly List<string> EventHandlers = new List<string>();
 			public int ElementCount;
 
@@ -233,8 +233,8 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 									facts.XClass = value;
 								else if ((inXamlNamespace && local == "Name") || name == "Name")
 									facts.Names.Add(value);
-								if (value.StartsWith("{cs:", StringComparison.Ordinal))
-									facts.CsExpressions.Add(value);
+								if (XamlExpressionSyntax.IsExpression(value))
+									facts.Expressions.Add(value);
 								else if (LooksLikeEventHandler(local, value, handlerNames))
 									facts.EventHandlers.Add(name + "=" + value);
 							}

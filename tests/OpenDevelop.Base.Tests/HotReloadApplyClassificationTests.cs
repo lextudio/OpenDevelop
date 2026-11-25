@@ -9,8 +9,8 @@ namespace OpenDevelop.Base.Tests;
 /// </summary>
 public class HotReloadApplyClassificationTests
 {
-	const string Edited = "<Window xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"><TextBlock Text=\"{cs: 1 + 2}\" /></Window>";
-	const string Launched = "<Window xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"><TextBlock Text=\"{cs: 1 + 1}\" /></Window>";
+	const string Edited = "<Window xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"><TextBlock Text=\"{= 1 + 2}\" /></Window>";
+	const string Launched = "<Window xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\"><TextBlock Text=\"{= 1 + 1}\" /></Window>";
 
 	[Fact]
 	public void UnknownLaunchText_WithTheXamlSourceGenerator_TakesTheCodeDeltaPath()
