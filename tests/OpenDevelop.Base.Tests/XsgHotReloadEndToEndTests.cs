@@ -206,6 +206,50 @@ public sealed class XsgHotReloadEndToEndTests
 		Assert.Empty(await protocol.RoslynGeneratedSourcesAsync(new TextDocumentIdentifier(Path.Combine(fixtureDirectory, "Probe.cs")), token));
 	}
 
+	/// <summary>
+	/// Step into from a breakpoint on a XAML line: four steps in a row each stop with reason "step" in MainWindow.xaml, in the window's
+	/// InitializeComponent (why a step into goes no deeper was not measured). The lines of those stops are not asserted:
+	/// they follow the generator's #line numbering (G14 in xsg-gaps.md), which is not monotonic (8, 9, 7, 8, 8 were observed).
+	/// </summary>
+	[Fact]
+	public async Task StepInto_FromAnExpressionBreakpoint_StaysInTheXamlFile()
+	{
+		var token = TestContext.Current.CancellationToken;
+		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
+		var output = Path.Combine(fixtureDirectory, "bin", CurrentConfiguration(), TargetFramework);
+		var executable = Path.Combine(output, OperatingSystem.IsWindows() ? "XsgLocalFeedFixture.exe" : "XsgLocalFeedFixture");
+		if (!File.Exists(executable))
+			Assert.Skip($"Build the XSG fixture first: {fixtureDirectory} (-c {CurrentConfiguration()}).");
+		var xamlPath = Path.Combine(fixtureDirectory, "MainWindow.xaml");
+		var line = (await File.ReadAllLinesAsync(xamlPath, token)).Select((text, index) => (text, line: index + 1))
+			.First(l => l.text.Contains("Text=\"{= 'Hot reload ready'}\"")).line;
+
+		UseDeployedSharpDbg();
+		using var debugger = new DapSession();
+		var stopped = new TaskCompletionSource<DapStoppedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously);
+		debugger.Stopped += e => Volatile.Read(ref stopped).TrySetResult(e);
+		try {
+			await debugger.StartAsync(executable, output, breakAtBeginning: false, cancellationToken: token);
+			await debugger.SetBreakpointsAsync(xamlPath, new[] { (line, (string)null, (string)null, (string)null) });
+			await debugger.ConfigurationDoneAsync(token);
+			var hit = await stopped.Task.WaitAsync(TimeSpan.FromSeconds(90), token);
+			Assert.Equal("breakpoint", hit.Reason);
+			for (var i = 0; i < 4; i++) {
+				Volatile.Write(ref stopped, new TaskCompletionSource<DapStoppedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously));
+				debugger.StepInto();
+				var step = await stopped.Task.WaitAsync(TimeSpan.FromSeconds(60), token);
+				Assert.Equal("step", step.Reason);
+				var frames = await debugger.GetStackFramesAsync(step.ThreadId);
+				Assert.NotEmpty(frames);
+				Assert.True(frames[0].FilePath != null && frames[0].FilePath.EndsWith("MainWindow.xaml", StringComparison.Ordinal),
+					"step into #" + i + " stopped in " + frames[0].FilePath + ":" + frames[0].Line);
+				Assert.Contains("InitializeComponent", frames[0].Name);
+			}
+		} finally {
+			debugger.Stop();
+		}
+	}
+
 	async Task RunAsync(bool underDebugger, Func<Scenario, Task> scenario)
 	{
 		var token = TestContext.Current.CancellationToken;
