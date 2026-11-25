@@ -60,6 +60,12 @@
 		     class = "ICSharpCode.WpfDesign.AddIn.OutlineViewPad"/>
 	</Path>
 	-->
+	<!-- The same command in the XAML text editor's context menu. -->
+	<Path name="/SharpDevelop/ViewContent/TextEditor/ContextMenu">
+		<Condition name="ActiveContentExtension" activeextension=".xaml">
+			<MenuItem id="viewGeneratedCodeFromEditor" label="View Generated Code" class="ICSharpCode.WpfDesign.AddIn.Commands.ViewGeneratedCode" />
+		</Condition>
+	</Path>
 	<Path name="/AddIns/WpfDesign/Designer/ContextMenu">
 		<MenuItem label="${res:ICSharpCode.WPFDesigner.ContextMenu.ViewXAML}" id="viewXaml" icon="Icons.16x16.XMLFileIcon" class="ICSharpCode.WpfDesign.AddIn.Commands.ViewXaml" />
 		<MenuItem label="View Generated Code" id="viewGeneratedCode" icon="Icons.16x16.XMLFileIcon" class="ICSharpCode.WpfDesign.AddIn.Commands.ViewGeneratedCode" />

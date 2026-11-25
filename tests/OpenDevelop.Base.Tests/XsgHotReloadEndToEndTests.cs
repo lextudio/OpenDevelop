@@ -149,6 +149,19 @@ public sealed class XsgHotReloadEndToEndTests
 			var after = await debugger.GetStackFramesAsync(stepped.ThreadId);
 			Assert.True(after[0].FilePath != null && after[0].FilePath.EndsWith("MainWindow.xaml", StringComparison.Ordinal),
 				"after a step the top frame is " + after[0].FilePath + ":" + after[0].Line);
+
+			// Five more steps over: each stops with reason "step", and while the stops are inside the window's generated InitializeComponent each
+			// is reported on a XAML line of MainWindow.xaml (leaving it for the application's own code is allowed, so the check stops there).
+			for (var i = 0; i < 5; i++) {
+				Volatile.Write(ref stopped, new TaskCompletionSource<DapStoppedEventArgs>(TaskCreationOptions.RunContinuationsAsynchronously));
+				debugger.StepOver();
+				stepped = await stopped.Task.WaitAsync(TimeSpan.FromSeconds(60), token);
+				Assert.Equal("step", stepped.Reason);
+				after = await debugger.GetStackFramesAsync(stepped.ThreadId);
+				if (after[0].FilePath == null || !after[0].FilePath.EndsWith("MainWindow.xaml", StringComparison.Ordinal))
+					break;
+				Assert.InRange(after[0].Line, 1, File.ReadAllLines(xamlPath).Length);
+			}
 		} finally {
 			debugger.Stop();
 		}

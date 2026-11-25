@@ -43,14 +43,14 @@ errors showed. A second regex (`GeneratorDiagnosticLine`) reads that shape. Stil
   unsaved text too. `GeneratedSourceService` (Base) wraps it; the designer's context menu has **View Generated Code** (`ViewGeneratedCode`), which writes the text read-only under the user's
   temp folder and opens it. `od.xsg.generated-sources` and `od.wpf-designer.view-generated-code` expose the two levels. Tests:
   `XsgHotReloadEndToEndTests.GeneratedSources_OfAXamlFile_AreReadOverTheProtocol` (this file's document only, per-TFM slice, nothing for a `.cs` file) and the assertions in
-  `XsgProject_GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns` (through the real IDE, including the command). Not done: the same item in the XAML text editor's context menu.
+  `XsgProject_GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns` (through the real IDE, including the command). The text editor's context menu carries the same item for `.xaml` files (`ActiveContentExtension` condition in `WpfDesign.addin`); only its registration is checked (`AddInManifestTests`), no journey opens that menu.
 - Breakpoints in an expression: **verified.** `XsgHotReloadEndToEndTests.BreakpointOnAnExpressionLine_HitsInTheXamlFile` sets a breakpoint on the XAML line of
   `Text="{= 'Hot reload ready'}"` through `DapSession`, the application stops there and the top frame is `MainWindow.xaml` at that line (the generator's `#line` makes the XAML the
   document of the generated code). The refusal near `HotReloadDeltaProducer.cs:253` concerns only the Hot Reload active-frame line map, not breakpoints. A step over from that stop
-  stops again with reason `step` in `MainWindow.xaml` (the same test): one step over from one stop. Not run: repeated steps, other expression shapes (an event lambda, an interpolation), step into, and an edit while stopped inside an expression.
+  stops again with reason `step` in `MainWindow.xaml` (the same test), then up to five more steps over, each stopping with reason `step` (and on a XAML line while still inside the window's generated code). Not run: other expression shapes (an event lambda, an interpolation), step into, and an edit while stopped inside an expression.
 
 Still open and deliberately not part of this stage: G5 (no CI entry; needs an observed `test-plan.json` entry iterated through pushes, which waits for
-the owner's go-ahead), G6, G7 (status bar; template blocked on a public feed), G8 (command in the text editor menu; edit-while-stopped unchecked), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
+the owner's go-ahead), G6, G7 (status bar; template blocked on a public feed), G8 (edit-while-stopped, step into and other expression shapes unchecked), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
 See `xsg-maui-alignment-plan.md` for the verified/unverified list per stage. The text below is the original audit.
 
 ## Gaps
