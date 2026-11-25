@@ -34,7 +34,14 @@ the active designer's project (asserted in `XsgProject_GlobalUsingType_LoadsInTh
 
 G8 is half done: a generator error now reaches the Error List on the XAML file and line (`XsgProject_GeneratorError_ReachesTheErrorListOnTheXamlLine`). It did not before:
 the generator's diagnostic on an additional file is printed as `CSC : error LWXSG0011: <xaml>(line,col): ...`, which `MinimalMSBuildEngine` did not parse, so only the follow-on CS0103
-errors showed. A second regex (`GeneratorDiagnosticLine`) reads that shape. Still open: breakpoints and stepping in an expression, and a "view generated `.g.cs`" action (SharpDbg).
+errors showed. A second regex (`GeneratorDiagnosticLine`) reads that shape. Still open, with what was found when starting them (2026-11-25, nothing built):
+- "View generated `.g.cs`": the build does **not** write the generator's output to `obj/` by default (the `obj/**/generated/LibreWPF.Xaml.SourceGenerator/*.g.cs` files in
+  the fixture are from a manual build with `EmitCompilerGeneratedFiles`), so reading a file would work only for projects that opt in. The reliable source is the Roslyn host,
+  which already runs the generator over the XAML AdditionalDocuments: a new `GetGeneratedSourcesAsync` has to go through `ILanguageService`
+  (`LanguageServiceContracts.cs`), `CSharpVBLanguageService`, `InProcessRoslynLanguageProtocol`, `RemoteLanguageService`, `LspLanguageService` and `NoOpLanguageService`, plus the
+  host's wire shape, then an editor command and an `od.*` action.
+- Breakpoints and stepping in an expression: the refusal near `HotReloadDeltaProducer.cs:253` concerns only the Hot Reload active-frame line map; a breakpoint on a XAML line
+  should bind because the PDB's document for generated code is the XAML (via `#line`). Not run: a debugger journey on the fixture has to confirm it.
 
 Still open and deliberately not part of this stage: G5 (no CI entry; needs an observed `test-plan.json` entry iterated through pushes, which waits for
 the owner's go-ahead), G6, G7 (template and status bar), G8 (stepping, generated-code view), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
