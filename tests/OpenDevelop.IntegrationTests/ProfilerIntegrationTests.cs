@@ -527,13 +527,21 @@ public sealed class ProfilerIntegrationTests : IAsyncDisposable
 
 		// The Profiling Sessions window lists the session and can delete it, capture file included.
 		var id = recorded.GetProperty("id").GetString()!;
-		var window = await app.InvokeAsync("od.profiler.sessions.window");
-		var row = window.GetProperty("sessions").EnumerateArray().Single(r => r.GetProperty("id").GetString() == id);
-		Assert.Equal("CPU", row.GetProperty("kind").GetString());
-		Assert.True(row.GetProperty("size").GetInt64() > 0);
-		var deleted = await app.InvokeAsync("od.profiler.sessions.delete", id);
-		Assert.True(deleted.GetProperty("success").GetBoolean(), deleted.ToString());
-		Assert.DoesNotContain(deleted.GetProperty("sessions").EnumerateArray(), r => r.GetProperty("id").GetString() == id);
+		try
+		{
+			var window = await app.InvokeAsync("od.profiler.sessions.window");
+			var row = window.GetProperty("sessions").EnumerateArray().Single(r => r.GetProperty("id").GetString() == id);
+			Assert.Equal("CPU", row.GetProperty("kind").GetString());
+			Assert.True(row.GetProperty("size").GetInt64() > 0);
+			var deleted = await app.InvokeAsync("od.profiler.sessions.delete", id);
+			Assert.True(deleted.GetProperty("success").GetBoolean(), deleted.ToString());
+			Assert.DoesNotContain(deleted.GetProperty("sessions").EnumerateArray(), r => r.GetProperty("id").GetString() == id);
+		}
+		finally
+		{
+			// The window is modeless: left open it would stay on screen for the rest of the run.
+			await app.InvokeAsync("od.profiler.sessions.close");
+		}
 		Assert.False(File.Exists(path));
 	}
 

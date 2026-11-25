@@ -30,6 +30,14 @@ public partial class SessionsWindow : Window
 		Reload();
 	}
 
+	/// <summary>Closes the window if it is open, for the integration-test probes.</summary>
+	internal static bool CloseWindow()
+	{
+		var window = current;
+		window?.Close();
+		return window is not null;
+	}
+
 	/// <summary>Shows the window, or activates it if it is already open.</summary>
 	public static SessionsWindow ShowWindow()
 	{
@@ -89,6 +97,8 @@ public partial class SessionsWindow : Window
 	}
 
 	void SessionList_MouseDoubleClick(object sender, MouseButtonEventArgs e) => OpenSelected();
+
+	void Close_Click(object sender, RoutedEventArgs e) => Close();
 
 	void Open_Click(object sender, RoutedEventArgs e) => OpenSelected();
 

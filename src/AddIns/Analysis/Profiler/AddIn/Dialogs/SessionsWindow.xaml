@@ -44,7 +44,7 @@
 			        Click="Reveal_Click" Content="{core:Localize AddIns.Profiler.Sessions.Reveal}" />
 			<Button x:Name="deleteButton" DockPanel.Dock="Left" MinWidth="80" IsEnabled="False"
 			        Click="Delete_Click" Content="{core:Localize AddIns.Profiler.Sessions.Delete}" />
-			<Button DockPanel.Dock="Right" MinWidth="80" IsCancel="True" Content="{core:Localize Global.Close}" />
+			<Button DockPanel.Dock="Right" MinWidth="80" IsCancel="True" Click="Close_Click" Content="{core:Localize Global.Close}" />
 		</DockPanel>
 	</Grid>
 </Window>

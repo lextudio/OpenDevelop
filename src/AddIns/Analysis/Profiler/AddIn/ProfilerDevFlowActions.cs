@@ -260,6 +260,9 @@ public static class ProfilerDevFlowActions
 		return Serialize(new { success = true, sessions = window.Describe() });
 	}
 
+	[DevFlowAction("od.profiler.sessions.close", Description = "Close the Profiling Sessions window if it is open")]
+	public static string CloseSessionsWindow() => Serialize(new { success = true, closed = Dialogs.SessionsWindow.CloseWindow() });
+
 	[DevFlowAction("od.profiler.sessions.delete", Description = "Delete a session through the Profiling Sessions window (without the confirmation question) and return the remaining rows")]
 	public static string DeleteSession(string id)
 	{
