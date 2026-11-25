@@ -52,7 +52,7 @@ namespace ICSharpCode.SharpDevelop.Project.Commands
 						// automatically configure the supported Uno launch adapter here so
 						// the actual F5 command, build-before-run and debugger lifecycle are
 						// all part of the same session.
-						bool useHotReload = withHotReload || HotReloadService.IsSupported(startupProject);
+						bool useHotReload = withHotReload || (HotReloadService.IsEnabled && HotReloadService.IsSupported(startupProject, withDebugger));
 						if (useHotReload)
 							startupProject.StartWithHotReload(withDebugger);
 						else

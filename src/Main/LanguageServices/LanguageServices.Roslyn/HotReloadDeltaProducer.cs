@@ -200,9 +200,49 @@ public sealed class HotReloadDeltaProducer
 			var updatedMethodTokens = difference.UpdatedMethods.Select(method => MetadataTokens.GetToken(method)).ToArray();
 			return new HotReloadDeltaResponse(HotReloadDeltaStatus.Applied,
 				new HotReloadModuleDelta(baseline.Mvid, metadata.ToArray(), il.ToArray(), pdb.ToArray(), tokens, updatedMethodTokens,
-					LineMaps(baseline.Compilation, compilation)),
+					LineMaps(baseline.Compilation, compilation),
+					MetadataUpdateHandlers(compilation),
+					updatedTypes.Select(TypeDisplayName).Where(name => name != null).Distinct().ToArray()),
 				$"Produced a delta for {difference.UpdatedMethods.Length} method(s).");
 		}
+	}
+
+	/// <summary>
+	/// Types in this compilation that opt into Hot Reload callbacks through the assembly-level
+	/// <c>MetadataUpdateHandlerAttribute</c>. SharpDbg runs their static ClearCache/UpdateApplication
+	/// methods after applying the delta, because a debugger-applied update does not trigger the
+	/// runtime's own MetadataUpdater notification path.
+	/// </summary>
+	static string[] MetadataUpdateHandlers(Compilation compilation)
+	{
+		var attributeType = compilation.GetTypeByMetadataName("System.Reflection.Metadata.MetadataUpdateHandlerAttribute");
+		if (attributeType is null)
+			return Array.Empty<string>();
+		var handlers = new List<string>();
+		foreach (var attribute in compilation.Assembly.GetAttributes()) {
+			if (!SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, attributeType))
+				continue;
+			if (attribute.ConstructorArguments.Length == 0)
+				continue;
+			if (attribute.ConstructorArguments[0].Value is INamedTypeSymbol handler) {
+				var name = TypeDisplayName(handler);
+				if (name != null)
+					handlers.Add(name);
+			}
+		}
+		return handlers.Distinct(StringComparer.Ordinal).ToArray();
+	}
+
+	/// <summary>The C# expression a debuggee can use in <c>typeof(...)</c>, or null for a type shape it cannot express.</summary>
+	static string? TypeDisplayName(INamedTypeSymbol type)
+	{
+		// The expression evaluator can build typeof(T) for named types; an unbound generic
+		// (typeof(List<>)) is not needed for update handlers, and omitting it keeps the
+		// generated expression valid.
+		if (type is null || type.IsGenericType)
+			return null;
+		var display = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+		return display.StartsWith("global::", StringComparison.Ordinal) ? display.Substring("global::".Length) : display;
 	}
 
 	static HotReloadDeltaResponse Failed(string message) => new(HotReloadDeltaStatus.Failed, null, message);

@@ -100,6 +100,7 @@ public sealed class HotReloadServiceTests : IDisposable
 		Assert.False(new HotReloadApplyResult(HotReloadOutcome.Failed, "rejected").IsSuccess);
 		Assert.False(new HotReloadApplyResult(HotReloadOutcome.Unsupported, "not supported").IsSuccess);
 		Assert.False(new HotReloadApplyResult(HotReloadOutcome.Disconnected, "gone").IsSuccess);
+		Assert.False(new HotReloadApplyResult(HotReloadOutcome.NoChanges, "nothing to do").IsSuccess);
 	}
 
 	[Fact]

@@ -271,6 +271,7 @@ namespace Debugger.AddIn.Service.Dap
 					["processId"] = attachProcessId,
 					["console"] = "internalConsole",
 					["justMyCode"] = true,
+					["enableEditAndContinue"] = EnableEditAndContinue,
 					// The IDE (its decompiler add-in) decides whether and how a module without a PDB gets symbols; with no provider nothing is
 					// decompiled. An adapter that does not know the argument keeps decompiling by itself.
 					["decompileExternalCode"] = false

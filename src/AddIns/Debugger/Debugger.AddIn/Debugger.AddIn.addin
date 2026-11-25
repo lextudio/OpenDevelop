@@ -40,6 +40,13 @@
 		<Service id="ICSharpCode.SharpDevelop.Debugging.IDebuggerService"
 		         class="ICSharpCode.SharpDevelop.Services.WindowsDebugger" />
 	</Path>
+
+	<!-- Ordinary C# Edit and Continue under SharpDbg. WPF and WinUI keep their own XAML adapters;
+	     this one claims the remaining managed projects so Continue/Step/Set Next Statement can
+	     apply a Roslyn-produced delta through the debugger. -->
+	<Path name="/SharpDevelop/HotReload/Adapters">
+		<Class id="CSharp" class="Debugger.AddIn.HotReload.CSharpApplicationHotReloadAdapter"/>
+	</Path>
 	
 	<Path name = "/SharpDevelop/ViewContent/TextEditor/ContextMenu">
 		<Condition name = "IsProcessRunning" isdebugging="True">

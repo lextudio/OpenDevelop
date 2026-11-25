@@ -23,6 +23,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Debugger.AddIn.Breakpoints;
+using Debugger.AddIn.HotReload;
+using Debugger.AddIn.Service;
 using Debugger.AddIn.Service.Dap;
 using ICSharpCode.Core;
 using ICSharpCode.SharpDevelop.Debugging;
@@ -261,7 +263,8 @@ namespace ICSharpCode.SharpDevelop.Services
 		}
 
 		internal static bool ShouldEnableEditAndContinue(ProcessStartInfo processStartInfo) =>
-			processStartInfo.Environment.ContainsKey("WPF_HOTRELOAD_PIPE");
+			processStartInfo.Environment.ContainsKey("WPF_HOTRELOAD_PIPE")
+			|| processStartInfo.Environment.ContainsKey("OD_HOTRELOAD_ENC");
 
 		async Task StartAsync(ProcessStartInfo processStartInfo, bool noDebug = false)
 		{
@@ -485,12 +488,18 @@ namespace ICSharpCode.SharpDevelop.Services
 			// frame without source, so look at the whole stack and show the first frame that has one:
 			// the user's own line (issue #27). Other stops keep the cheap one-frame request.
 			bool isExceptionStop = e.Reason == "exception";
+			bool isCodeDeltaSession = HotReloadService.CurrentSession is ICodeDeltaHotReloadSession codeDeltaSession
+				&& codeDeltaSession.State is HotReloadSessionState.Ready or HotReloadSessionState.Applying;
 			var frames = CurrentThread != null
-				? await (isExceptionStop
+				? await (isExceptionStop || isCodeDeltaSession
 					? CurrentSession.GetStackFramesAsync(CurrentThread.Id)
 					: CurrentSession.GetStackFramesAsync(CurrentThread.Id, 0, 1)).ConfigureAwait(false)
 				: Array.Empty<DapStackFrameInfo>();
 			CurrentStackFrame = isExceptionStop ? SelectExceptionStopFrame(frames) : frames.FirstOrDefault();
+			var activeStatements = frames
+				.Where(f => f != null && !string.IsNullOrEmpty(f.FilePath) && f.Line > 0)
+				.Select(f => new ActiveStatement(FileName.Create(f.FilePath), f.Line, f.EndLine > 0 ? f.EndLine : f.Line))
+				.ToArray();
 			if (CurrentStackFrame != null) {
 				CurrentSession.ActiveFrameId = CurrentStackFrame.Id;
 			}
@@ -502,6 +511,10 @@ namespace ICSharpCode.SharpDevelop.Services
 			System.Threading.Interlocked.Increment(ref currentStopSequence);
 
 			SD.MainThread.InvokeAsyncAndForget(() => {
+				if (isCodeDeltaSession)
+					ActiveStatementReadOnly.SetStatements(activeStatements);
+				else
+					ActiveStatementReadOnly.Clear();
 				OnIsProcessRunningChanged(EventArgs.Empty);
 
 				bool shouldBreak = true;
@@ -609,6 +622,7 @@ namespace ICSharpCode.SharpDevelop.Services
 			SD.MainThread.InvokeAsyncAndForget(() => {
 				OnIsProcessRunningChanged(EventArgs.Empty);
 				RemoveCurrentLineMarker();
+				ActiveStatementReadOnly.Clear();
 				CurrentThread = null;
 				CurrentStackFrame = null;
 				RefreshPads();
@@ -624,6 +638,7 @@ namespace ICSharpCode.SharpDevelop.Services
 				// Clear the paused-line highlight: the session is over, so leaving the marker (as
 				// happened before) made a dead session look like it was still stopped at a line.
 				RemoveCurrentLineMarker();
+				ActiveStatementReadOnly.Clear();
 				OnDebugStopped(EventArgs.Empty);
 				CurrentThread = null;
 				CurrentStackFrame = null;
@@ -739,6 +754,38 @@ namespace ICSharpCode.SharpDevelop.Services
 			}
 		}
 
+		/// <summary>
+		/// Best-effort project association for attach-time Hot Reload: the process's main module must
+		/// be a project output in the open solution. A process started through the shared `dotnet`
+		/// host has that host as its main module and is therefore not associated here.
+		/// </summary>
+		static (IProject Project, string ModulePath) FindAttachedProject(int processId)
+		{
+			try {
+				using var process = Process.GetProcessById(processId);
+				var launchPath = process.MainModule?.FileName;
+				if (string.IsNullOrEmpty(launchPath))
+					return (null, null);
+				// An apphost launch runs MyApp, while the project output (and the EnC baseline)
+				// is MyApp.dll beside it.
+				var modulePath = HotReloadLaunchBaseline.ManagedModuleFor(launchPath) ?? launchPath;
+				var solution = SD.ProjectService?.CurrentSolution;
+				if (solution == null)
+					return (null, null);
+				foreach (var project in solution.Projects) {
+					var output = project.OutputAssemblyFullPath?.ToString();
+					if (string.IsNullOrEmpty(output))
+						continue;
+					if (string.Equals(Path.GetFullPath(output), Path.GetFullPath(modulePath), StringComparison.OrdinalIgnoreCase))
+						return (project, modulePath);
+				}
+			} catch (Exception ex) when (ex is ArgumentException or InvalidOperationException
+				or System.ComponentModel.Win32Exception or NotSupportedException or IOException) {
+				LoggingService.Info("Hot Reload: could not associate the attached process: " + ex.Message);
+			}
+			return (null, null);
+		}
+
 		// Kept with this exact signature: od.debug.attach reflects on it by name with one argument
 		public Task AttachAsync(int processId)
 		{
@@ -751,9 +798,15 @@ namespace ICSharpCode.SharpDevelop.Services
 			DapSession session = null;
 			try {
 				PrintDebugMessage("> Attaching to process " + processId + "...\n");
+				var attachHotReload = FindAttachedProject(processId);
+				bool enableAttachHotReload = attachHotReload.Project != null
+					&& HotReloadService.IsEnabled
+					&& new CSharpApplicationHotReloadAdapter().CanHandle(
+						new HotReloadLaunchContext(attachHotReload.Project, withDebugger: true), out _);
 				session = new DapSession();
 				currentSessionIsNoDebug = false;
 				CurrentSession = session;
+				session.EnableEditAndContinue = enableAttachHotReload;
 				CurrentSession.Started += SessionStarted;
 				CurrentSession.Stopped += SessionStopped;
 				CurrentSession.Continued += SessionContinued;
@@ -766,6 +819,15 @@ namespace ICSharpCode.SharpDevelop.Services
 				await SyncAllBreakpointsBeforeLaunchAsync();
 				await CurrentSession.SetExceptionBreakpointsAsync(new[] { "user-unhandled" }).ConfigureAwait(false);
 				await CurrentSession.ConfigurationDoneAsync().ConfigureAwait(false);
+				if (enableAttachHotReload) {
+					var adapter = new CSharpApplicationHotReloadAdapter();
+					var context = new HotReloadLaunchContext(attachHotReload.Project, withDebugger: true);
+					var hotReloadSession = new CSharpHotReloadSession(adapter, adapter.GetCapabilities(context));
+					if (await HotReloadService.StartAttachedSessionAsync(hotReloadSession, attachHotReload.Project, attachHotReload.ModulePath).ConfigureAwait(false))
+						PrintDebugMessage("> Hot Reload enabled for " + attachHotReload.Project.Name + ".\n");
+					else
+						await hotReloadSession.DisposeAsync().ConfigureAwait(false);
+				}
 				PrintDebugMessage("> Attached to process " + processId + "\n");
 			} catch (Exception ex) {
 				if (session != null && ReferenceEquals(stopRequestedFor, session))
@@ -871,22 +933,52 @@ namespace ICSharpCode.SharpDevelop.Services
 
 		public override void Continue()
 		{
+			if (!ApplyPendingHotReloadBeforeResume())
+				return;
 			CurrentSession?.Continue();
 		}
 
 		public override void StepInto()
 		{
+			if (!ApplyPendingHotReloadBeforeResume())
+				return;
 			CurrentSession?.StepInto();
 		}
 
 		public override void StepOver()
 		{
+			if (!ApplyPendingHotReloadBeforeResume())
+				return;
 			CurrentSession?.StepOver();
 		}
 
 		public override void StepOut()
 		{
+			if (!ApplyPendingHotReloadBeforeResume())
+				return;
 			CurrentSession?.StepOut();
+		}
+
+		/// <summary>
+		/// Visual Studio applies pending Hot Reload edits when the debugger resumes (Continue,
+		/// Step, Set Next Statement). The same gesture here: produce one code delta, apply it
+		/// through SharpDbg, and stop the resume only when the edit cannot be applied.
+		/// </summary>
+		bool ApplyPendingHotReloadBeforeResume()
+		{
+			var result = HotReloadService.ApplyPendingChangesBeforeResume();
+			if (result is null)
+				return true;
+			if (result.Outcome is HotReloadOutcome.NoChanges or HotReloadOutcome.Applied or HotReloadOutcome.Degraded)
+				return true;
+
+			HotReloadOutput.Write("C#", result.Message);
+			// Only an edit the user can resolve (rude edit or compilation error) may keep the
+			// debuggee stopped. Availability and apply failures continue with the old code.
+			var blocking = result.Outcome is HotReloadOutcome.RestartRequired or HotReloadOutcome.BuildRequired;
+			if (blocking)
+				SD.MainThread.InvokeAsyncAndForget(() => MessageService.ShowWarning(result.Message));
+			return !blocking;
 		}
 
 		public override bool SetInstructionPointer(string filename, int line, int column, bool dryRun)
@@ -895,9 +987,13 @@ namespace ICSharpCode.SharpDevelop.Services
 			int? targetColumn = column > 0 ? column : (int?)null;
 			// The DAP round trip must not block the UI thread (menu commands run on it), so run it
 			// on the thread pool where there is no synchronization context to return to.
-			return Task.Run(() => dryRun
-				? CanSetNextStatementAsync(filename, line, targetColumn)
-				: SetNextStatementAsync(filename, line, targetColumn)).GetAwaiter().GetResult();
+			return Task.Run(async () => {
+				if (!dryRun && !ApplyPendingHotReloadBeforeResume())
+					return false;
+				return dryRun
+					? await CanSetNextStatementAsync(filename, line, targetColumn).ConfigureAwait(false)
+					: await SetNextStatementAsync(filename, line, targetColumn).ConfigureAwait(false);
+			}).GetAwaiter().GetResult();
 		}
 
 		/// <summary>Whether "Set Next Statement" has a target on the given line (used for the menu's dry run).</summary>
@@ -1163,6 +1259,7 @@ namespace ICSharpCode.SharpDevelop.Services
 				}
 			}
 			CurrentLineBookmark.SetPosition(viewContent, startLine, startColumn, endLine, endColumn);
+			ActiveStatementReadOnly.ApplyToActiveView();
 		}
 	}
 }

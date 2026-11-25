@@ -53,6 +53,24 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		/// <summary>Optional debugger-addin bridge for applying a delta through DAP.</summary>
 		public static Func<IHotReloadDeltaApplier> DebuggerDeltaApplierFactory { get; set; }
 
+		/// <summary>Visual Studio's "Enable Hot Reload" option; read when a launch is configured.</summary>
+		public static bool IsEnabled {
+			get => PropertyService?.Get("Debugger.HotReload.Enabled", true) ?? true;
+			set => PropertyService?.Set("Debugger.HotReload.Enabled", value);
+		}
+
+		/// <summary>Visual Studio's "Hot Reload on file save" option.</summary>
+		public static bool ApplyOnFileSave {
+			get => PropertyService?.Get("Debugger.HotReload.ApplyOnFileSave", false) ?? false;
+			set => PropertyService?.Set("Debugger.HotReload.ApplyOnFileSave", value);
+		}
+
+		static IPropertyService PropertyService {
+			get {
+				try { return SD.GetService<IPropertyService>(); } catch { return null; }
+			}
+		}
+
 		public static event EventHandler CurrentSessionChanged;
 
 		static int lifecycleHooked;
@@ -68,6 +86,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 				return;
 
 			MessageBus<SolutionClosedMessageEventArgs>.Subscribers += (_, _) => DisposeCurrentSession();
+			FileUtility.FileSaved += OnFileSaved;
 
 			// A debugger-hosted application dies with its debug session. A Run-without-debugging
 			// launch is not covered by this, which is why the session also treats a dead endpoint
@@ -85,6 +104,9 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		/// First adapter that claims the project, or null. Cheap enough for command enablement.
 		/// </summary>
 		public static IApplicationHotReloadAdapter FindAdapter(IProject project, out string diagnostic)
+			=> FindAdapter(project, withDebugger: false, out diagnostic);
+
+		public static IApplicationHotReloadAdapter FindAdapter(IProject project, bool withDebugger, out string diagnostic)
 		{
 			diagnostic = null;
 			if (project == null) {
@@ -92,7 +114,7 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 				return null;
 			}
 
-			var context = new HotReloadLaunchContext(project, withDebugger: false);
+			var context = new HotReloadLaunchContext(project, withDebugger);
 			string lastDiagnostic = null;
 			foreach (var adapter in Adapters) {
 				try {
@@ -110,6 +132,8 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 
 		public static bool IsSupported(IProject project) => FindAdapter(project, out _) != null;
 
+		public static bool IsSupported(IProject project, bool withDebugger) => FindAdapter(project, withDebugger, out _) != null;
+
 		/// <summary>
 		/// Configures <paramref name="startInfo"/> for Hot Reload and starts the session. Returns
 		/// false when no adapter applies or the adapter could not start; Hot Reload is a launch
@@ -119,8 +143,12 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		{
 			if (startInfo == null)
 				return false;
+			if (!IsEnabled) {
+				LoggingService.Info("Hot Reload was not enabled: the Debugger.HotReload.Enabled option is off.");
+				return false;
+			}
 
-			var adapter = FindAdapter(project, out var diagnostic);
+			var adapter = FindAdapter(project, withDebugger, out var diagnostic);
 			if (adapter == null) {
 				LoggingService.Warn("Hot Reload was not enabled: " + diagnostic);
 				return false;
@@ -145,12 +173,15 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 					// Code edits cannot be applied in this session: say why where Apply results go.
 					if (!string.IsNullOrEmpty(snapshotDiagnostic))
 						HotReloadOutput.Write(adapter.Framework, "Code changes cannot be applied in this session: " + snapshotDiagnostic);
+					(session as ICodeDeltaHotReloadSession)?.NotifyBaselineCaptured(false, snapshotDiagnostic);
 				}
 				else {
+					var debuggerDeltaApplier = withDebugger ? new DeferredDebuggerDeltaApplier() : null;
 					if (session is AgentPipeHotReloadSession agentSession)
-						agentSession.ConfigureCodeDelta(protocol!, request!.Project,
-							withDebugger ? DebuggerDeltaApplierFactory?.Invoke() : null);
-					SendLaunchBaselineAsync(protocol!, request!, project.Name, adapter.Framework).FireAndForget();
+						agentSession.ConfigureCodeDelta(protocol!, request!.Project, debuggerDeltaApplier);
+					else if (session is ICodeDeltaHotReloadSession codeSession)
+						codeSession.ConfigureCodeDelta(protocol!, request!.Project, debuggerDeltaApplier);
+					SendLaunchBaselineAsync(protocol!, request!, project.Name, adapter.Framework, session).FireAndForget();
 				}
 				CurrentSessionChanged?.Invoke(null, EventArgs.Empty);
 				LoggingService.Info($"Hot Reload: session started for {adapter.Framework}.");
@@ -162,6 +193,49 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 				return true;
 			} catch (Exception ex) {
 				LoggingService.Warn($"Hot Reload was not enabled: {ex.Message}");
+				return false;
+			}
+		}
+
+		/// <summary>
+		/// Starts a Hot Reload session for an already attached process. There is no launch snapshot:
+		/// the caller supplies the loaded module path and the matching project, and the baseline is
+		/// captured from those files. Returns false when the baseline inputs are unavailable.
+		/// </summary>
+		public static async Task<bool> StartAttachedSessionAsync(IHotReloadSession session, IProject project, string modulePath)
+		{
+			if (!IsEnabled || session == null || project == null || string.IsNullOrEmpty(modulePath))
+				return false;
+			try {
+				EnsureLifecycleHooked();
+				if (!TryCaptureLaunchSnapshot(project, modulePath, out var protocol, out var request, out var diagnostic)) {
+					HotReloadOutput.Write(session.Framework, "Code changes cannot be applied in this session: " + diagnostic);
+					(session as ICodeDeltaHotReloadSession)?.NotifyBaselineCaptured(false, diagnostic);
+					return false;
+				}
+				// Unlike launch, attach has no debugger lifecycle event that can retry a failed baseline:
+				// prove the baseline before exposing the session, so a normal attach is never blocked by
+				// a Hot Reload apply that can only fail.
+				var baseline = await HotReloadLaunchBaseline.SendAsync(protocol!, request!, CancellationToken.None).ConfigureAwait(false);
+				if (baseline.Status != ProtocolHotReloadDeltaStatus.Applied) {
+					HotReloadOutput.Write(session.Framework, "Code changes cannot be applied in this session: " + baseline.Diagnostic);
+					(session as ICodeDeltaHotReloadSession)?.NotifyBaselineCaptured(false, baseline.Diagnostic);
+					return false;
+				}
+				DisposeCurrentSession();
+				CurrentSession = session;
+				CurrentSessionStartedUtc = DateTime.UtcNow;
+				var applier = new DeferredDebuggerDeltaApplier();
+				if (session is ICodeDeltaHotReloadSession codeSession) {
+					codeSession.ConfigureCodeDelta(protocol!, request!.Project, applier);
+					codeSession.NotifyBaselineCaptured(true, baseline.Diagnostic);
+				}
+				CurrentSessionChanged?.Invoke(null, EventArgs.Empty);
+				ObserveReadinessAsync(session).FireAndForget();
+				LoggingService.Info($"Hot Reload: attached session started for {project.Name}.");
+				return true;
+			} catch (Exception ex) {
+				LoggingService.Warn("Hot Reload: could not start the attached session: " + ex.Message);
 				return false;
 			}
 		}
@@ -194,15 +268,19 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 			}
 		}
 
-		static async Task SendLaunchBaselineAsync(IRoslynLanguageProtocol protocol, HotReloadBaselineRequest request, string projectName, string framework)
+		static async Task SendLaunchBaselineAsync(IRoslynLanguageProtocol protocol, HotReloadBaselineRequest request,
+			string projectName, string framework, IHotReloadSession session)
 		{
 			try {
 				var result = await HotReloadLaunchBaseline.SendAsync(protocol, request, CancellationToken.None).ConfigureAwait(false);
-				if (result.Status != ProtocolHotReloadDeltaStatus.Applied)
+				var applied = result.Status == ProtocolHotReloadDeltaStatus.Applied;
+				if (!applied)
 					HotReloadOutput.Write(framework, $"Code changes cannot be applied in this session ({projectName}): " + result.Diagnostic);
 				else LoggingService.Info("Hot Reload: EnC baseline captured for " + projectName + ".");
+				(session as ICodeDeltaHotReloadSession)?.NotifyBaselineCaptured(applied, result.Diagnostic);
 			} catch (Exception ex) {
 				HotReloadOutput.Write(framework, $"Code changes cannot be applied in this session ({projectName}): " + ex.Message);
+				(session as ICodeDeltaHotReloadSession)?.NotifyBaselineCaptured(false, ex.Message);
 			}
 		}
 
@@ -224,6 +302,44 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 		/// </summary>
 		static readonly TimeSpan ReadinessTimeout = TimeSpan.FromMinutes(2);
 
+		static void OnFileSaved(object sender, FileNameEventArgs e)
+		{
+			if (!IsEnabled || !ApplyOnFileSave)
+				return;
+			var session = CurrentSession;
+			if (session is not ICodeDeltaHotReloadSession)
+				return;
+			if (e == null || !e.FileName.HasExtension(".cs") && !e.FileName.HasExtension(".vb"))
+				return;
+			Task.Run(() => {
+				var result = ApplyPendingChangesBeforeResume();
+				if (result is null || result.Outcome == HotReloadOutcome.NoChanges)
+					return;
+				HotReloadOutput.Write(session.Framework, $"{e.FileName.GetFileName()}: {result.Outcome} - {result.Message}");
+				if (result.Outcome is HotReloadOutcome.RestartRequired or HotReloadOutcome.BuildRequired
+					or HotReloadOutcome.Unsupported or HotReloadOutcome.Failed) {
+					SD.MainThread.InvokeAsyncAndForget(() => MessageService.ShowWarning(result.Message));
+				}
+			}).FireAndForget();
+		}
+
+		/// <summary>
+		/// Applies every pending code edit before the debugger resumes (Continue/Step/Set Next
+		/// Statement), matching Visual Studio's break-mode Hot Reload gesture. Returns null when
+		/// no code-delta session is active; NoChanges means there was nothing to apply.
+		/// </summary>
+		public static HotReloadApplyResult ApplyPendingChangesBeforeResume()
+		{
+			if (CurrentSession is not ICodeDeltaHotReloadSession session)
+				return null;
+			try {
+				return Task.Run(() => session.ApplyPendingChangesAsync(CancellationToken.None)).GetAwaiter().GetResult();
+			} catch (Exception ex) {
+				LoggingService.Warn("Hot Reload: applying pending changes before resume failed: " + ex.Message);
+				return new HotReloadApplyResult(HotReloadOutcome.NoChanges, ex.Message, ex.ToString());
+			}
+		}
+
 		public static void DisposeCurrentSession()
 		{
 			var session = CurrentSession;
@@ -236,6 +352,22 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 				LoggingService.Warn("Hot Reload: disposing the session failed: " + ex.Message);
 			}
 			CurrentSessionChanged?.Invoke(null, EventArgs.Empty);
+		}
+
+		/// <summary>
+		/// Resolves the debugger applier at apply time, not at launch time: the Debugger addin's
+		/// service (which owns the DAP session) may be constructed after the launch adapter runs.
+		/// </summary>
+		sealed class DeferredDebuggerDeltaApplier : IHotReloadDeltaApplier
+		{
+			public Task<HotReloadApplyResult> ApplyAsync(HotReloadModuleDelta delta, CancellationToken token)
+			{
+				var applier = DebuggerDeltaApplierFactory?.Invoke();
+				if (applier is null)
+					return Task.FromResult(new HotReloadApplyResult(HotReloadOutcome.Unsupported,
+						"The SharpDbg debugger is not available to apply the code delta."));
+				return applier.ApplyAsync(delta, token);
+			}
 		}
 
 		/// <summary>Test seam: replaces the AddIn-tree lookup with an explicit adapter list.</summary>

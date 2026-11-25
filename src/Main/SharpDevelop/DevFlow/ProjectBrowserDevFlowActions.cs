@@ -290,7 +290,7 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				workingDirectory = panel.StartWorkingDirectory.Value,
 				startable = project.IsStartable,
 				startupProject = project.ParentSolution.StartupProject?.Name,
-				hotReloadSupported = ICSharpCode.SharpDevelop.Project.HotReload.HotReloadService.IsSupported(project)
+				hotReloadSupported = ICSharpCode.SharpDevelop.Project.HotReload.HotReloadService.IsSupported(project, withDebugger: true)
 			});
 		}
 

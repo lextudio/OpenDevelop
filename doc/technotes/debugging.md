@@ -1,5 +1,8 @@
 # Debugging migration plan
 
+For ordinary C# Hot Reload / Edit and Continue under SharpDbg, see
+[C# Edit and Continue](csharp-edit-and-continue.md).
+
 For the current iOS Simulator and Android debugging work, see
 [Mobile debugging: status and remaining work](debugging-mobile.md).
 

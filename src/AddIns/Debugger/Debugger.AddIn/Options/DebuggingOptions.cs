@@ -93,6 +93,16 @@ namespace ICSharpCode.SharpDevelop.Services
 			get { return PS.Get<bool>("Debugger.BreakAtBeginning", false); }
 			set { PS.Set<bool>("Debugger.BreakAtBeginning", value); }
 		}
+
+		public bool EnableHotReload {
+			get { return ICSharpCode.SharpDevelop.Project.HotReload.HotReloadService.IsEnabled; }
+			set { ICSharpCode.SharpDevelop.Project.HotReload.HotReloadService.IsEnabled = value; }
+		}
+
+		public bool HotReloadOnFileSave {
+			get { return ICSharpCode.SharpDevelop.Project.HotReload.HotReloadService.ApplyOnFileSave; }
+			set { ICSharpCode.SharpDevelop.Project.HotReload.HotReloadService.ApplyOnFileSave = value; }
+		}
 		
 		public ShowIntegersAs ShowIntegersAs {
 			get { return PS.Get<ShowIntegersAs>("Debugger.ShowIntegersAs", ShowIntegersAs.Decimal); }

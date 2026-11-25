@@ -73,6 +73,8 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 	public enum HotReloadOutcome
 	{
 		Applied,
+		/// <summary>Nothing to apply; the running code already matches the current workspace.</summary>
+		NoChanges,
 		Degraded,
 		RestartRequired,
 		BuildRequired,
@@ -234,6 +236,24 @@ namespace ICSharpCode.SharpDevelop.Project.HotReload
 	public interface IHotReloadDeltaApplier
 	{
 		Task<HotReloadApplyResult> ApplyAsync(HotReloadModuleDelta delta, CancellationToken token);
+	}
+
+	/// <summary>
+	/// A Hot Reload session that derives its deltas from the live Roslyn workspace rather than
+	/// from editor text. The shared launch service supplies the protocol/project once the request
+	/// and the launch snapshot are known; the session becomes ready only after the baseline was
+	/// captured, because a delta computed against the wrong generation must never be applied.
+	/// </summary>
+	public interface ICodeDeltaHotReloadSession : IHotReloadSession
+	{
+		void ConfigureCodeDelta(ICSharpCode.SharpDevelop.LanguageServices.Protocol.IRoslynLanguageProtocol protocol,
+			ICSharpCode.SharpDevelop.LanguageServices.Protocol.HotReloadProjectId project,
+			IHotReloadDeltaApplier debuggerDeltaApplier = null);
+
+		void NotifyBaselineCaptured(bool success, string diagnostic);
+
+		/// <summary>Produces and applies one delta for every pending code edit, or NoChanges.</summary>
+		Task<HotReloadApplyResult> ApplyPendingChangesAsync(CancellationToken token);
 	}
 
 	/// <summary>

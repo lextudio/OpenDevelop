@@ -27,6 +27,14 @@
 				        IsEnabled="{Binding IsChecked, ElementName=checkPauseOnHandled}" />
 			</widgets:StackPanelWithSpacing>
 		</GroupBox>
+		<GroupBox Margin="5" Header="Hot Reload">
+			<widgets:StackPanelWithSpacing SpaceBetweenItems="5">
+				<CheckBox Content="Enable Hot Reload"
+				          IsChecked="{sd:OptionBinding debugger:DebuggingOptions.EnableHotReload}" />
+				<CheckBox Content="Apply Hot Reload changes when a file is saved"
+				          IsChecked="{sd:OptionBinding debugger:DebuggingOptions.HotReloadOnFileSave}" />
+			</widgets:StackPanelWithSpacing>
+		</GroupBox>
 		<GroupBox Margin="5" Header="{sd:Localize Global.Advanced}">
 			<widgets:StackPanelWithSpacing SpaceBetweenItems="5">
 				<CheckBox Content="{sd:Localize Dialog.Options.IDEOptions.Debugging.SuppressJITOptimization}"

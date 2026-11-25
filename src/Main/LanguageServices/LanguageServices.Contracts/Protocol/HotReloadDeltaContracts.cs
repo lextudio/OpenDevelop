@@ -61,7 +61,9 @@ public sealed record HotReloadModuleDelta(
 	byte[] Pdb,
 	int[] UpdatedTypeTokens,
 	int[]? UpdatedMethodTokens = null,
-	HotReloadSourceLineMap[]? LineMaps = null);
+	HotReloadSourceLineMap[]? LineMaps = null,
+	string[]? MetadataUpdateHandlers = null,
+	string[]? UpdatedTypeNames = null);
 
 /// <summary>
 /// <paramref name="LineCount"/> lines starting at <paramref name="OldStartLine"/> in the text the running code was compiled
