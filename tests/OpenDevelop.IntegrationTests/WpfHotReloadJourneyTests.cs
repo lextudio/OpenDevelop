@@ -361,6 +361,58 @@ public sealed class WpfHotReloadJourneyTests
 	}
 
 	/// <summary>
+	/// A generator error is reported where the author wrote it: an async event lambda (LWXSG0011) breaks the build and the Error List names
+	/// the XAML file and the line of the attribute, not the generated code. Works on a copy of the fixture under tmp/.
+	/// </summary>
+	[Fact]
+	public async Task XsgProject_GeneratorError_ReachesTheErrorListOnTheXamlLine()
+	{
+		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
+		var copy = Path.Combine(RepositoryRoot(), "tmp", "xsg-errorlist-" + Guid.NewGuid().ToString("N")[..8]);
+		Directory.CreateDirectory(copy);
+		try {
+			foreach (var file in Directory.EnumerateFiles(fixtureDirectory))
+				File.Copy(file, Path.Combine(copy, Path.GetFileName(file)));
+			File.Copy(Path.Combine(fixtureDirectory, "..", "Directory.Packages.props"), Path.Combine(copy, "Directory.Packages.props"));
+			var xaml = Path.Combine(copy, "MainWindow.xaml");
+			var lines = (await File.ReadAllTextAsync(xaml)).Replace("\r\n", "\n").Split('\n').ToList();
+			var insertAt = lines.FindIndex(l => l.Contains("x:Name=\"Marker\""));
+			Assert.True(insertAt >= 0, "the fixture has no Marker element to put the bad attribute beside");
+			lines.Insert(insertAt, "    <Button x:Name=\"Broken\" Click=\"{async (s, e) => await System.Threading.Tasks.Task.Delay(1)}\" />");
+			await File.WriteAllTextAsync(xaml, string.Join("\n", lines));
+			var expectedLine = insertAt + 1;
+
+			// Restore only (the build is the thing that must fail), so the IDE opens a project that already has its assets file.
+			var restore = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("dotnet") {
+				ArgumentList = { "restore", Path.Combine(copy, "XsgLocalFeedFixture.csproj") },
+				RedirectStandardOutput = true,
+				RedirectStandardError = true,
+				UseShellExecute = false,
+			})!;
+			var restoreOutput = await restore.StandardOutput.ReadToEndAsync();
+			Assert.True(restore.WaitForExit(240_000) && restore.ExitCode == 0, "dotnet restore failed: " + restoreOutput);
+
+			var opened = await _app.ReopenSolutionAsync(Path.Combine(copy, "XsgLocalFeedFixture.slnx"));
+			Assert.True(opened.GetProperty("success").GetBoolean(), opened.ToString());
+			await _app.InvokeAsync("od.error-list.clear");
+			var build = await _app.InvokeAsync("od.build-solution", "", "rebuild");
+			Assert.True(build.GetProperty("errorCount").GetInt32() > 0, "the async lambda must break the build: " + build);
+
+			JsonElement errorList = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				errorList = await _app.InvokeAsync("od.error-list");
+				return errorList.GetProperty("tasks").EnumerateArray().Any(t => (t.GetProperty("description").GetString() ?? "").Contains("LWXSG0011"));
+			}, TimeSpan.FromSeconds(60)), "no LWXSG0011 in the Error List: " + errorList);
+			var task = errorList.GetProperty("tasks").EnumerateArray().First(t => (t.GetProperty("description").GetString() ?? "").Contains("LWXSG0011"));
+			Assert.Equal("Error", task.GetProperty("type").GetString());
+			Assert.EndsWith("MainWindow.xaml", (task.GetProperty("file").GetString() ?? "").Replace('\\', '/'));
+			Assert.Equal(expectedLine, task.GetProperty("line").GetInt32());
+		} finally {
+			try { Directory.Delete(copy, recursive: true); } catch { }
+		}
+	}
+
+	/// <summary>
 	/// A C# expression typed into the Properties pad is written as the attribute text exactly as typed (a plain string with a leading brace
 	/// would be escaped as <c>{}</c> literal text), and a literal typed over an expression replaces it. Works on a copy of the fixture under tmp/;
 	/// the saved file differs from the original by exactly the edited attribute.

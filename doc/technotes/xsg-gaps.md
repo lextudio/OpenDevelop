@@ -32,8 +32,12 @@ The editing-experience gaps are closed for the LibreWPF profile, in the syntax o
 G7 is half done: the read-only DevFlow action `od.wpf-designer.xsg-status` reports XSG or BAML, Simpler XAML, C# expressions and the global-using namespaces of
 the active designer's project (asserted in `XsgProject_GlobalUsingType_LoadsInTheDesignerWithoutAnXmlns`); a project template and a status-bar entry are still open.
 
+G8 is half done: a generator error now reaches the Error List on the XAML file and line (`XsgProject_GeneratorError_ReachesTheErrorListOnTheXamlLine`). It did not before:
+the generator's diagnostic on an additional file is printed as `CSC : error LWXSG0011: <xaml>(line,col): ...`, which `MinimalMSBuildEngine` did not parse, so only the follow-on CS0103
+errors showed. A second regex (`GeneratorDiagnosticLine`) reads that shape. Still open: breakpoints and stepping in an expression, and a "view generated `.g.cs`" action (SharpDbg).
+
 Still open and deliberately not part of this stage: G5 (no CI entry; needs an observed `test-plan.json` entry iterated through pushes, which waits for
-the owner's go-ahead), G6, G7 (template and status bar), G8, G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
+the owner's go-ahead), G6, G7 (template and status bar), G8 (stepping, generated-code view), G9, G10, G11, G12, G13. Nothing in them blocks authoring; they are guards, measurements and documentation.
 See `xsg-maui-alignment-plan.md` for the verified/unverified list per stage. The text below is the original audit.
 
 ## Gaps

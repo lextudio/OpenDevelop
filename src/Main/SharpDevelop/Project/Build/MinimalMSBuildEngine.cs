@@ -66,6 +66,21 @@ namespace ICSharpCode.SharpDevelop.Project
 			@"^(?<file>.*?)\((?<line>\d+),(?<column>\d+)(?:,\d+,\d+)?\):\s*(?<severity>error|warning)\s+(?<code>[A-Za-z0-9]+)\s*:\s*(?<text>.*?)(\s*\[.*\])?$",
 			RegexOptions.Compiled);
 
+		// A source generator reports a diagnostic on a file that is not part of the compilation (the LibreWPF XAML generator reads
+		// MainWindow.xaml as an additional file) without a source location, so MSBuild prints the tool first and the generator
+		// puts the XAML position into the message:
+		//   CSC : error LWXSG0011: /path/MainWindow.xaml(9,31): '{async ...}' is an async lambda; ... [/path/Project.csproj]
+		// The same group names as DiagnosticLine, so the Error List names the XAML file and line the author wrote.
+		static readonly Regex GeneratorDiagnosticLine = new Regex(
+			@"^[A-Za-z]+\s*:\s*(?<severity>error|warning)\s+(?<code>[A-Za-z0-9]+)\s*:\s*(?<file>.*?)\((?<line>\d+),(?<column>\d+)(?:,\d+,\d+)?\):\s*(?<text>.*?)(\s*\[.*\])?$",
+			RegexOptions.Compiled);
+
+		static Match MatchDiagnostic(string line)
+		{
+			var match = DiagnosticLine.Match(line);
+			return match.Success ? match : GeneratorDiagnosticLine.Match(line);
+		}
+
 		// Which dotnet host/SDK to run builds with is no longer hardcoded here - it's resolved
 		// fresh on every build from DotNetSdkService (Options > .NET SDK), the single place this
 		// choice is made across build/debug/test. Not necessarily the same SDK hosting this
@@ -789,7 +804,7 @@ namespace ICSharpCode.SharpDevelop.Project
 						buffer.AppendLine(line);
 					reportLine(line);
 					var trimmed = line.Trim();
-					var match = DiagnosticLine.Match(trimmed);
+					var match = MatchDiagnostic(trimmed);
 					if (!match.Success)
 						return;
 					var owner = DiagnosticProject.Match(trimmed);
@@ -1049,7 +1064,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			bool reportedAnyDiagnostic = false;
 			foreach (string line in lines) {
 				feedbackSink.ReportMessage(new RichText(line));
-				Match match = DiagnosticLine.Match(line.Trim());
+				Match match = MatchDiagnostic(line.Trim());
 				if (!match.Success)
 					continue;
 				reportedAnyDiagnostic = true;
