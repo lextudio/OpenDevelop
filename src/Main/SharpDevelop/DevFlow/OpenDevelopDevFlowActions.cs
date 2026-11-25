@@ -2189,6 +2189,27 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			}
 		}
 
+		[DevFlowAction("od.xsg.generated-sources", Description = "Get the C# the project's source generators wrote for an additional file (a XAML file of an XSG project): hint name and text of each generated document whose #line directives name it, from the Roslyn host's compilation")]
+		public static async Task<string> GetXsgGeneratedSourcesAsync(string fileName)
+		{
+			try {
+				var project = SD.ProjectService.FindProjectContainingFile(FileName.Create(fileName));
+				if (project == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "no project contains the file" });
+				var sourceFile = project.Items.OfType<FileProjectItem>().Select(item => item.FileName.ToString())
+					.FirstOrDefault(name => name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase));
+				if (sourceFile == null)
+					return JsonSerializer.Serialize(new { count = 0, error = "the project has no C# file" });
+				var resolved = await GetSyncedLanguageServiceAsync(sourceFile);
+				if (resolved == null || resolved.Value.Service is not ICSharpCode.SharpDevelop.LanguageServices.Protocol.RemoteLanguageService remote)
+					return JsonSerializer.Serialize(new { count = 0, error = "no Roslyn host service for the project" });
+				var sources = await remote.Protocol.RoslynGeneratedSourcesAsync(new ICSharpCode.SharpDevelop.LanguageServices.Protocol.TextDocumentIdentifier(fileName), CancellationToken.None);
+				return JsonSerializer.Serialize(new { count = sources.Count, sources = sources.Select(source => new { hintName = source.HintName, text = source.Text }).ToArray() });
+			} catch (Exception ex) {
+				return JsonSerializer.Serialize(new { count = 0, error = ex.Message });
+			}
+		}
+
 		[DevFlowAction("od.document-outline", Description = "Get the document outline (symbol tree) for a file")]
 		public static async Task<string> GetDocumentOutlineAsync(string fileName)
 		{

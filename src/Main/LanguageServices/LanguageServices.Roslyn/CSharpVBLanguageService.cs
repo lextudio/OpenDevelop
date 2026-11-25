@@ -1594,6 +1594,38 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         }
 
         /// <summary>
+        /// The C# the project's source generators wrote for an additional file (the LibreWPF XAML source generator reads XAML files as
+        /// AdditionalFiles): the generated documents whose <c>#line</c> directives name <paramref name="additionalFile"/>. Read from the
+        /// project's compilation, so it holds what a build would compile, with the current (possibly unsaved) text.
+        /// </summary>
+        public async Task<IReadOnlyList<GeneratedSourceInfo>> GetGeneratedSourcesAsync(string additionalFile, string? targetFramework, CancellationToken cancellationToken)
+        {
+            var result = new List<GeneratedSourceInfo>();
+            var needle = "\"" + additionalFile + "\"";
+            foreach (var project in _workspace.CurrentSolution.Projects)
+            {
+                if (!project.AdditionalDocuments.Any(document => string.Equals(document.FilePath, additionalFile, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                // One project per target-framework slice can hold the file: the requested slice's (an unknown requested one has nothing, as for the
+                // other lookups) or, without a request, the active slice's; a project whose slices are not keyed is searched as it is.
+                if (project.FilePath is { } projectFile)
+                {
+                    var sliceKnown = _projectsByKey.TryGetValue(ProjectKey(projectFile, targetFramework ?? GetActiveTargetFramework(projectFile)), out var sliceId);
+                    if (sliceKnown ? sliceId != project.Id : targetFramework != null)
+                        continue;
+                }
+                foreach (var generated in await project.GetSourceGeneratedDocumentsAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    var text = (await generated.GetTextAsync(cancellationToken).ConfigureAwait(false)).ToString();
+                    if (text.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0)
+                        result.Add(new GeneratedSourceInfo(generated.HintName, text));
+                }
+            }
+            return result;
+        }
+
+
+        /// <summary>
         /// Replaces the text of AdditionalDocuments of one project/TFM slice (an unsaved XAML buffer
         /// the XAML source generator must see). Returns the file names that are not
         /// AdditionalFiles of that project.

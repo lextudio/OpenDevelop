@@ -170,6 +170,7 @@ public class RoslynProtocolRoundTripTests
     {
         public Task<ProtocolResult<IReadOnlyList<SemanticToken>>> TextDocumentSemanticTokensAsync(TextDocumentIdentifier document, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ProtocolResult<string?>> RoslynSymbolNameAsync(TextDocumentIdentifier document, int offset, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<IReadOnlyList<GeneratedSourceInfo>> RoslynGeneratedSourcesAsync(TextDocumentIdentifier document, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ProtocolResult<SymbolKindInfo?>> RoslynSymbolKindAsync(TextDocumentIdentifier document, int offset, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<bool> RoslynValidIdentifierAsync(TextDocumentIdentifier document, string name, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<WorkspaceDocumentInfo?> RoslynDocumentStatusAsync(TextDocumentIdentifier document, CancellationToken cancellationToken, bool includeDiagnostics = false) => throw new NotSupportedException();

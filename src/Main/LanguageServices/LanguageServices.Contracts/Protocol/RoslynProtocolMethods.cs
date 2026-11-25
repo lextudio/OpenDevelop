@@ -31,6 +31,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		public const string DidChange = "textDocument/didChange";
 		public const string SemanticTokens = "textDocument/semanticTokens/full";
 		public const string SymbolName = "roslyn/symbolName";
+		public const string GeneratedSources = "roslyn/generatedSources";
 		public const string SymbolKind = "roslyn/symbolKind";
 		public const string ValidIdentifier = "roslyn/validIdentifier";
 		public const string DocumentStatus = "roslyn/document/status";

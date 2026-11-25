@@ -351,6 +351,16 @@ public sealed class WpfHotReloadJourneyTests
 			Assert.True(xsg.GetProperty("simplerXaml").GetBoolean(), xsg.ToString());
 			Assert.True(xsg.GetProperty("cSharpExpressions").GetBoolean(), xsg.ToString());
 			Assert.Contains("XsgLocalFeedFixture.Controls", xsg.GetProperty("globalUsingNamespaces").EnumerateArray().Select(e => e.GetString()));
+			// The generated C# of this window, read from the Roslyn host's compilation (the build does not write it to obj/ by default).
+			JsonElement generated = default;
+			Assert.True(await OpenDevelopAppFixture.PollUntilAsync(async () => {
+				generated = await _app.InvokeAsync("od.xsg.generated-sources", xaml);
+				return generated.TryGetProperty("count", out var count) && count.GetInt32() > 0;
+			}, TimeSpan.FromSeconds(90)), "no generated source for the XAML: " + generated);
+			var mainSource = generated.GetProperty("sources").EnumerateArray().First();
+			Assert.Contains("MainWindow", mainSource.GetProperty("hintName").GetString());
+			Assert.Contains("InitializeComponent", mainSource.GetProperty("text").GetString());
+			Assert.Contains("FancyOne", mainSource.GetProperty("text").GetString());
 			var selected = await _app.InvokeAsync("od.wpf-designer.select", "FancyOne");
 			Assert.True(selected.GetProperty("success").GetBoolean(), "the global-using type is not in the design tree: " + selected);
 			Assert.Equal(before, await File.ReadAllTextAsync(xaml));

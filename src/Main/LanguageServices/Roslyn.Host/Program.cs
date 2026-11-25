@@ -81,7 +81,9 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Host
 				},
 					workspaceStatusProvider: languageService.Value.GetWorkspaceStatus,
 					hotReloadCaptureBaseline: hotReloadProducer.Value.CaptureBaselineAsync,
-					hotReloadProduceDelta: hotReloadProducer.Value.ProduceAsync));
+					hotReloadProduceDelta: hotReloadProducer.Value.ProduceAsync,
+					generatedSources: (document, cancellationToken) =>
+						languageService.Value.GetGeneratedSourcesAsync(document.Uri, document.TargetFramework, cancellationToken)));
 			var dispatcher = new Lazy<RoslynProtocolDispatcher>(() =>
 				new RoslynProtocolDispatcher(protocol.Value));
 

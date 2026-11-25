@@ -49,6 +49,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 		readonly Func<WorkspaceStatus>? workspaceStatusProvider;
 		readonly Func<HotReloadBaselineRequest, CancellationToken, Task<HotReloadDeltaResponse>>? hotReloadCaptureBaseline;
 		readonly Func<HotReloadDeltaRequest, CancellationToken, Task<HotReloadDeltaResponse>>? hotReloadProduceDelta;
+		readonly Func<TextDocumentIdentifier, CancellationToken, Task<IReadOnlyList<GeneratedSourceInfo>>>? generatedSources;
 
 		public InProcessRoslynLanguageProtocol(ILanguageService service,
 			Func<IReadOnlyList<ProjectStatus>>? projectStatusProvider = null,
@@ -57,7 +58,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 			Func<CancellationToken, Task>? solutionClosed = null,
 			Func<WorkspaceStatus>? workspaceStatusProvider = null,
 			Func<HotReloadBaselineRequest, CancellationToken, Task<HotReloadDeltaResponse>>? hotReloadCaptureBaseline = null,
-			Func<HotReloadDeltaRequest, CancellationToken, Task<HotReloadDeltaResponse>>? hotReloadProduceDelta = null)
+			Func<HotReloadDeltaRequest, CancellationToken, Task<HotReloadDeltaResponse>>? hotReloadProduceDelta = null,
+			Func<TextDocumentIdentifier, CancellationToken, Task<IReadOnlyList<GeneratedSourceInfo>>>? generatedSources = null)
 		{
 			this.service = service ?? throw new ArgumentNullException(nameof(service));
 			this.projectStatusProvider = projectStatusProvider;
@@ -67,6 +69,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 			this.workspaceStatusProvider = workspaceStatusProvider;
 			this.hotReloadCaptureBaseline = hotReloadCaptureBaseline;
 			this.hotReloadProduceDelta = hotReloadProduceDelta;
+			this.generatedSources = generatedSources;
 		}
 
 		DocumentReadiness ReadinessOf(TextDocumentIdentifier document) =>
@@ -76,6 +79,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 			WithReadiness(document, await service.GetSemanticTokensAsync(document.ToDocumentId(), cancellationToken).ConfigureAwait(false));
 		public async Task<ProtocolResult<string?>> RoslynSymbolNameAsync(TextDocumentIdentifier document, int offset, CancellationToken cancellationToken) =>
 			WithReadiness(document, await service.GetSymbolNameAsync(document.ToDocumentId(), offset, cancellationToken).ConfigureAwait(false));
+		public Task<IReadOnlyList<GeneratedSourceInfo>> RoslynGeneratedSourcesAsync(TextDocumentIdentifier document, CancellationToken cancellationToken) =>
+			generatedSources == null ? Task.FromResult<IReadOnlyList<GeneratedSourceInfo>>(Array.Empty<GeneratedSourceInfo>()) : generatedSources(document, cancellationToken);
 		public async Task<ProtocolResult<SymbolKindInfo?>> RoslynSymbolKindAsync(TextDocumentIdentifier document, int offset, CancellationToken cancellationToken) =>
 			WithReadiness(document, await service.GetSymbolKindAsync(document.ToDocumentId(), offset, cancellationToken).ConfigureAwait(false));
 		public Task<bool> RoslynValidIdentifierAsync(TextDocumentIdentifier document, string name, CancellationToken cancellationToken) =>

@@ -154,6 +154,43 @@ public sealed class XsgHotReloadEndToEndTests
 		}
 	}
 
+	/// <summary>
+	/// The Roslyn host hands back the C# the XAML source generator wrote for a XAML file (G8 of xsg-gaps.md): the generated document whose
+	/// <c>#line</c> directives name it, over the protocol the IDE uses.
+	/// </summary>
+	[Fact]
+	public async Task GeneratedSources_OfAXamlFile_AreReadOverTheProtocol()
+	{
+		var token = TestContext.Current.CancellationToken;
+		var fixtureDirectory = Path.Combine(RepositoryRoot(), "tests", "fixtures", "XsgLocalFeedFixture");
+		var projectPath = Path.Combine(fixtureDirectory, "XsgLocalFeedFixture.csproj");
+		if (!File.Exists(Path.Combine(fixtureDirectory, "bin", CurrentConfiguration(), TargetFramework, "XsgLocalFeedFixture.dll")))
+			Assert.Skip($"Build the XSG fixture first: {projectPath} (-c {CurrentConfiguration()}).");
+		var xamlPath = Path.Combine(fixtureDirectory, "MainWindow.xaml");
+
+		using var transport = new RoslynHostProcessTransport(LocateRoslynHost(), TimeSpan.FromSeconds(60));
+		var protocol = new RemoteRoslynLanguageProtocol(transport);
+		await protocol.RoslynProjectLoadAsync(await EvaluateAsync(projectPath, token), token);
+
+		var sources = await protocol.RoslynGeneratedSourcesAsync(new TextDocumentIdentifier(xamlPath), token);
+		var main = Assert.Single(sources, source => source.HintName.Contains("MainWindow", StringComparison.Ordinal));
+		Assert.Contains("InitializeComponent", main.Text);
+		Assert.Contains("\"" + xamlPath + "\"", main.Text);
+		// Another XAML file of the project has its own generated document, not this one's.
+		Assert.DoesNotContain(sources, source => source.Text.Contains("SecondWindow.xaml", StringComparison.Ordinal));
+		// The same project loaded as a second target-framework slice: each slice answers with its own documents (no duplicates), an unknown one with none.
+		var second = await EvaluateAsync(projectPath, token);
+		await protocol.RoslynProjectLoadAsync(new LanguageServiceProjectSnapshot(second.ProjectFileName, second.Language, second.DocumentFileNames,
+			second.MetadataReferenceFileNames, second.ProjectReferenceFileNames, second.PreprocessorSymbols, second.LanguageVersion, second.NullableContext,
+			"other-slice", second.AnalyzerAssemblyFileNames, second.AdditionalFileNames) { SolutionDirectory = second.SolutionDirectory, GlobalUsings = second.GlobalUsings }, token);
+		foreach (var tfm in new string?[] { TargetFramework, "other-slice", null })
+			Assert.Single(await protocol.RoslynGeneratedSourcesAsync(new TextDocumentIdentifier(xamlPath, tfm), token),
+				source => source.HintName.Contains("MainWindow", StringComparison.Ordinal));
+		Assert.Empty(await protocol.RoslynGeneratedSourcesAsync(new TextDocumentIdentifier(xamlPath, "missing"), token));
+		// A file that is not an additional file of the project generates nothing.
+		Assert.Empty(await protocol.RoslynGeneratedSourcesAsync(new TextDocumentIdentifier(Path.Combine(fixtureDirectory, "Probe.cs")), token));
+	}
+
 	async Task RunAsync(bool underDebugger, Func<Scenario, Task> scenario)
 	{
 		var token = TestContext.Current.CancellationToken;

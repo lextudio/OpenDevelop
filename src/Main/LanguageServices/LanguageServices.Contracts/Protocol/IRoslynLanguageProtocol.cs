@@ -75,10 +75,16 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 	/// project-model ownership - MSBuild evaluation stays in the IDE, so the host must be TOLD the
 	/// project graph instead of discovering it.
 	/// </summary>
+	/// <summary>One file a source generator wrote for a project: its hint name and its text.</summary>
+	public sealed record GeneratedSourceInfo(string HintName, string Text);
+
 	public interface IRoslynLanguageProtocol
 	{
 		Task<ProtocolResult<IReadOnlyList<SemanticToken>>> TextDocumentSemanticTokensAsync(TextDocumentIdentifier document, CancellationToken cancellationToken);
 		Task<ProtocolResult<string?>> RoslynSymbolNameAsync(TextDocumentIdentifier document, int offset, CancellationToken cancellationToken);
+		/// <summary>The C# the project's source generators wrote for an additional file (a XAML file the XAML source generator reads): the generated
+		/// documents whose <c>#line</c> directives name it. Empty when the file is not an additional file of a loaded project or nothing was generated.</summary>
+		Task<IReadOnlyList<GeneratedSourceInfo>> RoslynGeneratedSourcesAsync(TextDocumentIdentifier document, CancellationToken cancellationToken);
 		Task<ProtocolResult<SymbolKindInfo?>> RoslynSymbolKindAsync(TextDocumentIdentifier document, int offset, CancellationToken cancellationToken);
 		Task<bool> RoslynValidIdentifierAsync(TextDocumentIdentifier document, string name, CancellationToken cancellationToken);
 		Task<WorkspaceDocumentInfo?> RoslynDocumentStatusAsync(TextDocumentIdentifier document, CancellationToken cancellationToken, bool includeDiagnostics = false);

@@ -68,6 +68,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 			InvokeAsync<ProtocolResult<IReadOnlyList<SemanticToken>>>(RoslynProtocolMethods.SemanticTokens, new { document }, cancellationToken);
 		public Task<ProtocolResult<string?>> RoslynSymbolNameAsync(TextDocumentIdentifier document, int offset, CancellationToken cancellationToken) =>
 			InvokeAsync<ProtocolResult<string?>>(RoslynProtocolMethods.SymbolName, new { document, offset }, cancellationToken);
+		public Task<IReadOnlyList<GeneratedSourceInfo>> RoslynGeneratedSourcesAsync(TextDocumentIdentifier document, CancellationToken cancellationToken) =>
+			InvokeAsync<IReadOnlyList<GeneratedSourceInfo>>(RoslynProtocolMethods.GeneratedSources, new { document }, cancellationToken);
 		public Task<ProtocolResult<SymbolKindInfo?>> RoslynSymbolKindAsync(TextDocumentIdentifier document, int offset, CancellationToken cancellationToken) =>
 			InvokeAsync<ProtocolResult<SymbolKindInfo?>>(RoslynProtocolMethods.SymbolKind, new { document, offset }, cancellationToken);
 		public Task<bool> RoslynValidIdentifierAsync(TextDocumentIdentifier document, string name, CancellationToken cancellationToken) =>

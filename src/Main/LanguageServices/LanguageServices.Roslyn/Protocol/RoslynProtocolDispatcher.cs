@@ -54,6 +54,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 			RoslynProtocolMethods.DidChange,
 			RoslynProtocolMethods.SemanticTokens,
 			RoslynProtocolMethods.SymbolName,
+			RoslynProtocolMethods.GeneratedSources,
 			RoslynProtocolMethods.SymbolKind,
 			RoslynProtocolMethods.ValidIdentifier,
 			RoslynProtocolMethods.DocumentStatus,
@@ -104,6 +105,8 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Protocol
 					return await protocol.TextDocumentSemanticTokensAsync(arguments.Document(), cancellationToken).ConfigureAwait(false);
 				case RoslynProtocolMethods.SymbolName:
 					return await protocol.RoslynSymbolNameAsync(arguments.Document(), arguments.Offset(), cancellationToken).ConfigureAwait(false);
+				case RoslynProtocolMethods.GeneratedSources:
+					return await protocol.RoslynGeneratedSourcesAsync(arguments.Document(), cancellationToken).ConfigureAwait(false);
 				case RoslynProtocolMethods.SymbolKind:
 					return await protocol.RoslynSymbolKindAsync(arguments.Document(), arguments.Offset(), cancellationToken).ConfigureAwait(false);
 				case RoslynProtocolMethods.ValidIdentifier:
