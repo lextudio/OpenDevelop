@@ -513,6 +513,9 @@ namespace Debugger.AddIn.Service.Dap
 			return process;
 		}
 
+		/// <summary>How long <see cref="Stop"/> waits for the teardown before it hands it to the pool and returns.</summary>
+		static readonly TimeSpan StopTeardownTimeout = TimeSpan.FromSeconds(5);
+
 		public void Stop()
 		{
 			Interlocked.Exchange(ref remoteConnected, 0);
@@ -521,23 +524,35 @@ namespace Debugger.AddIn.Service.Dap
 				client?.SendRequestAsync("disconnect", new JsonObject { ["terminateDebuggee"] = remoteAdapter == null }).Wait(1000);
 			} catch {
 			}
-			try {
-				if (adapterProcess != null && !adapterProcess.HasExited) {
-					adapterProcess.Kill(true);
+			// Stop runs on the UI thread (the Stop command, od.debug.stop), and the teardown can block without bound:
+			// closing the adapter's pipes waits for a read still pending on them, and it takes cleanupLock, which the
+			// adapter-exit handler may hold on a pool thread. A hosted Windows x64 run sat 4 minutes in od.debug.stop
+			// although SharpDbg had answered the disconnect and exited within 40 ms. Do it on the pool and give it a
+			// bounded time; whatever is left unfinished is only handle cleanup, not session state.
+			var teardown = Task.Run(() => {
+				try {
+					if (adapterProcess != null && !adapterProcess.HasExited) {
+						adapterProcess.Kill(true);
+					}
+				} catch {
 				}
-			} catch {
-			}
-			try {
-				// In DapLaunchMode.AttachToSuspendedProcess the session owns the debuggee process
-				// directly (it isn't the adapter's child) - "disconnect terminateDebuggee" above only
-				// reaches a process the adapter itself launched via "launch", so it must be killed
-				// here too or a stopped/paused debuggee is orphaned running forever.
-				if (debuggeeProcess != null && !debuggeeProcess.HasExited) {
-					debuggeeProcess.Kill(true);
+				try {
+					// In DapLaunchMode.AttachToSuspendedProcess the session owns the debuggee process
+					// directly (it isn't the adapter's child) - "disconnect terminateDebuggee" above only
+					// reaches a process the adapter itself launched via "launch", so it must be killed
+					// here too or a stopped/paused debuggee is orphaned running forever.
+					if (debuggeeProcess != null && !debuggeeProcess.HasExited) {
+						debuggeeProcess.Kill(true);
+					}
+				} catch {
 				}
-			} catch {
+				CleanupSession();
+			});
+			try {
+				if (!teardown.Wait(StopTeardownTimeout))
+					ICSharpCode.Core.LoggingService.Warn("Debugger: the debug session's teardown is still running after " + StopTeardownTimeout.TotalSeconds + " s; Stop returns without waiting for it.");
+			} catch (AggregateException) {
 			}
-			CleanupSession();
 		}
 
 		public void Break()
