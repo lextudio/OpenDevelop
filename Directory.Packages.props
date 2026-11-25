@@ -124,7 +124,7 @@
     <PackageVersion Include="NuGet.Commands" Version="7.6.0" />
     <PackageVersion Include="NuGet.Protocol" Version="7.6.0" />
     <PackageVersion Include="NuGet.Versioning" Version="7.6.0" />
-    <PackageVersion Include="ProGPU.System.Drawing.Common" Version="0.1.0-preview.69.61.1" />
+    <PackageVersion Include="ProGPU.System.Drawing.Common" Version="0.1.0-preview.69.64.1" />
     <!-- Only the Microsoft WinUI host references this explicitly; it pins the same version
          Uno.Sdk already brings into WinUIXamlDesigner.UnoHost, so the DesignHost.cs both hosts
          share encodes exported PNGs through one identical Skia build. -->
