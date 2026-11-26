@@ -275,7 +275,10 @@ namespace ICSharpCode.ILSpy.Search
 				UnsubscribeRendering();
 				return;
 			}
-			if (currentSearch.IsFinished && currentSearch.ResultQueue.Count == 0)
+			// Done when the search finished and its queue is drained, or when the list is full: a capped search is cancelled
+			// with results still queued, which are never taken, so waiting for an empty queue kept this handler (and a frame
+			// on every tick) alive for good after any search with more than MAX_RESULTS hits.
+			if ((currentSearch.IsFinished && currentSearch.ResultQueue.Count == 0) || Results.Count >= MAX_RESULTS)
 			{
 				UnsubscribeRendering();
 				return;
@@ -302,6 +305,7 @@ namespace ICSharpCode.ILSpy.Search
 			});
 
 			currentSearch.Cancel();
+			UnsubscribeRendering();
 		}
 
 		async void StartSearch(string searchTerm)
