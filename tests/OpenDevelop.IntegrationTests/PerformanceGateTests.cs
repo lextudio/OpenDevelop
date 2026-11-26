@@ -4,6 +4,7 @@
 // second build of an unchanged solution must skip every project (the fast up-to-date check once
 // skipped a third of OpenDevelop.Mvp and a no-op build took ~150 s).
 
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
@@ -105,7 +106,53 @@ public sealed class PerformanceGateTests : IAsyncDisposable
         // with that baseline - this machine's idle floor is already ~34% of a core.
         await Task.Delay(TimeSpan.FromSeconds(4));
         var busy = await CpuOverAsync(TimeSpan.FromSeconds(8));
-        Assert.True(busy < baseline + 0.15, $"After an ILSpy search OpenDevelop used {busy:P0} of a core while idle (before the search: {baseline:P0}).");
+        if (busy >= baseline + 0.15) {
+            // Only reproduced on the Linux CI runners so far (Xvfb, Mesa lavapipe). Name the threads that burn the CPU -
+            // the UI thread, the GPU/compositor or llvmpipe workers, or a .NET worker - so the next failure says where.
+            var threads = await BusiestThreadsAsync(TimeSpan.FromSeconds(3));
+            Assert.Fail($"After an ILSpy search OpenDevelop used {busy:P0} of a core while idle (before the search: {baseline:P0}).{Environment.NewLine}{threads}");
+        }
+    }
+
+    /// <summary>Per-thread CPU of the IDE over <paramref name="period"/>, busiest first, from /proc (Linux only).</summary>
+    async Task<string> BusiestThreadsAsync(TimeSpan period)
+    {
+        try {
+            var pid = (await _app.InvokeAsync("od.process.cpu")).GetProperty("processId").GetInt32();
+            var tasks = $"/proc/{pid}/task";
+            if (!System.IO.Directory.Exists(tasks))
+                return "(per-thread CPU is only available on Linux)";
+            static Dictionary<string, (string Name, long Ticks)> Read(string root)
+            {
+                var result = new Dictionary<string, (string, long)>();
+                foreach (var dir in System.IO.Directory.GetDirectories(root)) {
+                    try {
+                        var stat = System.IO.File.ReadAllText(System.IO.Path.Combine(dir, "stat"));
+                        int open = stat.IndexOf('('), close = stat.LastIndexOf(')');
+                        var fields = stat[(close + 2)..].Split(' ');
+                        // fields[0] is state; utime and stime are the 14th and 15th fields of stat, i.e. [11] and [12] here.
+                        result[System.IO.Path.GetFileName(dir)] = (stat[(open + 1)..close], long.Parse(fields[11]) + long.Parse(fields[12]));
+                    } catch (Exception ex) when (ex is System.IO.IOException or FormatException or IndexOutOfRangeException or ArgumentOutOfRangeException) {
+                        // the thread ended between listing and reading
+                    }
+                }
+                return result;
+            }
+            var before = Read(tasks);
+            var watch = Stopwatch.StartNew();
+            await Task.Delay(period);
+            var after = Read(tasks);
+            const double ticksPerSecond = 100.0; // USER_HZ on Linux
+            var rows = after
+                .Select(pair => (Tid: pair.Key, pair.Value.Name, Share: (pair.Value.Ticks - (before.TryGetValue(pair.Key, out var b) ? b.Ticks : 0)) / ticksPerSecond / watch.Elapsed.TotalSeconds))
+                .Where(row => row.Share > 0.01)
+                .OrderByDescending(row => row.Share)
+                .Take(15)
+                .Select(row => $"  tid {row.Tid,-7} {row.Share,6:P0}  {row.Name}");
+            return $"Busiest threads of pid {pid} over {period.TotalSeconds:0}s ({after.Count} threads):{Environment.NewLine}" + string.Join(Environment.NewLine, rows);
+        } catch (Exception ex) {
+            return "(per-thread CPU unavailable: " + ex.Message + ")";
+        }
     }
 
     async Task<double> CpuOverAsync(TimeSpan period)

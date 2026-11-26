@@ -104,7 +104,9 @@ public sealed class GtkDesignerTests : IAsyncLifetime, IAsyncDisposable
 		var cssFrame = status.GetProperty("nativeFrameFingerprint").GetString(); Assert.NotEqual(originalFrame, cssFrame);
 		File.Delete(cssPath);
 		status = await WaitForFrameChangeAsync(cssFrame);
-		Assert.NotEqual(cssFrame, status.GetProperty("nativeFrameFingerprint").GetString());
+		// Failed only on linux-arm64 so far: say whether the host saw the deletion at all (its log and diagnostics).
+		Assert.True(cssFrame != status.GetProperty("nativeFrameFingerprint").GetString(),
+			"Deleting the preview stylesheet did not re-render the frame within 20 s: " + status);
 		// A project-wide style.css is the documented fallback when no same-stem stylesheet exists.
 		var noCssFrame = status.GetProperty("nativeFrameFingerprint").GetString();
 		var fallbackCssPath = Path.Combine(workDir, "Windows", "style.css");

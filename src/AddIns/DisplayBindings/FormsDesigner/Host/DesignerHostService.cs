@@ -3668,6 +3668,8 @@ sealed class DesignerHostService : IDesignerChildService
 		if (!designSurface.IsLoaded) {
 			var errors = designSurface.LoadErrors?.Cast<object>().Select(item => item?.ToString()).Where(item => !String.IsNullOrEmpty(item));
 			var errStr = String.Join(" | ", errors ?? []);
+			if (errStr.Contains("window platform", StringComparison.OrdinalIgnoreCase))
+				errStr += " | native windowing probe: " + NativeWindowingProbe.Describe();
 			throw new InvalidOperationException("The child design surface failed to load: " + errStr);
 		}
 		// host.CreateComponent(type) WITHOUT an explicit name (every RPC in this file that adds a

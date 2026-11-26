@@ -150,7 +150,9 @@ public sealed class DesignerEditorJourneyTests(OpenDevelopAppFixture app)
                 Walk(await app.GetUITreeAsync(), 0);
             }
             Assert.True(changed, string.Join(" | ", tree) + " gradient handle drag did not change the XAML; handles=" + handles + " geometry=" + surfaceGeometry + " events=" + events);
-            Assert.Contains("StartPoint", text, StringComparison.Ordinal);
+            // Failed only on linux-arm64 so far (the XAML changed, but not StartPoint): keep where the drag landed.
+            Assert.True(text.Contains("StartPoint", StringComparison.Ordinal),
+                "the gradient handle drag changed the XAML but wrote no StartPoint; handles=" + handles + " geometry=" + surfaceGeometry + " events=" + events);
             Assert.DoesNotContain("StartPoint=\"0,0\"", text, StringComparison.Ordinal);
             status = await app.InvokeAsync("od.wpf-designer.status");
             Assert.True(status.GetProperty("active").GetBoolean() && status.GetProperty("designerLoaded").GetBoolean()
