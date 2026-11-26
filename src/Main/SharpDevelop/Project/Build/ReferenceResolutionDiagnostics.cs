@@ -35,11 +35,27 @@ namespace ICSharpCode.SharpDevelop.Project
 				lock (gate) {
 					if (reported.ContainsKey(projectFileName))
 						return;
+					// The resolution can finish after its solution was closed or replaced (Reset() has already
+					// run): a warning for a project that is no longer open would outlive it in the Error List.
+					if (!IsInOpenSolution(projectFileName))
+						return;
 					var task = new SDTask(FileName.Create(projectFileName), description, 0, 0, TaskType.Warning);
 					reported[projectFileName] = task;
 					TaskService.Add(task);
 				}
 			});
+		}
+
+		static bool IsInOpenSolution(string projectFileName)
+		{
+			var solution = ProjectService.OpenSolution;
+			if (solution == null)
+				return false;
+			foreach (IProject project in solution.Projects) {
+				if (string.Equals(project.FileName.ToString(), projectFileName, StringComparison.OrdinalIgnoreCase))
+					return true;
+			}
+			return false;
 		}
 
 		/// <summary>Withdraws the project's entry once its resolution succeeds.</summary>

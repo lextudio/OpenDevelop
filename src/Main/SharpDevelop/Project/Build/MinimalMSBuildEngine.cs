@@ -1052,6 +1052,11 @@ namespace ICSharpCode.SharpDevelop.Project
 					FastUpToDateCheck.Succeeded(project, options, buildStartedUtc);
 				else
 					FastUpToDateCheck.Forget(project);
+			} catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+				// A cancelled build is not a project error: BuildEngine reports the cancellation itself. Reporting
+				// the exception text ("A task was canceled.") here put a stale error on the project in the Error List.
+				FastUpToDateCheck.Forget(project);
+				return false;
 			} catch (Exception ex) {
 				feedbackSink.ReportError(new BuildError(project.FileName.ToString(), ex.Message));
 				return false;
