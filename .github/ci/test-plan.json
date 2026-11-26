@@ -1082,7 +1082,7 @@
       "batch": 4,
       "lane": "integration-unstable",
       "measuredSeconds": 95,
-      "timeoutMinutes": 8,
+      "timeoutMinutes": 20,
       "kind": "xunit-exe",
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
@@ -1094,7 +1094,7 @@
         { "project": "tests/fixtures/WpfHotReloadClassLibFixture.Microsoft/Host/HotReloadClassLibHost.csproj", "platforms": ["windows-x64"] }
       ],
       "platforms": { "windows-x64": "required", "macos-arm64": "required", "windows-arm64": "observe" },
-      "note": "Exercises real WPF application and class-library Hot Reload journeys; Microsoft WPF variants run only on Windows. macOS ARM64 locally passed four journeys with two Windows-only skips."
+      "note": "Exercises real WPF application and class-library Hot Reload journeys; Microsoft WPF variants run only on Windows. macOS ARM64 locally passed four journeys with two Windows-only skips. The 95 s were measured on macOS, where the Microsoft WPF cases skip; on Windows x64 (run 45881760452) the class was still working when the earlier 8-minute budget killed it, so the budget is 20 minutes until a hosted Windows run is measured."
     },
     {
       "id": "winui-surface-designer-journeys",
