@@ -3677,7 +3677,101 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			return JsonSerializer.Serialize(new { processId = Environment.ProcessId, totalProcessorTimeMs = process.TotalProcessorTime.TotalMilliseconds });
 		}
 
-		[DevFlowAction("od.perf.timeline", Description = "Milestones (ms since start) of the latest solution open and build, plus this process's working set and managed heap - the baseline and regression signal for doc/technotes/fast-mode.md")]
+		[DevFlowAction("od.render.activity", Description = "What keeps the main window rendering: over the given milliseconds (default 3000) the presented-frame and render-scheduler wakeup deltas, the visuals LibreWPF's invalidation tracker reported dirty (type, name, ancestors, count), CompositionTarget.Rendering subscribers and whether animation clocks want a tick. For an idle window that still burns CPU (PerformanceGateTests)")]
+		public static async Task<string> GetRenderActivity(string milliseconds)
+		{
+			var period = TimeSpan.FromMilliseconds(int.TryParse(milliseconds, out var ms) && ms > 0 ? Math.Min(ms, 30000) : 3000);
+			var dispatcher = System.Windows.Application.Current.Dispatcher;
+			var dirty = new Dictionary<string, int>();
+			object tracker = null;
+			EventHandler onInvalidated = null;
+			long framesBefore = -1, wakeupsBefore = -1;
+			string trackerError = null;
+			dispatcher.Invoke(() => {
+				var window = System.Windows.Application.Current.MainWindow;
+				if (ProGpuWpfDiagnostics.TryGetRenderActivitySnapshot(window, out var activity)) framesBefore = activity.PresentedFrameCount;
+				if (ProGpuWpfDiagnostics.TryGetRenderSchedulerWakeupCount(window, out var wakeups)) wakeupsBefore = wakeups;
+				try {
+					tracker = FindInvalidationTracker(window);
+					if (tracker == null) { trackerError = "no WpfVisualInvalidationTracker reachable from the window host"; return; }
+					var lastDirty = tracker.GetType().GetProperty("LastDirtySource");
+					onInvalidated = (s, e) => {
+						var source = lastDirty?.GetValue(tracker);
+						var key = DescribeVisual(source);
+						dirty[key] = dirty.TryGetValue(key, out var n) ? n + 1 : 1;
+					};
+					tracker.GetType().GetEvent("Invalidated")?.AddEventHandler(tracker, onInvalidated);
+				} catch (Exception ex) { trackerError = ex.GetType().Name + ": " + ex.Message; }
+			});
+			await Task.Delay(period);
+			return dispatcher.Invoke(() => {
+				var window = System.Windows.Application.Current.MainWindow;
+				if (tracker != null && onInvalidated != null)
+					try { tracker.GetType().GetEvent("Invalidated")?.RemoveEventHandler(tracker, onInvalidated); } catch (Exception) { }
+				long frames = -1, wakeups = -1;
+				if (ProGpuWpfDiagnostics.TryGetRenderActivitySnapshot(window, out var activity) && framesBefore >= 0) frames = activity.PresentedFrameCount - framesBefore;
+				if (ProGpuWpfDiagnostics.TryGetRenderSchedulerWakeupCount(window, out var w) && wakeupsBefore >= 0) wakeups = w - wakeupsBefore;
+				return JsonSerializer.Serialize(new {
+					success = true,
+					periodMs = period.TotalMilliseconds,
+					presentedFrames = frames,
+					schedulerWakeups = wakeups,
+					trackerError,
+					dirtySources = dirty.OrderByDescending(p => p.Value).Take(15).Select(p => new { source = p.Key, count = p.Value }).ToArray(),
+					media = DescribeMediaContext(dispatcher)
+				});
+			});
+		}
+
+		static object FindInvalidationTracker(object window)
+		{
+			if (!ProGpuWpfDiagnostics.TryGetWindowHost(window, out var host) || host == null) return null;
+			// host -> ProGpuWpfCompositionTarget -> WpfInvalidationTracker; both members are internal, so look them up by type name.
+			const BindingFlags all = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+			for (var type = host.GetType(); type != null; type = type.BaseType) {
+				foreach (var field in type.GetFields(all | BindingFlags.DeclaredOnly)) {
+					if (field.FieldType.Name != "ProGpuWpfCompositionTarget") continue;
+					var target = field.GetValue(host);
+					if (target?.GetType().GetProperty("WpfInvalidationTracker", all)?.GetValue(target) is { } tracker) return tracker;
+				}
+			}
+			return null;
+		}
+
+		static string DescribeVisual(object source)
+		{
+			if (source == null) return "(null)";
+			var text = source.GetType().FullName;
+			if (source is FrameworkElement { Name.Length: > 0 } named) text += " #" + named.Name;
+			if (source is System.Windows.Media.Visual visual) {
+				var path = new List<string>();
+				System.Windows.DependencyObject current = visual;
+				for (int i = 0; i < 6 && (current = System.Windows.Media.VisualTreeHelper.GetParent(current)) != null; i++)
+					path.Add(current is FrameworkElement { Name.Length: > 0 } fe ? current.GetType().Name + "#" + fe.Name : current.GetType().Name);
+				if (path.Count > 0) text += " < " + string.Join(" < ", path);
+			}
+			return text;
+		}
+
+		static object DescribeMediaContext(System.Windows.Threading.Dispatcher dispatcher)
+		{
+			try {
+				const BindingFlags all = BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+				var mediaContextType = typeof(System.Windows.Media.CompositionTarget).Assembly.GetType("System.Windows.Media.MediaContext");
+				var context = mediaContextType?.GetMethod("From", all, new[] { typeof(System.Windows.Threading.Dispatcher) })?.Invoke(null, new object[] { dispatcher });
+				if (context == null) return "MediaContext unavailable";
+				var rendering = mediaContextType.GetField("Rendering", all)?.GetValue(context) as Delegate;
+				var subscribers = rendering?.GetInvocationList().Select(d => d.Method.DeclaringType?.FullName + "." + d.Method.Name).ToArray() ?? Array.Empty<string>();
+				var timeManager = mediaContextType.GetField("_timeManager", all)?.GetValue(context);
+				object nextTick = null;
+				try { nextTick = timeManager?.GetType().GetMethod("GetNextTickNeeded", all)?.Invoke(timeManager, null)?.ToString(); } catch (Exception ex) { nextTick = ex.InnerException?.Message ?? ex.Message; }
+				return new { renderingSubscribers = subscribers, animationNextTickNeeded = nextTick };
+			} catch (Exception ex) {
+				return ex.GetType().Name + ": " + ex.Message;
+			}
+		}
+
+		[DevFlowAction("od.perf.timeline",Description = "Milestones (ms since start) of the latest solution open and build, plus this process's working set and managed heap - the baseline and regression signal for doc/technotes/fast-mode.md")]
 		public static string GetPerfTimeline()
 		{
 			var scopes = PerfTimeline.Snapshot().ToDictionary(

@@ -52,7 +52,8 @@ public sealed class PerformanceGateTests : IAsyncDisposable
         var busy = (after - before) / watch.Elapsed.TotalMilliseconds;
 
         // Measured 3-7% of one core; the regression was ~90%. 40% leaves room for a slow machine.
-        Assert.True(busy < 0.40, $"An idle OpenDevelop used {busy:P0} of a core over {watch.Elapsed.TotalSeconds:F1} s.");
+        if (busy >= 0.40)
+            Assert.Fail($"An idle OpenDevelop used {busy:P0} of a core over {watch.Elapsed.TotalSeconds:F1} s.{Environment.NewLine}{await BusiestThreadsAsync(TimeSpan.FromSeconds(3))}{Environment.NewLine}{await RenderActivityAsync()}");
     }
 
     [Fact]
@@ -110,7 +111,7 @@ public sealed class PerformanceGateTests : IAsyncDisposable
             // Only reproduced on the Linux CI runners so far (Xvfb, Mesa lavapipe). Name the threads that burn the CPU -
             // the UI thread, the GPU/compositor or llvmpipe workers, or a .NET worker - so the next failure says where.
             var threads = await BusiestThreadsAsync(TimeSpan.FromSeconds(3));
-            Assert.Fail($"After an ILSpy search OpenDevelop used {busy:P0} of a core while idle (before the search: {baseline:P0}).{Environment.NewLine}{threads}");
+            Assert.Fail($"After an ILSpy search OpenDevelop used {busy:P0} of a core while idle (before the search: {baseline:P0}).{Environment.NewLine}{threads}{Environment.NewLine}{await RenderActivityAsync()}");
         }
     }
 
@@ -152,6 +153,16 @@ public sealed class PerformanceGateTests : IAsyncDisposable
             return $"Busiest threads of pid {pid} over {period.TotalSeconds:0}s ({after.Count} threads):{Environment.NewLine}" + string.Join(Environment.NewLine, rows);
         } catch (Exception ex) {
             return "(per-thread CPU unavailable: " + ex.Message + ")";
+        }
+    }
+
+    /// <summary>What keeps the window rendering (frames, dirty visuals, Rendering subscribers, animation clocks), for a failure message.</summary>
+    async Task<string> RenderActivityAsync()
+    {
+        try {
+            return "Render activity: " + (await _app.InvokeAsync("od.render.activity", "3000")).GetRawText();
+        } catch (Exception ex) {
+            return "(render activity unavailable: " + ex.Message + ")";
         }
     }
 
