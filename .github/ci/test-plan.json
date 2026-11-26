@@ -23,7 +23,7 @@
   ],
   "platformNotes": {
     "macos-arm64": "dist.macos.sh ships an osx-arm64-only payload, so this platform builds for itself and its archive drops the Windows RID trees the package never contains. It splits into 'fast' and 'designer' jobs like Windows and Linux, plus the standalone mobile-ios job. The merged single 'macos' job (commit 66e0c934ed) timed out, so it was split back.",
-    "windows-x64": "Every unit and integration entry is required here since 2026-10-27 (base-tests and xamldom-tests-microsoftwpf were the last unit entries promoted), so a focus run executes only its observe entries here: a few in the fast job and the integration-winui and integration-winui-microsoft jobs, whose entries are all observe. Its build also supplies windows-arm64.",
+    "windows-x64": "Every unit and integration entry is required here since 2026-10-27 (base-tests and xamldom-tests-microsoftwpf were the last unit entries promoted), so a focus run executes its observe entries here (a few in the fast job and the integration-winui and integration-winui-microsoft jobs, whose entries are all observe) plus the required entries Windows ARM64 still observes (run-statuses.ps1 Test-EntryRuns), so both Windows architectures cover the same entries. Its build also supplies windows-arm64.",
     "windows-arm64": "Runs the native Windows ARM64 Terminal journey against the same unified Windows payload the x64 lane tests: dist.windows.bat ships one package with runtimes/ plus per-RID win-x64/win-arm64 folders and both launchers, so 'buildFrom': 'windows-x64' keeps a single compile for both lanes.",
     "linux-x64": "Enabled on 2026-11-02 with the unit suites (Profiler among them, which profiler.yml once ran on ubuntu-latest) and the workbench and DevFlow journeys, all 'observe'. The IDE entries run under xvfb-run with Mesa's software Vulkan driver (install-linux-prerequisites.sh); promote per the usual two green runs.",
     "linux-arm64": "Same entries and rules as linux-x64, on the native ubuntu-26.04-arm runner: dist.linux.sh ships one archive per Linux architecture, so each builds for itself."
@@ -186,9 +186,9 @@
       "project": "tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj",
       "target": "tests/OpenDevelop.Base.Tests/bin/Debug/net11.0-windows/OpenDevelop.Base.Tests.dll",
       "args": ["-method", "OpenDevelop.Base.Tests.XsgHotReloadEndToEndTests.CsExpressionEdit_ReachesTheLiveWindowThroughACodeDelta", "-method", "OpenDevelop.Base.Tests.XsgHotReloadEndToEndTests.CompoundExpressionEdit_ReachesTheLiveWindowThroughACodeDelta", "-method", "OpenDevelop.Base.Tests.XsgHotReloadEndToEndTests.EventHandlerEdit_ReachesTheLiveWindowThroughACodeDelta", "-method", "OpenDevelop.Base.Tests.XsgHotReloadEndToEndTests.ExpressionOverTheDataContext_IsComputedByTheLiveWindow", "-method", "OpenDevelop.Base.Tests.XsgHotReloadEndToEndTests.NameRemoval_IsARestartAndLeavesTheSessionUsable", "-method", "OpenDevelop.Base.Tests.XsgHotReloadEndToEndTests.GeneratedSources_OfAXamlFile_AreReadOverTheProtocol", "-parallel", "none"],
-      "additionalProjects": [{ "project": "tests/fixtures/XsgLocalFeedFixture/XsgLocalFeedFixture.csproj", "platforms": ["linux-x64"], "optional": true }],
-      "platforms": { "linux-x64": "observe" },
-      "note": "The XAML source generator (XSG) end to end: the built XsgLocalFeedFixture runs under the Hot Reload agent and the Roslyn host, edits of an expression, an event handler and a removed name reach the live window, and the host hands back the generated C# of a XAML file (G5 of doc/technotes/xsg-gaps.md). Linux x64 only, on purpose: the fixture is an additional project of the platform archive, and on Windows and macOS it would also start XsgProject_CsExpressionEdit_AppliesAsACodeDelta inside the required wpf-hot-reload-journeys lane (that journey skips today because the fixture is not built); Linux has no such required lane. The fixture is 'optional': a failed build of it is a warning, not a failed build job (build-binaries.ps1, checked by .github/ci/tests/verify-optional-additional-project.ps1), because whether net10.0-windows and the lextudio feed work on a Linux runner is unproven. Building the fixture also makes base-tests (observe on linux-x64) run its unselected UnderSharpDbg, breakpoint and step XSG cases, which need the deployed SharpDbg and may fail there. Run locally with exactly this command line on macOS arm64: 6 passed, 0 skipped, 33 s. Never run on a hosted runner: a push is the run, and it counts only after two green runs. Not selected: the three UnderSharpDbg variants and the breakpoint and step journeys."
+      "additionalProjects": [{ "project": "tests/fixtures/XsgLocalFeedFixture/XsgLocalFeedFixture.csproj", "platforms": ["linux-x64", "linux-arm64"], "optional": true }],
+      "platforms": { "linux-x64": "observe", "linux-arm64": "observe" },
+      "note": "The XAML source generator (XSG) end to end: the built XsgLocalFeedFixture runs under the Hot Reload agent and the Roslyn host, edits of an expression, an event handler and a removed name reach the live window, and the host hands back the generated C# of a XAML file (G5 of doc/technotes/xsg-gaps.md). Linux only (x64 and ARM64), on purpose: the fixture is an additional project of the platform archive, and on Windows and macOS it would also start XsgProject_CsExpressionEdit_AppliesAsACodeDelta inside the required wpf-hot-reload-journeys lane (that journey skips today because the fixture is not built); Linux has no such required lane. The fixture is 'optional': a failed build of it is a warning, not a failed build job (build-binaries.ps1, checked by .github/ci/tests/verify-optional-additional-project.ps1), because whether net10.0-windows and the lextudio feed work on a Linux runner is unproven. Building the fixture also makes base-tests (observe on linux-x64) run its unselected UnderSharpDbg, breakpoint and step XSG cases, which need the deployed SharpDbg and may fail there. Run locally with exactly this command line on macOS arm64: 6 passed, 0 skipped, 33 s. Never run on a hosted runner: a push is the run, and it counts only after two green runs. Not selected: the three UnderSharpDbg variants and the breakpoint and step journeys."
     },
     {
       "id": "vseditorcompat-tests",
@@ -484,7 +484,7 @@
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.SdkSelectedAtStartupIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe" },
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe", "linux-arm64": "observe" },
       "note": "Each of SDK 10 and SDK 11 selected before startup, via a root that holds only that SDK: the project loads with items and builds. Nothing is downloaded. Skips a major the machine has no stable SDK for. macOS ARM64: 2 passed in 67 seconds. Starts as observe."
     },
     {
@@ -498,7 +498,7 @@
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.Net11ProjectIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe" },
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe", "macos-arm64": "observe", "linux-x64": "observe", "linux-arm64": "observe" },
       "note": "net11.0 projects: build fails with NETSDK1045 under an SDK 10 only root, and builds, runs and debugs under an SDK 11 only root. macOS ARM64: 3 passed in 76 seconds. Starts as observe."
     },
     {
@@ -812,7 +812,8 @@
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
       "platforms": {
         "windows-x64": "required",
-        "macos-arm64": "required"
+        "macos-arm64": "required",
+        "windows-arm64": "observe"
       },
       "project": "tests/OpenDevelop.IntegrationTests/OpenDevelop.IntegrationTests.csproj",
       "args": [
@@ -1092,7 +1093,7 @@
         { "project": "tests/fixtures/WpfHotReloadClassLibFixture/Host/HotReloadClassLibHost.csproj" },
         { "project": "tests/fixtures/WpfHotReloadClassLibFixture.Microsoft/Host/HotReloadClassLibHost.csproj", "platforms": ["windows-x64"] }
       ],
-      "platforms": { "windows-x64": "required", "macos-arm64": "required" },
+      "platforms": { "windows-x64": "required", "macos-arm64": "required", "windows-arm64": "observe" },
       "note": "Exercises real WPF application and class-library Hot Reload journeys; Microsoft WPF variants run only on Windows. macOS ARM64 locally passed four journeys with two Windows-only skips."
     },
     {
@@ -1105,8 +1106,8 @@
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-trait", "Runtime=SurfaceWinUI", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "platforms": { "windows-x64": "observe" },
-      "reason": "The WinUI Surface host and its provisioner are Windows-only; ARM64 has not been measured.",
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe" },
+      "reason": "The WinUI Surface host and its provisioner are Windows-only.",
       "note": "The whole Surface cell (-trait Runtime=SurfaceWinUI): six journeys - the five of WinUISurfaceDesignerTests (render with outline, source edit refresh, Properties pad edit with undo/redo, element selection geometry, real-drag toolbox drop) and the resize-handle drag of AddInTests - passed locally on Windows 11 x64, 100-300 s each (about 15-20 minutes on a developer machine, more with a cold provisioning cache), hence the 45-minute budget. The trait selection is accepted by tests/verify-no-device-journeys.ps1 only on Windows entries (the device journeys sharing AddInTests skip themselves there). The Surface is the default WinUI selection, so no OD_WINUI_RUNTIME pin is needed. It sits in integration-winui (allowAllFailures) because the runner may lack the prerequisites that would make this entry fail while it is observe: the Windows App Runtime (windowsappruntimeinstall-x64.exe --quiet --force), a .NET SDK the provisioner can build the matched host with, and the interactive desktop that prepare-windows-desktop.ps1 sets up for the real-pointer journeys. The first open provisions a matched host (about a minute cold). run-test-plan.ps1 fails the entry if every test skipped (a missing Surface payload). Starts as observe; promote after two green runner runs."
     },
     {
@@ -1119,7 +1120,7 @@
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.WinUIHostSelectionTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "platforms": { "windows-x64": "observe" },
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe" },
       "reason": "Both WinUI hosts these tests select between are Windows-only.",
       "note": "Two journeys, each in an IDE of its own (own config directory and environment): with the Surface payload missing the designer reports why and nothing renders through another host (no fallback), and a stored Tools > Options choice of microsoft selects the Microsoft host, not the Surface. Both passed locally on Windows 11 x64 (about 150 s each). The second needs the Microsoft host built with Visual Studio MSBuild (build.ps1 microsofthost), which the CI build may not have produced, so it can fail on a runner for that reason; the first does not need it. Starts as observe."
     },
@@ -1134,7 +1135,7 @@
       "args": ["-trait", "Runtime=MicrosoftWinUI", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "env": { "OD_WINUI_RUNTIME": "microsoft", "OD_WINUI_GALLERY_ROOT": "gallery-not-cloned-for-this-entry" },
-      "platforms": { "windows-x64": "observe" },
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe" },
       "reason": "The Microsoft WinUI host is Windows-only.",
       "note": "The whole Microsoft cell (-trait Runtime=MicrosoftWinUI) against the Microsoft WinUI host: 36 tests, 9 run and 27 Gallery tests skipped when last measured locally (all passing). OD_WINUI_GALLERY_ROOT is pinned to a deliberately absent path (an empty value would fall back to a sibling WinUI-Gallery directory) so the Gallery tests skip; the winui-gallery-* entries run them. run-test-plan.ps1 fails an entry whose every test skipped. The Microsoft cell contains no device journey; the guard (tests/verify-no-device-journeys.ps1) accepts the Runtime traits only on Windows entries because the Uno cell's iOS Simulator and Android Emulator journeys skip themselves there. Needs Visual Studio MSBuild, the Windows App SDK and the host built by build.ps1 microsofthost; observe until promoted."
     },
@@ -1149,8 +1150,8 @@
       "args": ["-trait", "Runtime=Uno", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "env": { "OD_WINUI_RUNTIME": "uno" },
-      "platforms": { "windows-x64": "observe" },
-      "reason": "Windows x64 is the only platform measured; the Uno cell on macOS and Linux is a separate question.",
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe" },
+      "reason": "The Uno cell on macOS and Linux is the separate entry winui-uno-cell-linux.",
       "note": "The whole Uno cell (-trait Runtime=Uno) against the Uno Skia Win32 host: 25 tests, 23 passed and 2 skipped (the iOS Simulator and Android Emulator device journeys, which skip off their OS) when last measured locally. The toolbox-drag test failed when run alone three times yet passes within the full cell (unexplained order dependence), so this entry runs the whole cell, never a single test. Observe until promoted."
     },    {
       "id": "wpf-gallery-corpus",
@@ -1163,7 +1164,7 @@
       "args": ["-class", "OpenDevelop.IntegrationTests.WpfGalleryDesignerTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "env": { "OD_WPF_GALLERY_BUILD": "1" },
-      "platforms": { "windows-x64": "observe" },
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe" },
       "reason": "The Microsoft WPF design host is Windows-only.",
       "note": "The real WPFGallery application of microsoft/WPF-Samples against the Microsoft WPF design host (WpfGalleryDesignerTests, the WPF counterpart of the WinUI Gallery corpus; its opt-in full sweep stays off). ci.yml sparse-clones Sample Applications/WPFGallery of WPF-Samples into the runner temp folder and exports OD_WPF_GALLERY_ROOT; OD_WPF_GALLERY_BUILD=1 makes the class build the Gallery through DevFlow before the first page opens (an unbuilt checkout renders pages without their sample controls). Needs the Microsoft WPF design host (MicrosoftWpfDesign.SurfaceHost), which the plan's build job does not produce: the best-effort step Build the Microsoft designer hosts of the winui and winui-microsoft jobs runs the integration project's BuildMicrosoftDesignerHostsForIntegrationTests target (build.ps1 with Visual Studio MSBuild for the WPF, WinUI and WinForms hosts and the WinUI sample), and without that host every case fails at first render (WPF designer never finished loading). It sits in integration-winui-microsoft only to share that job's archive preparation. READ THE ENTRY'S ROW: the clone step is best-effort, so a failed clone skips every case, which run-test-plan.ps1 records as failed (every test skipped). Starts as observe; promote after two green runner runs."
     },    {
@@ -1178,8 +1179,8 @@
       "args": ["-method", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests.Gallery_OpensAndIsRoutedToTheMicrosoftWinUIBackend", "-method", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests.GallerySettingsPage_UsesApplicationMetadataAndRendersRealToolkitControl", "-method", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests.VisualStates_AreListedForAPageThatDeclaresThem", "-method", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests.VisualStateSwitch_AppliesStateAndShowsLoadingChrome", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "env": { "OD_WINUI_RUNTIME": "microsoft", "OD_WINUI_GALLERY_BUILD": "1" },
-      "platforms": { "windows-x64": "observe" },
-      "reason": "The Microsoft WinUI host and the Windows App SDK Gallery are Windows-only; ARM64 has not been measured.",
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe" },
+      "reason": "The Microsoft WinUI host and the Windows App SDK Gallery are Windows-only.",
       "note": "The four single-page Gallery cases (routing, settings page, visual states). Split out of the former winui-gallery-corpus entry, whose single 90-minute budget let a host that never starts burn 150 s on each of 24 pages. Setup is unchanged: ci.yml fetches the WinUI Gallery at a pinned commit (the one on the host's Windows App SDK version; see the clone step) and exports OD_WINUI_GALLERY_ROOT; OD_WINUI_GALLERY_BUILD=1 makes each case build the Gallery (Debug-Unpackaged, x64) through od.build-solution first; each page opens in a fresh Microsoft design host. Needs Visual Studio MSBuild, the Windows App SDK and the Microsoft hosts. Budget basis: four cases at the roughly 10 minutes per 25 cases doc/technotes/winui-designer.md records for a developer machine, plus one cold Gallery build and a runner's slower host start; no runner has measured it, so read a timeout here as an unmeasured budget before a host regression. Observe until promoted; read the entry row in the job summary, because the lane stays green on allowAllFailures."
     },
     {
@@ -1209,8 +1210,8 @@
       "args": ["-method", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests.GalleryPage_AbstractRootFailsWithAnExplanation", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "env": { "OD_WINUI_RUNTIME": "microsoft", "OD_WINUI_GALLERY_BUILD": "1" },
-      "platforms": { "windows-x64": "observe" },
-      "reason": "The Microsoft WinUI host and the Windows App SDK Gallery are Windows-only; ARM64 has not been measured.",
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe" },
+      "reason": "The Microsoft WinUI host and the Windows App SDK Gallery are Windows-only.",
       "note": "The Gallery pages whose root is an abstract class and must fail with an explanation. Split out of the former winui-gallery-corpus entry, whose single 90-minute budget let a host that never starts burn 150 s on each of 24 pages. Setup is unchanged: ci.yml fetches the WinUI Gallery at a pinned commit (the one on the host's Windows App SDK version; see the clone step) and exports OD_WINUI_GALLERY_ROOT; OD_WINUI_GALLERY_BUILD=1 makes each case build the Gallery (Debug-Unpackaged, x64) through od.build-solution first; each page opens in a fresh Microsoft design host. Needs Visual Studio MSBuild, the Windows App SDK and the Microsoft hosts. Budget basis: two cases of the same per-case cost as the render entry, plus a cold Gallery build when this entry runs first; unmeasured on a runner. Observe until promoted; read the entry row in the job summary, because the lane stays green on allowAllFailures."
     },
     {
@@ -1225,8 +1226,8 @@
       "args": ["-method", "OpenDevelop.IntegrationTests.WinUIGalleryDesignerTests.GalleryPage_RendersWithRealContent", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
       "env": { "OD_WINUI_RUNTIME": "microsoft", "OD_WINUI_GALLERY_BUILD": "1" },
-      "platforms": { "windows-x64": "observe" },
-      "reason": "The Microsoft WinUI host and the Windows App SDK Gallery are Windows-only; ARM64 has not been measured.",
+      "platforms": { "windows-x64": "observe", "windows-arm64": "observe" },
+      "reason": "The Microsoft WinUI host and the Windows App SDK Gallery are Windows-only.",
       "note": "The Gallery pages that must render real content (21 cases at the 3.75 minutes the failing run of 2026-11-17 averaged is about 79 minutes, hence the 90-minute budget). Split out of the former winui-gallery-corpus entry, whose single 90-minute budget let a host that never starts burn 150 s on each of 24 pages. Setup is unchanged: ci.yml fetches the WinUI Gallery at a pinned commit (the one on the host's Windows App SDK version; see the clone step) and exports OD_WINUI_GALLERY_ROOT; OD_WINUI_GALLERY_BUILD=1 makes each case build the Gallery (Debug-Unpackaged, x64) through od.build-solution first; each page opens in a fresh Microsoft design host. Needs Visual Studio MSBuild, the Windows App SDK and the Microsoft hosts. Observe until promoted; read the entry row in the job summary, because the lane stays green on allowAllFailures."
     },
     {
@@ -1274,7 +1275,8 @@
       "target": "tests/OpenDevelop.IntegrationTests/bin/Debug/net11.0/OpenDevelop.IntegrationTests.dll",
       "args": ["-class", "OpenDevelop.IntegrationTests.AndroidDebuggingIntegrationTests", "-parallel", "none"],
       "buildArgs": ["-p:BuildIntegrationFixtures=false"],
-      "platforms": { "linux-x64": "observe" },
+      "platforms": { "linux-x64": "observe", "linux-arm64": "excluded" },
+      "reason": "linux-arm64: the Android emulator needs KVM, which only the hosted Linux x86_64 runners provide (ubuntu-26.04-arm has no nested virtualisation; see the Enable KVM for the Android emulator step of ci.yml).",
       "note": "Builds a net11.0-android app with the SDK 11 the lane installed, deploys it to the headless emulator through adb, stops at a breakpoint, steps, evaluates and checks that the session leaves no debug-app setting or adb forward behind; then repeats the session. The journey skips when adb or exactly one connected device is missing, and xUnit counts a skip in the total (run-test-plan.ps1 records an entry whose every test skipped as failed, but this allowAllFailures lane stays green around it), so read the entry's own result rather than the lane's colour."
     }
   ]

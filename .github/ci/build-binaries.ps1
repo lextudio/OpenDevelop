@@ -48,7 +48,7 @@ $consumerPlatforms = @($plan.platforms.PSObject.Properties | Where-Object {
 $selected = @($plan.entries | Where-Object {
     $entry = $_
     $enabledForConsumer = @($consumerPlatforms | Where-Object {
-        $entry.platforms.PSObject.Properties[$_] -and $entry.platforms.$_ -in $runStatuses
+        Test-EntryRuns $plan $entry $_ $runStatuses
     }).Count -gt 0
     $entry.batch -le $ThroughBatch -and $enabledForConsumer
 })

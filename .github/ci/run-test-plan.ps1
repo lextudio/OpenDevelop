@@ -241,7 +241,7 @@ $laneDefinition = $plan.lanes.PSObject.Properties[$Lane]
 $laneDefinition = if ($laneDefinition) { $laneDefinition.Value } else { $null }
 
 $selected = @($plan.entries | Where-Object {
-    $_.batch -le $ThroughBatch -and $_.lane -eq $Lane -and (Get-Status $_ $Platform) -in $runStatuses
+    $_.batch -le $ThroughBatch -and $_.lane -eq $Lane -and (Test-EntryRuns $plan $_ $Platform $runStatuses)
 })
 Write-Host "Platform=$Platform Lane=$Lane ThroughBatch=$ThroughBatch -> $($selected.Count) entries: $(($selected | ForEach-Object { $_.id }) -join ', ')"
 if ($selected.Count -eq 0) { throw "The plan enables nothing in lane '$Lane' for $Platform up to batch $ThroughBatch." }

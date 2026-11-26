@@ -38,7 +38,7 @@ $enabled = @()
 foreach ($entry in $plan.entries) {
     if ($entry.batch -gt $ThroughBatch) { continue }
     foreach ($property in $entry.platforms.PSObject.Properties) {
-        if ($property.Value -in $runStatuses) {
+        if (Test-EntryRuns $plan $entry $property.Name $runStatuses) {
             $enabled += [pscustomobject]@{ Platform = $property.Name; Lane = [string]$entry.lane; Id = $entry.id }
         }
     }

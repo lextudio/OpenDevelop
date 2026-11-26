@@ -579,6 +579,18 @@ for the reason given under "Lanes". A promoted entry stops running too, so run f
 (`gh workflow run ci.yml --ref <branch> -f full=true`), and set `"focus": false` to go back to full runs when the
 failures are under control. Focus mode does not gate anything: the `required` entries are not checked while it is on.
 
+Both architectures of one OS cover the same entries in a focus run, apart from entries that genuinely depend on the
+architecture (`excluded` with a reason, such as the Android emulator journey that needs the KVM only Linux x86_64 runners
+have). Applied per platform, the rule did not: `debugger-journeys`, `addinsdk-tests`, `addinsdk-staging-tests` and
+`xamldom-tests-microsoftwpf` were `required` on Windows x64 (skipped) but `observe` on Windows ARM64 (run), so only ARM64
+ran them and its fast job looked slow for work x64 never did. `Test-EntryRuns` therefore keeps a `required` entry running
+while another architecture of the same OS (the platform name before `-`) still observes it; other OSes do not count, or
+focus mode would skip nothing. The entries that listed no ARM64 status at all (Razor highlighting, WPF Hot Reload and the
+WinUI entries on Windows; the XSG end-to-end, SDK-at-startup and net11 project entries on Linux) start as `observe` there,
+and the WinUI setup steps of `ci.yml` (Microsoft host build, Windows App Runtime, Windows SDK, the Gallery clones) run on
+Windows ARM64 too. `.github/ci/tests/verify-arch-parity.ps1` (run by the plan job) fails the plan when an entry runs on one
+architecture of an OS but not the other, in focus mode or a full run, unless it is `excluded` there with a reason.
+
 ## Current plan (Windows x64)
 
 * Lane `unit`: `OpenDevelop.Base.Tests`, `OpenDevelop.VSEditorCompat.Tests`, `OpenDevelop.XamlDom.Tests.LibreWPF` and
