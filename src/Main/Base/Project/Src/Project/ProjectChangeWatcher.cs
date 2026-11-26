@@ -346,7 +346,14 @@ namespace ICSharpCode.SharpDevelop.Project
 			// every project to the language service (doc/technotes/fast-mode.md).
 			var project = System.Linq.Enumerable.FirstOrDefault(solution.Projects, p => string.Equals(
 				Path.GetFullPath(p.FileName.ToString()), Path.GetFullPath(fileName), StringComparison.OrdinalIgnoreCase));
-			if (project != null && SD.ProjectService.ReloadProject(project)) {
+			if (project == null) {
+				// This watcher outlived its solution: the 0.5 s delay above let another solution be opened (or the
+				// project be removed) in the meantime. Re-opening the *current* solution for a file that is not in
+				// it reloads something unrelated - in a test run, a solution whose folder is already gone.
+				LoggingService.Debug("Ignoring change of " + fileName + ": the project is not in the open solution.");
+				return;
+			}
+			if (SD.ProjectService.ReloadProject(project)) {
 				LoggingService.Info("Reloaded " + project.Name + " after " + fileName + " changed.");
 				return;
 			}
