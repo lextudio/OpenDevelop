@@ -52,6 +52,41 @@ public sealed class KeyBindingServiceTests : IDisposable
 	}
 
 	[Xunit.UIFactAttribute]
+	public void AnOwnerOnAnotherThread_IsUpdatedOnItsOwnThread_NotOnTheCaller()
+	{
+		var service = NewService();
+		var ownerReady = new ManualResetEventSlim();
+		var updated = new ManualResetEventSlim();
+		System.Windows.Threading.Dispatcher? ownerDispatcher = null;
+		int ownerThread = 0, updateThread = -1;
+		var thread = new Thread(() => {
+			ownerThread = Environment.CurrentManagedThreadId;
+			var owner = new Border();
+			ownerDispatcher = owner.Dispatcher;
+			// An element of this thread, with a menu-item-like callback that insists on its own thread, as MenuItem.InputGestureText does.
+			service.Register(owner, "class:Foo.Build", "codon1", "F8", new CountingCommand(), null, _ => {
+				owner.VerifyAccess();
+				updateThread = Environment.CurrentManagedThreadId;
+				updated.Set();
+			});
+			updated.Reset();
+			ownerReady.Set();
+			System.Windows.Threading.Dispatcher.Run();
+		});
+		thread.IsBackground = true;
+		thread.Start();
+		Assert.True(ownerReady.Wait(TimeSpan.FromSeconds(10)));
+		try {
+			service.SetOverride("class:Foo.Build", "Ctrl+B"); // from this thread: must not touch the owner's elements here
+
+			Assert.True(updated.Wait(TimeSpan.FromSeconds(10)), "the owner's thread never applied the new shortcut");
+			Assert.Equal(ownerThread, updateThread);
+		} finally {
+			ownerDispatcher!.InvokeShutdown();
+		}
+	}
+
+	[Xunit.UIFactAttribute]
 	public void AnOverride_ReplacesTheGesture_AtOnce_AndTheDisplayTextFollows()
 	{
 		var service = NewService();

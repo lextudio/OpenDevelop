@@ -308,16 +308,29 @@ namespace ICSharpCode.Core.Presentation
 		void ApplyAll()
 		{
 			foreach (UIElement owner in LiveOwners()) {
-				OwnerState state;
-				if (!owners.TryGetValue(owner, out state))
-					continue;
-				foreach (Site site in state.Sites) {
-					site.Gesture = ResolveShortcut(site.Key, site.DefaultGesture);
-					if (site.DisplayTextChanged != null)
-						site.DisplayTextChanged(DisplayText(site.Gesture));
+				// An owner (and the menu items bound to its sites) belongs to the thread that created it; a service
+				// shared by the process can be asked to re-apply from another one, e.g. while a test run still holds
+				// elements of an earlier test. Apply each on its own dispatcher (dropped if that thread is gone).
+				if (owner.Dispatcher.CheckAccess()) {
+					ApplyOwner(owner);
+				} else {
+					UIElement other = owner;
+					other.Dispatcher.BeginInvoke(new Action(() => ApplyOwner(other)));
 				}
-				Rebuild(owner, state);
 			}
+		}
+
+		void ApplyOwner(UIElement owner)
+		{
+			OwnerState state;
+			if (!owners.TryGetValue(owner, out state))
+				return;
+			foreach (Site site in state.Sites) {
+				site.Gesture = ResolveShortcut(site.Key, site.DefaultGesture);
+				if (site.DisplayTextChanged != null)
+					site.DisplayTextChanged(DisplayText(site.Gesture));
+			}
+			Rebuild(owner, state);
 		}
 
 		List<UIElement> LiveOwners()
