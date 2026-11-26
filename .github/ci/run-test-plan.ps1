@@ -142,6 +142,55 @@ function Save-Screenshot([string]$path) {
 # A Linux runner has no display, and the integration entries start the IDE's window: there each entry runs under its own
 # xvfb-run (installed by install-linux-prerequisites.sh). The Xvfb server is a child of that process tree, so the budget
 # kill below takes it down with the entry.
+function Save-FailureDiagnostics([string]$entryId, [datetime]$since, [string]$directory) {
+    # A failed entry usually leaves its explanation in a log the test output does not repeat: the IDE's own log and the
+    # out-of-process designer hosts' logs (a host that died at startup shows up in the test only as "designerLoaded":false).
+    # Print the tail of every such file written during this entry and keep the whole file with the uploaded TestResults.
+    try {
+        $target = Join-Path $directory "$entryId-diagnostics"
+        New-Item -ItemType Directory -Force -Path $target | Out-Null
+        # Where the logs can be: the .NET temp folder (on Windows a different root than the runner's RUNNER_TEMP), the runner's
+        # temp folder, and OD_TEST_LOG_DIR, which the CI run uploads as the logs-<job> artifact (the fixture writes the IDE's own
+        # log there). Each is read one level deep; a file seen through two of them is listed once.
+        $roots = @([System.IO.Path]::GetTempPath(), $env:TEMP, $env:TMPDIR, $env:RUNNER_TEMP, $env:OD_TEST_LOG_DIR) |
+            Where-Object { $_ -and (Test-Path -LiteralPath $_) } | ForEach-Object { (Resolve-Path -LiteralPath $_).Path } | Select-Object -Unique
+        $temp = $roots -join '; '
+        $files = @(foreach ($root in $roots) {
+            $inLogDirectory = $env:OD_TEST_LOG_DIR -and ((Resolve-Path -LiteralPath $env:OD_TEST_LOG_DIR -ErrorAction SilentlyContinue).Path -eq $root)
+            Get-ChildItem -Path $root -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.LastWriteTime -ge $since -and ($inLogDirectory -and $_.Extension -eq '.log' -or $_.Name -like 'OpenDevelop*.log' -or $_.Name -like '*host*.log' -or $_.Name -like 'opendevelop-*.log') }
+        }) | Sort-Object FullName -Unique
+        Write-Host "::group::diagnostics for failed entry $entryId ($($files.Count) log file(s) written since it started, from $temp)"
+        foreach ($file in $files) {
+            if (-not $env:OD_TEST_LOG_DIR -or $file.DirectoryName -ne (Resolve-Path -LiteralPath $env:OD_TEST_LOG_DIR -ErrorAction SilentlyContinue).Path) {
+                Copy-Item -LiteralPath $file.FullName -Destination $target -Force -ErrorAction SilentlyContinue
+            }
+            Write-Host "----- $($file.Name) ($($file.Length) bytes, last 120 lines) -----"
+            Get-Content -LiteralPath $file.FullName -Tail 120 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+        }
+        # CPU and display state, for the entries that fail on load or on input delivery rather than on an assertion.
+        $state = @("DISPLAY=$env:DISPLAY", "WAYLAND_DISPLAY=$env:WAYLAND_DISPLAY", "XDG_SESSION_TYPE=$env:XDG_SESSION_TYPE")
+        if (-not $IsWindows) {
+            $state += '--- top processes by CPU ---'
+            # The application, not PowerShell's ps alias.
+            $ps = Get-Command ps -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($ps) {
+                $rows = @(& $ps.Source -eo pid,pcpu,pmem,etime,comm 2>$null)
+                $state += @($rows | Select-Object -First 1)
+                $state += @($rows | Select-Object -Skip 1 | Sort-Object { try { [double](($_.Trim() -split '\s+')[1]) } catch { 0 } } -Descending | Select-Object -First 12)
+            }
+        }
+        $state | Set-Content -LiteralPath (Join-Path $target 'environment.txt')
+        $state | ForEach-Object { Write-Host $_ }
+    }
+    catch {
+        Write-Host "Could not collect diagnostics for ${entryId}: $($_.Exception.Message)"
+    }
+    finally {
+        Write-Host '::endgroup::'
+    }
+}
+
 function Invoke-Entry([string[]]$arguments, [int]$timeoutSeconds, [string]$logBase, $environment = $null) {
     if ($IsLinux -and -not $env:DISPLAY) {
         $startInfo = [System.Diagnostics.ProcessStartInfo]::new('xvfb-run')
@@ -227,6 +276,7 @@ foreach ($entry in $selected) {
     $budget = if ($timeoutSeconds -gt 0) { " (budget ${timeoutSeconds}s)" } else { '' }
     Write-Host "::group::$($entry.id) [$status]$budget dotnet $($arguments -join ' ')"
     $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    $entryStarted = Get-Date
     $entryEnvironment = if ($entry.PSObject.Properties['env']) { $entry.env } else { $null }
     $run = Invoke-Entry $arguments $timeoutSeconds (Join-Path $resultsDirectory $entry.id) $entryEnvironment
     $exit = $run.ExitCode
@@ -247,6 +297,7 @@ foreach ($entry in $selected) {
     $skipped = Get-TestSkipped $entry $output
     $note = ''
     $outcome = if ($exit -eq 0) { 'passed' } else { 'failed' }
+    if ($exit -ne 0) { Save-FailureDiagnostics $entry.id $entryStarted $resultsDirectory }
     if ($run.TimedOut) {
         $outcome = 'timeout'
         $note = "killed after ${timeoutSeconds}s"
