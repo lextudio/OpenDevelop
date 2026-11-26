@@ -60,7 +60,11 @@ namespace ICSharpCode.SharpDevelop.Designer.Remote
 				var reason = detail?.Invoke(session);
 				return Refuse(state(session), string.IsNullOrEmpty(reason) ? rejected : rejected + " " + reason);
 			}
+			var before = session.Version;
 			if (edited != null) edited(session); else session.Version++;
+			// To the child log (the IDE shows it as the host log): when a view falls behind, this names the edit that moved
+			// the host past it.
+			if (session.Version != before) Console.Error.WriteLine($"{nameof(SourceModelHost)}: edit sets version {before} -> {session.Version}");
 			return state(session);
 		}
 

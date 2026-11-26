@@ -42,6 +42,9 @@ sealed class GtkDesignerHostService : IDesignerChildService
 		var session = create
 			? GetOrCreate(snapshot.DocumentId)
 			: Get(snapshot.DocumentId);
+		// Version changes go to the child log, which the IDE reports as hostLog: a view that falls behind the host refuses
+		// every later refresh as stale (seen on the Linux CI runners), and this says which request moved the host.
+		if (session.Version != snapshot.Version) Console.Error.WriteLine($"GtkDesigner.Host: {(create ? "open" : "update")} sets version {session.Version} -> {snapshot.Version}");
 		session.Version = snapshot.Version; session.FileName = snapshot.PrimaryFileName;
 		session.Editor.Reset(snapshot.Files.FirstOrDefault()?.Text ?? "");
 		if (GtkAdwaita.Requires(session.Editor.Text)) OnGtkThread(() => { GtkAdwaita.EnsureInitialized(); return true; });
@@ -86,6 +89,7 @@ sealed class GtkDesignerHostService : IDesignerChildService
 			throw new ArgumentException("GTK preview theme must be Light or Dark.", nameof(theme));
 		session.Theme = string.Equals(theme, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
 		session.Version++;
+		Console.Error.WriteLine($"GtkDesigner.Host: theme {session.Theme} sets version {baseVersion} -> {session.Version}");
 		return State(session, true);
 	}
 

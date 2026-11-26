@@ -171,6 +171,8 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 	public string[] Diagnostics => state.Diagnostics.Select(d => d.Message).ToArray();
 	public string LoadError => HasLoadError && Control is ContentPresenter presenter && presenter.Content is TextBox error ? error.Text : "";
 	public string HostLog => host?.ChildLog ?? "";
+	/// <summary>The source-model version this view holds; the host refuses requests made with an older one.</summary>
+	public long StateVersion => state.Version;
 	public string HostSessionId => host?.SessionId ?? ""; public string HostDocumentId => host?.DocumentId ?? ""; public string HostPoolKey => host?.PoolKey ?? "gtk4"; public int ActiveHostLeases => GtkDesignerHostClient.ActiveLeaseCount; public int HostRecoveryCount => host?.RecoveryCount ?? 0;
 	public string PreviewTheme => host?.PreviewTheme ?? "Light";
 	public string CanvasTheme => canvas.ThemeState;
@@ -716,6 +718,9 @@ public sealed class GtkDesignerViewContent : AbstractViewContentHandlingLoadErro
 			state = rendered;
 			Rebuild();
 		} catch (Exception ex) when (DesignerHostRpcErrors.IsStaleVersion(ex)) {
+			// Normally harmless, but when no newer state ever reaches the view it stays behind the host and every later
+			// refresh is refused the same way (the preview then never redraws): log it so that case can be told apart.
+			LoggingService.Warn($"GTK designer: preview refresh at version {version} refused as stale (view now holds {state.Version}): {ex.Message}");
 			// The source mutation that advanced the host already queued its accepted-version render.
 			// Do not replace it with this rejected refresh version, and do not let a normal
 			// optimistic-concurrency refusal escape a DispatcherTimer tick.
