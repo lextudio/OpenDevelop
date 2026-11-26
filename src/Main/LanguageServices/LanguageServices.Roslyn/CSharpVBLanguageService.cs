@@ -1601,7 +1601,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
         public async Task<IReadOnlyList<GeneratedSourceInfo>> GetGeneratedSourcesAsync(string additionalFile, string? targetFramework, CancellationToken cancellationToken)
         {
             var result = new List<GeneratedSourceInfo>();
-            var needle = "\"" + additionalFile + "\"";
+            var needles = GeneratedSourcePathNeedles(additionalFile);
             foreach (var project in _workspace.CurrentSolution.Projects)
             {
                 if (!project.AdditionalDocuments.Any(document => string.Equals(document.FilePath, additionalFile, StringComparison.OrdinalIgnoreCase)))
@@ -1617,11 +1617,22 @@ namespace ICSharpCode.SharpDevelop.LanguageServices.Roslyn
                 foreach (var generated in await project.GetSourceGeneratedDocumentsAsync(cancellationToken).ConfigureAwait(false))
                 {
                     var text = (await generated.GetTextAsync(cancellationToken).ConfigureAwait(false)).ToString();
-                    if (text.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (needles.Any(needle => text.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0))
                         result.Add(new GeneratedSourceInfo(generated.HintName, text));
                 }
             }
             return result;
+        }
+
+        /// <summary>
+        /// The quoted forms in which generated code can name <paramref name="additionalFile"/>: as written, and as a C# string literal
+        /// (<c>#line</c> takes one, so the LibreWPF XAML generator escapes the path and a Windows path appears with doubled backslashes).
+        /// </summary>
+        public static IReadOnlyList<string> GeneratedSourcePathNeedles(string additionalFile)
+        {
+            var raw = "\"" + additionalFile + "\"";
+            var escaped = "\"" + additionalFile.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+            return raw == escaped ? new[] { raw } : new[] { raw, escaped };
         }
 
 
