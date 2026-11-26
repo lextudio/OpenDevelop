@@ -115,6 +115,8 @@ public sealed class XsgHotReloadEndToEndTests
 	[Theory]
 	[InlineData("Text=\"{= 'Hot reload ready'}\"")] // a constant expression, evaluated in InitializeComponent
 	[InlineData("Text=\"{Age + 1}\"")] // a compound expression over the DataContext
+	[InlineData("Loaded=\"{(s, e) => LambdaRan!.Text = 'lambda ran'}\"")] // an event lambda, run when the window loads
+	[InlineData("Text=\"{$'{Label}: {Age}'}\"")] // an interpolated string over the DataContext
 	public async Task BreakpointOnAnExpressionLine_HitsInTheXamlFile(string expressionAttribute)
 	{
 		var token = TestContext.Current.CancellationToken;
