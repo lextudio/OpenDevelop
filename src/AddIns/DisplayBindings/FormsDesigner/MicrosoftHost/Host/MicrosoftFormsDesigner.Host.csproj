@@ -28,6 +28,7 @@
     <Compile Include="..\..\Host\MultiDocumentDesignerHostService.cs" Link="MultiDocumentDesignerHostService.cs" />
     <Compile Include="..\..\Host\DesignerHostService.cs" Link="DesignerHostService.cs" />
     <Compile Include="..\..\Host\SnapshotDesignerLoader.cs" Link="SnapshotDesignerLoader.cs" />
+    <Compile Include="..\..\Host\NativeWindowingProbe.cs" Link="NativeWindowingProbe.cs" />
     <ProjectReference Include="..\..\..\..\..\Main\Designer\Designer.Remote\Designer.Remote.csproj" />
     <ProjectReference Include="..\..\..\..\..\Main\Designer\Designer.Server\Designer.Server.csproj" />
     <PackageReference Include="StreamJsonRpc" />
