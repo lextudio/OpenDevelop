@@ -423,6 +423,12 @@ public sealed class XsgHotReloadEndToEndTests
 		var link = Path.Combine(AppContext.BaseDirectory, "Debugger");
 		if (!Directory.Exists(link))
 			Directory.CreateSymbolicLink(link, deployed);
+
+		// `dotnet test` sets DOTNET_HOST_PATH; CI runs the test assembly with `dotnet <dll>`, which does not. Without it DapSession
+		// resolves the host through DotNetSdkService, which needs the IDE's PropertyService and throws ServiceNotFoundException here.
+		if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH"))
+			&& Path.GetFileNameWithoutExtension(Environment.ProcessPath) is "dotnet")
+			Environment.SetEnvironmentVariable("DOTNET_HOST_PATH", Environment.ProcessPath);
 	}
 
 	/// <summary>
