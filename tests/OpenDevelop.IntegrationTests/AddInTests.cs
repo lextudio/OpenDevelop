@@ -2412,7 +2412,8 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
             pointerDelivery = await _app.InvokeAsync("od.pointer-events", false);
             Assert.True(pointerDelivery.GetProperty("count").GetInt32() > 0,
-                "The native toolbox press did not deliver a mouse-down to the main window: " + pointerDelivery);
+                "The native toolbox press did not deliver a mouse-down to the main window: " + pointerDelivery
+                + "\npress=" + pressed + "\n" + OpenDevelopAppFixture.X11PointerDiagnostics());
             await _app.DragPointerInStepsAsync(fromX, fromY, toX, toY, steps: 8);
         }
         AssertPointerDeliveryMatchesScreenPoint(pointerDelivery, fromX, fromY);
@@ -2584,8 +2585,21 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
 
             string savedXaml = null;
             var inserted = false;
+            // Each attempt's outcome, for the failure message. An attempt can drop the wrong toolbox item (a stray
+            // "<TextBlock />" on Linux CI: the press landed on a neighbouring row); undo that before the next
+            // attempt, or the document no longer matches the original and the exact-document checks below fail on
+            // the earlier attempt's leftovers instead of on what the last attempt did.
+            var attempts = new List<string>();
             for (int attempt = 1; attempt <= 4 && !inserted; attempt++)
             {
+                if (attempt > 1 && savedXaml != null && savedXaml != originalXaml)
+                {
+                    attempts.Add($"attempt {attempt - 1} changed the document without inserting <TextBox />: {DescribeInsertion(originalXaml, savedXaml)}");
+                    var restored = await _app.InvokeAsync("od.file.replace-text", _unoPagePath, savedXaml, originalXaml);
+                    Assert.True(restored.GetProperty("success").GetBoolean(), restored.ToString());
+                    Assert.True((await _app.InvokeAsync("od.file.save", _unoPagePath)).GetProperty("success").GetBoolean());
+                    savedXaml = originalXaml;
+                }
                 var pressed = await _app.PressPointerAsync(fromX, fromY);
                 Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
 
@@ -2617,8 +2631,10 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             // />>", clipping the tag itself - and one character late - an extra space before
             // "<TextBox />" - never elsewhere), so pin down the landing spot with a tolerance
             // instead of a single fixed offset.
+            var attemptLog = $"\ntoolbox item=" + toolboxBounds + $" from=({fromX:0.#},{fromY:0.#}) to=({toX:0.#},{toY:0.#})\n"
+                + string.Join("\n", attempts) + "\nresult: " + DescribeInsertion(originalXaml, savedXaml);
             int insertedAt = savedXaml.IndexOf("<TextBox />", StringComparison.Ordinal);
-            Assert.True(insertedAt >= 0, "Expected the drop to have inserted <TextBox />:\n" + savedXaml);
+            Assert.True(insertedAt >= 0, "Expected the drop to have inserted <TextBox />:\n" + savedXaml + attemptLog);
             // Removing the inserted markup from wherever it actually landed must reproduce the
             // ORIGINAL document byte-for-byte - proving the drop touched nothing else, i.e. it did
             // not corrupt unrelated text elsewhere in the file. NOTE this alone is NOT sufficient:
@@ -2627,7 +2643,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             // INSIDE the "<StackPanel>" tag's own brackets rather than after them. The XDocument.
             // Parse check below is what actually catches that.
             var withoutInsertion = savedXaml.Remove(insertedAt, "<TextBox />".Length);
-            Assert.Equal(originalXaml, withoutInsertion);
+            Assert.True(originalXaml == withoutInsertion, "The drop changed more than inserting <TextBox />." + attemptLog);
             // And it landed at the intended drop site (within the hit-test's inherent +/-1
             // character jitter - confirmed empirically across repeated runs of this exact test),
             // not e.g. at the caret (offset 0, deliberately parked elsewhere above) or the end of
@@ -2649,6 +2665,18 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             // MainPage.xaml is a repository fixture - restore it regardless of outcome.
             await File.WriteAllTextAsync(_unoPagePath, originalXaml);
         }
+    }
+
+    /// <summary>Where <paramref name="changed"/> first differs from <paramref name="original"/> and what it has there, for a failure message.</summary>
+    static string DescribeInsertion(string original, string changed)
+    {
+        if (changed == null) return "(document not read)";
+        if (changed == original) return "unchanged";
+        int start = 0;
+        while (start < original.Length && start < changed.Length && original[start] == changed[start]) start++;
+        int end = 0;
+        while (end < original.Length - start && end < changed.Length - start && original[^(end + 1)] == changed[^(end + 1)]) end++;
+        return $"at offset {start}, \"{original.Substring(start, original.Length - start - end)}\" became \"{changed.Substring(start, changed.Length - start - end)}\"";
     }
 
     /// <summary>
@@ -3560,8 +3588,21 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
 
             string savedXaml = null;
             var inserted = false;
+            // Each attempt's outcome, for the failure message. An attempt can drop the wrong toolbox item (a stray
+            // "<TextBlock />" on Linux CI: the press landed on a neighbouring row); undo that before the next
+            // attempt, or the document no longer matches the original and the exact-document checks below fail on
+            // the earlier attempt's leftovers instead of on what the last attempt did.
+            var attempts = new List<string>();
             for (int attempt = 1; attempt <= 4 && !inserted; attempt++)
             {
+                if (attempt > 1 && savedXaml != null && savedXaml != originalXaml)
+                {
+                    attempts.Add($"attempt {attempt - 1} changed the document without inserting <TextBox />: {DescribeInsertion(originalXaml, savedXaml)}");
+                    var restored = await _app.InvokeAsync("od.file.replace-text", xamlPath, savedXaml, originalXaml);
+                    Assert.True(restored.GetProperty("success").GetBoolean(), restored.ToString());
+                    Assert.True((await _app.InvokeAsync("od.file.save", xamlPath)).GetProperty("success").GetBoolean());
+                    savedXaml = originalXaml;
+                }
                 var pressed = await _app.PressPointerAsync(fromX, fromY);
                 Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
 
@@ -3597,8 +3638,10 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             // clipping into a neighboring tag, and one character late, adding an extra space -
             // never elsewhere), so pin down the landing spot with a tolerance instead of a single
             // fixed offset.
+            var attemptLog = $"\ntoolbox item=" + toolboxBounds + $" from=({fromX:0.#},{fromY:0.#}) to=({toX:0.#},{toY:0.#})\n"
+                + string.Join("\n", attempts) + "\nresult: " + DescribeInsertion(originalXaml, savedXaml);
             int insertedAt = savedXaml.IndexOf("<TextBox />", StringComparison.Ordinal);
-            Assert.True(insertedAt >= 0, "Expected the drop to have inserted <TextBox />:\n" + savedXaml);
+            Assert.True(insertedAt >= 0, "Expected the drop to have inserted <TextBox />:\n" + savedXaml + attemptLog);
             // Removing the inserted markup from wherever it actually landed must reproduce the
             // ORIGINAL document byte-for-byte - proving the drop touched nothing else, i.e. it did
             // not corrupt unrelated text elsewhere in the file. NOTE this alone is NOT sufficient:
@@ -3606,7 +3649,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             // />" reconstructs "<StackPanel>" exactly), which is genuinely malformed XML. The
             // XDocument.Parse check below is what actually catches that.
             var withoutInsertion = savedXaml.Remove(insertedAt, "<TextBox />".Length);
-            Assert.Equal(originalXaml, withoutInsertion);
+            Assert.True(originalXaml == withoutInsertion, "The drop changed more than inserting <TextBox />." + attemptLog);
             // And it landed at the intended drop site (within the hit-test's inherent jitter), not
             // e.g. at the caret (offset 0, which was deliberately parked elsewhere above) or at the
             // end of the document.

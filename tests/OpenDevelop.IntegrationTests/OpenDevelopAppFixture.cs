@@ -754,6 +754,34 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 	// up to a cap) fixes this without changing any test's pass/fail semantics: fast-converging
 	// conditions return almost immediately; slow ones still get polled at a reasonable cadence and
 	// still respect the same overall timeout as before.
+	/// <summary>
+	/// Linux only: where the X pointer is, which window is under it and the X window stack, for a native press that never
+	/// reached the main window. Needs xdotool and xwininfo (x11-utils), which the CI display prerequisites install;
+	/// elsewhere, or without them, it says so instead of failing.
+	/// </summary>
+	public static string X11PointerDiagnostics()
+	{
+		if (!OperatingSystem.IsLinux()) return "(X11 pointer diagnostics are Linux only)";
+		static string Run(string file, string arguments, int maxLines)
+		{
+			try {
+				using var process = Process.Start(new ProcessStartInfo(file, arguments) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false });
+				if (process == null) return $"({file} did not start)";
+				var output = process.StandardOutput.ReadToEndAsync();
+				_ = process.StandardError.ReadToEndAsync(); // drained so a chatty tool cannot block on a full pipe
+				if (!process.WaitForExit(5000)) { try { process.Kill(); } catch (InvalidOperationException) { } return $"({file} timed out)"; }
+				var lines = output.Result.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+				return string.Join("\n", lines.Take(maxLines)) + (lines.Length > maxLines ? $"\n... {lines.Length - maxLines} more lines" : "");
+			} catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) {
+				return $"({file} unavailable: {ex.Message})";
+			}
+		}
+		var location = Run("xdotool", "getmouselocation --shell", 10);
+		var window = System.Text.RegularExpressions.Regex.Match(location, @"WINDOW=(\d+)").Groups[1].Value;
+		var under = window.Length > 0 ? Run("xdotool", $"getwindowname {window}", 2) + " pid " + Run("xdotool", $"getwindowpid {window}", 2) + "\n" + Run("xwininfo", $"-id {window}", 20) : "";
+		return "X pointer: " + location.Replace('\n', ' ') + "\nWindow under the pointer: " + under + "\nX window tree:\n" + Run("xwininfo", "-root -tree", 60);
+	}
+
 	public static async Task<bool> PollUntilAsync(
 		Func<Task<bool>> condition,
 		TimeSpan timeout,

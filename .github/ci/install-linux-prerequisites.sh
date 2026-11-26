@@ -42,5 +42,8 @@ if [[ "$display" == 1 ]]; then
   # its own libglfw.so.3, but GLFW dlopens the X11 client libraries (libXrandr, libXinerama, libXcursor, libXi, ...) at
   # init, and without them every window fails with "Couldn't find a suitable window platform (GlfwPlatform - not
   # applicable)". The system package pulls exactly those in; LibreWinForms' own CI installs it for the same reason.
-  sudo apt-get install -y libglfw3 xvfb libgtk-3-0 libgtk-4-1 libadwaita-1-0 libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin blueprint-compiler libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
+  # xdotool, x11-utils (xwininfo): diagnostics only. When a native XTest press never reaches the IDE window, the
+  # integration tests report the pointer position, the window under it and the X window tree
+  # (OpenDevelopAppFixture.X11PointerDiagnostics).
+  sudo apt-get install -y libglfw3 xvfb xdotool x11-utils libgtk-3-0 libgtk-4-1 libadwaita-1-0 libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin blueprint-compiler libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
 fi
