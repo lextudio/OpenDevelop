@@ -25,6 +25,6 @@ tests/fixtures/WpfHotReloadFixture/App.xaml	AttributeWhitespace
 tests/fixtures/WpfHotReloadFixture/MainWindow.xaml	AttributeWhitespace
 tests/fixtures/WpfHotReloadFixture/SamplePane.xaml	AttributeWhitespace
 tests/fixtures/XsgLocalFeedFixture/App.xaml	NotLoadable
-tests/fixtures/XsgLocalFeedFixture/MainWindow.xaml	AttributeWhitespace
+tests/fixtures/XsgLocalFeedFixture/MainWindow.xaml	Other
 tests/fixtures/XsgLocalFeedFixture/SecondWindow.xaml	AttributeWhitespace
 tests/fixtures/XsgLocalFeedFixture/ThirdWindow.xaml	NotLoadable
