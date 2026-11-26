@@ -38,5 +38,9 @@ if [[ "$display" == 1 ]]; then
   # manifests, and Blueprint's compiler for the .blp compile/decompile/language-server journey.
   # ubuntu-latest happens to include most of these, but the native Ubuntu ARM64 image does not;
   # install the complete toolchain explicitly so designer lanes do not depend on image drift.
-  sudo apt-get install -y xvfb libgtk-3-0 libgtk-4-1 libadwaita-1-0 libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin blueprint-compiler libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
+  # libglfw3: the LibreWinForms designer child (FormsDesigner.Host) creates its windows with Silk.NET over GLFW. It ships
+  # its own libglfw.so.3, but GLFW dlopens the X11 client libraries (libXrandr, libXinerama, libXcursor, libXi, ...) at
+  # init, and without them every window fails with "Couldn't find a suitable window platform (GlfwPlatform - not
+  # applicable)". The system package pulls exactly those in; LibreWinForms' own CI installs it for the same reason.
+  sudo apt-get install -y libglfw3 xvfb libgtk-3-0 libgtk-4-1 libadwaita-1-0 libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin blueprint-compiler libx11-xcb1 libxkbcommon0 libgl1 libvulkan1 mesa-vulkan-drivers
 fi
