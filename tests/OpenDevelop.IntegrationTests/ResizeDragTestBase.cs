@@ -102,9 +102,13 @@ public abstract class ResizeDragTestBase(OpenDevelopAppFixture app)
             }
             else
             {
+                using var monitor = OpenDevelopAppFixture.StartX11EventMonitor();
                 var pressed = await App.PressPointerAsync(x, y);
                 Assert.True(pressed.GetProperty("ok").GetBoolean(), pressed.ToString());
                 delivery = await App.InvokeAsync("od.pointer-events", false);
+                var xEvents = monitor.Stop();
+                if (delivery.GetProperty("count").GetInt32() == 0)
+                    pointerDeliveries.Add(xEvents);
             }
             pointerDeliveries.Add($"attempt {attempt}: press ({x},{y}) observed={delivery}");
             if (delivery.GetProperty("count").GetInt32() == 0)

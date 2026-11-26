@@ -755,6 +755,66 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 	// conditions return almost immediately; slow ones still get polled at a reasonable cadence and
 	// still respect the same overall timeout as before.
 	/// <summary>
+	/// Linux only: watches the X input events around a native press with <c>xinput test-xi2 --root</c> (a passive XI2
+	/// listener, it takes nothing away from the app). <see cref="X11EventMonitor.Stop"/> returns the button events with the
+	/// window the server delivered each to (event/child), which tells a press routed elsewhere (a grab, another client's
+	/// window) from one the IDE window received and lost. Elsewhere, or without xinput, it reports that instead.
+	/// </summary>
+	public static X11EventMonitor StartX11EventMonitor() => new();
+
+	public sealed class X11EventMonitor : IDisposable
+	{
+		readonly Process? process;
+		readonly StringBuilder output = new();
+		readonly string? unavailable;
+
+		internal X11EventMonitor()
+		{
+			if (!OperatingSystem.IsLinux()) { unavailable = "(X11 event capture is Linux only)"; return; }
+			try {
+				// stdbuf -oL: on a pipe xinput's stdout is block-buffered, and Stop kills it, which would lose the buffered events.
+				process = Process.Start(new ProcessStartInfo("stdbuf", "-oL xinput test-xi2 --root") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false });
+				if (process == null) { unavailable = "(xinput did not start)"; return; }
+				process.OutputDataReceived += (_, e) => { if (e.Data != null) lock (output) output.AppendLine(e.Data); };
+				process.ErrorDataReceived += (_, e) => { if (e.Data != null) lock (output) output.AppendLine("stderr: " + e.Data); };
+				process.BeginOutputReadLine();
+				process.BeginErrorReadLine();
+				Thread.Sleep(300); // let it select the events before the press
+			} catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException) {
+				unavailable = "(xinput unavailable: " + ex.Message + ")";
+			}
+		}
+
+		/// <summary>Ends the capture if <see cref="Stop"/> was not reached (the press threw): the listener must not outlive it.</summary>
+		public void Dispose()
+		{
+			try { if (process is { HasExited: false }) process.Kill(); } catch (InvalidOperationException) { }
+			process?.Dispose();
+		}
+
+		/// <summary>Stops the capture; the button press/release events seen, each with its detail lines.</summary>
+		public string Stop()
+		{
+			if (unavailable != null) return unavailable;
+			Thread.Sleep(300);
+			try { if (process is { HasExited: false }) process.Kill(); } catch (InvalidOperationException) { }
+			process?.WaitForExit(2000);
+			string text; lock (output) text = output.ToString();
+			var lines = text.Split('\n');
+			var picked = new List<string>();
+			for (int i = 0; i < lines.Length; i++) {
+				if (!lines[i].Contains("ButtonPress") && !lines[i].Contains("ButtonRelease") && !lines[i].StartsWith("stderr:")) continue;
+				for (int j = i; j < Math.Min(lines.Length, i + 14) && (j == i || !lines[j].StartsWith("EVENT")); j++)
+					if (j == i || lines[j].Contains("device") || lines[j].Contains("detail") || lines[j].Contains("root:") || lines[j].Contains("event:") || lines[j].Contains("windows:") || lines[j].Contains("flags"))
+						picked.Add(lines[j].TrimEnd());
+			}
+			return picked.Count == 0
+				? $"X input events during the press: no ButtonPress/ButtonRelease seen ({lines.Length} lines captured)"
+				: "X input events during the press:\n" + string.Join("\n", picked.Take(60));
+		}
+	}
+
+	/// <summary>
 	/// Linux only: where the X pointer is, which window is under it and the X window stack, for a native press that never
 	/// reached the main window. Needs xdotool and xwininfo (x11-utils), which the CI display prerequisites install;
 	/// elsewhere, or without them, it says so instead of failing.
