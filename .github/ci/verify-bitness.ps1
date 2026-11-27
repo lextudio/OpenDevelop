@@ -69,13 +69,20 @@ if (-not $RunnerOnly) {
         $sibling = Join-Path $PayloadRoot "runtimes/$siblingRid/native"
         $siblingCount = @(Get-ChildItem -LiteralPath $sibling -Filter *.dll -File -ErrorAction SilentlyContinue).Count
         if ($siblingCount -eq 0) { throw "The unified Windows payload is missing its '$siblingRid' assets at runtimes/$siblingRid/native." }
-        # A copy left over from an older closure would shadow the RID-neutral managed payload in deps resolution
-        # (the failure launch.ps1 documents: an old PresentationCore beside a new PresentationFramework).
-        foreach ($rid in @('win-x64', 'win-arm64')) {
-            $stale = Join-Path $PayloadRoot "runtimes/$rid/lib"
-            if (Test-Path -LiteralPath $stale) {
-                throw "The payload still carries '$stale'; the closure no longer ships a per-RID managed copy, so this is a stale one."
+        # The closure stopped shipping its per-RID managed copy (PresentationFramework, PresentationCore,
+        # WindowsBase, ...) under runtimes/<rid>/lib; one left over from an older closure shadows the
+        # RID-neutral managed payload in deps resolution (the failure launch.ps1 documents: an old
+        # PresentationCore beside a new PresentationFramework). Only those framework assemblies are
+        # rejected: the release payload legitimately stages mixed-mode ProGPU/WinForms assets in the same
+        # directory, and this check never runs against a release payload anyway.
+        $staleFramework = foreach ($rid in @('win-x64', 'win-arm64')) {
+            foreach ($assembly in @('PresentationFramework.dll', 'PresentationCore.dll', 'WindowsBase.dll')) {
+                $candidate = Join-Path $PayloadRoot "runtimes/$rid/lib/net10.0/$assembly"
+                if (Test-Path -LiteralPath $candidate) { $candidate }
             }
+        }
+        if (@($staleFramework).Count -gt 0) {
+            throw "The payload still carries a per-RID managed copy from an older closure: $(@($staleFramework) -join ', ')."
         }
         Write-Host "verify-bitness: payload carries $dlls $expectedRid and $siblingCount $siblingRid native assemblies."
     }
