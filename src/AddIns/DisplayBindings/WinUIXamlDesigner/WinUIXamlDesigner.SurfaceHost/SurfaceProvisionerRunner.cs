@@ -37,13 +37,28 @@ public static class SurfaceProvisionerRunner
 		Directory.CreateDirectory(request.CacheDirectory);
 		Directory.CreateDirectory(request.StagingDirectory);
 
-		var psi = new ProcessStartInfo(exe) {
+		// The package's apphost is built for one architecture (x64). On Windows ARM64 it ran under emulation and, with
+		// DOTNET_ROOT pointing at the native ARM64 dotnet below, failed to load that hostfxr (0x800700C1,
+		// ERROR_BAD_EXE_FORMAT) and wrote nothing. Run the framework-dependent DLL through the chosen dotnet instead,
+		// which is native on every architecture; fall back to the apphost only if the DLL is missing.
+		string dll = Path.ChangeExtension(exe, ".dll");
+		bool viaDotnet = File.Exists(dll);
+		var psi = new ProcessStartInfo(viaDotnet ? request.DotnetExecutable ?? "dotnet" : exe) {
 			UseShellExecute = false,
 			RedirectStandardOutput = true,
 			RedirectStandardError = true,
 			CreateNoWindow = true,
 			WorkingDirectory = Path.GetDirectoryName(request.ProjectFile)!,
 		};
+		if (viaDotnet) {
+			// The DLL targets net10; "Major" uses net10 when the chosen dotnet has it and otherwise the next major
+			// (an ARM64 machine may carry only the net11 runtime natively). The apphost resolved the same way only
+			// from its own architecture's install.
+			psi.ArgumentList.Add("exec");
+			psi.ArgumentList.Add("--roll-forward");
+			psi.ArgumentList.Add("Major");
+			psi.ArgumentList.Add(dll);
+		}
 		foreach (string argument in new[] {
 			"--build", "--project", request.ProjectFile,
 			"--surface-project", surfaceProject, "--previewhostpri-project", previewProject,
