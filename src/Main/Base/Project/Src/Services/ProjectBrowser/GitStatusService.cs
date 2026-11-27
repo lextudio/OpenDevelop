@@ -341,6 +341,10 @@ public static class GitStatusService
         // .git/index.lock; when it is killed (the timeout below, or the IDE exiting) the lock is
         // left behind and every later git command in that repository fails.
         psi.Environment["GIT_OPTIONAL_LOCKS"] = "0";
+        // core.fsmonitor names a command that `git status` runs; a cloned repository's own config can
+        // set it, so it is forced off for every repository (doc/technotes/workspace-trust.md).
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add("core.fsmonitor=false");
         foreach (var arg in arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             psi.ArgumentList.Add(arg);
 

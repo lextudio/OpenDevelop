@@ -208,6 +208,8 @@ namespace OpenDevelop.Terminal
 				cwd = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 			TerminalSession session;
 			try {
+				if (!WorkspaceTrust.Demand(TrustCapability.LaunchTerminal))
+					throw new WorkspaceNotTrustedException(TrustCapability.LaunchTerminal);
 				session = await TerminalSession.StartAsync(shell ?? TerminalSession.DefaultShell(), cwd, columns, rows, TerminalTheme.Current(), arguments, environment).ConfigureAwait(true);
 			} catch {
 				if (group.Panes.Count == 0)

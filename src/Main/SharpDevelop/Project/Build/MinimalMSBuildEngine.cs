@@ -147,6 +147,9 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// null means the IDE's effective SDK, as before.</param>
 		static ProcessStartInfo CreateDotnetChildStartInfo(DotNetSdkService.SdkChoice choice = null)
 		{
+			// Backstop for every child `dotnet` run (restore, build, reference resolution): a Restricted
+			// workspace must not execute its own targets. Callers that can degrade check first.
+			WorkspaceTrust.ThrowIfDenied(TrustCapability.ExecuteBuild);
 			// No fallback: with no supported (.NET 10+) SDK there is no host to launch, and running
 			// the build under an older one is exactly what made a net10.0 project fail with an
 			// unexplained missing-import error (issue #19) instead of a message naming the cause.
@@ -370,7 +373,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// </summary>
 		public IReadOnlyDictionary<MSBuildBasedProject, IReadOnlyList<string>> ResolveAssemblyReferencePaths(IReadOnlyList<MSBuildBasedProject> projects)
 		{
-			if (projects == null || projects.Count == 0)
+			if (projects == null || projects.Count == 0 || !WorkspaceTrust.IsAllowed(TrustCapability.ExecuteBuild))
 				return new Dictionary<MSBuildBasedProject, IReadOnlyList<string>>();
 			// MSBuild's NuGet SDK resolver reads the msbuild-sdks pins of the global.json above the
 			// ENTRY project, for every project in the build. A traversal in the temp directory
@@ -515,6 +518,8 @@ namespace ICSharpCode.SharpDevelop.Project
 		static IEnumerable<string> RunResolveReferences(string projectFileName, string targetFramework, bool logErrorsToOutputPad, DotNetSdkService.SdkChoice sdk = null,
 			string recordTargetFramework = null)
 		{
+			if (!WorkspaceTrust.IsAllowed(TrustCapability.ExecuteBuild))
+				return Array.Empty<string>();
 			var psi = CreateDotnetChildStartInfo(sdk);
 			psi.ArgumentList.Add("msbuild");
 			psi.ArgumentList.Add(projectFileName);

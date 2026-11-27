@@ -75,6 +75,8 @@ namespace ICSharpCode.UnitTesting.Mtp
 		{
 			if (!File.Exists(testAssemblyPath))
 				throw new FileNotFoundException("Test assembly not found.", testAssemblyPath);
+			// Discovering or running tests executes the project's own test assembly.
+			WorkspaceTrust.ThrowIfDenied(TrustCapability.RunProgram);
 			
 			var listener = new TcpListener(IPAddress.Loopback, 0);
 			listener.Start();

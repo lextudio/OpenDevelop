@@ -244,7 +244,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
             // Declared <Analyzer> items plus what reference resolution resolved (package analyzers and
             // source generators exist only after ResolvePackageAssets), minus the SDK's code-quality rules.
-            var analyzers = ResolvedAnalyzerPaths.Filter(project.GetItemsOfType(new ItemType("Analyzer"))
+            var analyzers = !WorkspaceTrust.IsAllowed(TrustCapability.LoadAnalyzers) ? Array.Empty<string>() : ResolvedAnalyzerPaths.Filter(project.GetItemsOfType(new ItemType("Analyzer"))
                     .Select(item => item.FileName?.ToString())
                     .Concat(ResolvedAnalyzerPaths.TryGet(projectFileName) ?? Array.Empty<string>())
                     .Where(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path))
@@ -343,7 +343,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                 // missing generators would otherwise outlive the restore, which touches no project file.
                 var sliceResolved = analyzerResolver is null || !ResolvedAnalyzerPaths.Enabled
                     || ResolvedAnalyzerPaths.TryGet(projectFileName, targetFramework) is not null;
-                var analyzers = ResolvedAnalyzerPaths.Filter(evaluated.GetItems("Analyzer")
+                var analyzers = !WorkspaceTrust.IsAllowed(TrustCapability.LoadAnalyzers) ? Array.Empty<string>() : ResolvedAnalyzerPaths.Filter(evaluated.GetItems("Analyzer")
                         .Select(item => ResolveFullPath(projectDirectory, item.EvaluatedInclude))
                         .Concat(resolvedAnalyzers)
                         .Where(File.Exists))
@@ -557,7 +557,7 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
                     // A null SDK (no supported .NET 10+ install) still has to yield a stable
                     // fingerprint, so an empty slot stands in rather than throwing here.
                     // The analyzer switch changes what an entry holds (OD_RESOLVE_ANALYZERS).
-                    text.Append(ResolvedAnalyzerPaths.Enabled ? "v1|" : "v1-noanalyzers|").Append(sdk?.Sdk?.DotnetExecutablePath ?? string.Empty).Append('|').Append(sdk?.Version ?? string.Empty).Append('\n');
+                    text.Append(ResolvedAnalyzerPaths.Enabled ? "v1|" : "v1-noanalyzers|").Append(WorkspaceTrust.FingerprintToken()).Append('|').Append(sdk?.Sdk?.DotnetExecutablePath ?? string.Empty).Append('|').Append(sdk?.Version ?? string.Empty).Append('\n');
                     foreach (var input in inputs.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
                     {
                         text.Append(input).Append('|');

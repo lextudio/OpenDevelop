@@ -93,6 +93,10 @@ namespace ICSharpCode.AspNet.Mvc
 		
 		public override void Start(bool withDebugging)
 		{
+			if (!WorkspaceTrust.Demand(TrustCapability.RunProgram)) {
+				MessageService.ShowWarning(WorkspaceTrust.DescribeDenial(TrustCapability.RunProgram));
+				return;
+			}
 			try {
 				WebProjectProperties properties = WebProject.GetWebProjectProperties();
 				if (CheckWebProjectStartInfo()) {

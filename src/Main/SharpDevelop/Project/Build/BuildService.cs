@@ -58,6 +58,15 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (options == null)
 				throw new ArgumentNullException("options");
 			SD.MainThread.VerifyAccess();
+			if (!WorkspaceTrust.IsAllowed(TrustCapability.ExecuteBuild)) {
+				BuildResults denied = new BuildResults();
+				BuildError deniedError = new BuildError(null, WorkspaceTrust.DescribeDenial(TrustCapability.ExecuteBuild));
+				denied.Add(deniedError);
+				TaskService.Add(new SDTask(deniedError));
+				denied.Result = BuildResultCode.Error;
+				WorkspaceTrust.Demand(TrustCapability.ExecuteBuild);
+				return denied;
+			}
 			if (guiBuildCancellation != null) {
 				BuildResults results = new BuildResults();
 				SD.StatusBar.SetMessage(ResourceService.GetString("MainWindow.CompilerMessages.MSBuildAlreadyRunning"));

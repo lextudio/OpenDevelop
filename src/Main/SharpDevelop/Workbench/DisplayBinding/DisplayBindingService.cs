@@ -206,6 +206,11 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			if (viewContent == null)
 				throw new ArgumentNullException("viewContent");
 			
+			// Restricted Mode shows the code view only: every secondary view (the designers above all)
+			// loads project assemblies or runs project code to draw itself.
+			if (!WorkspaceTrust.IsAllowed(TrustCapability.LoadProjectAssemblies))
+				return;
+
 			foreach (DisplayBindingDescriptor binding in bindings) {
 				if (binding.IsSecondary && binding.CanOpenFile(viewContent.PrimaryFileName)) {
 					ISecondaryDisplayBinding displayBinding = binding.SecondaryBinding;

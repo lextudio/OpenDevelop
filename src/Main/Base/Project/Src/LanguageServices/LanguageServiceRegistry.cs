@@ -118,6 +118,14 @@ namespace ICSharpCode.SharpDevelop.LanguageServices
 
         public bool TryGetService(string fileNameOrExtension, out ILanguageService languageService)
         {
+            // Restricted Mode: no language service at all, so nothing is resolved (a lazily created
+            // host is never started) and every caller takes its "no language service" path.
+            // Syntax colouring comes from the editor's own highlighter, not from here.
+            if (!WorkspaceTrust.IsAllowed(TrustCapability.SemanticAnalysis))
+            {
+                languageService = null!;
+                return false;
+            }
             var extension = NormalizeExtension(ExtractExtension(fileNameOrExtension));
             if (_servicesByExtension.TryGetValue(extension, out var entry))
             {

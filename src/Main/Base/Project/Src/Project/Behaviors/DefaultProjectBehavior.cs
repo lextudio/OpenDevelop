@@ -61,6 +61,10 @@ namespace ICSharpCode.SharpDevelop.Project
 
 		void StartCore(bool withDebugging, bool enableHotReload)
 		{
+			if (!WorkspaceTrust.Demand(TrustCapability.RunProgram)) {
+				MessageService.ShowWarning(WorkspaceTrust.DescribeDenial(TrustCapability.RunProgram));
+				return;
+			}
 			ProcessStartInfo psi;
 			try {
 				// we have to call CreateStartInfo through IProject, because otherwise the

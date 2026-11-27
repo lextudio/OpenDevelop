@@ -68,6 +68,8 @@ namespace CSharpBinding
 			try { await previous; } catch { }
 			if (generation != Volatile.Read(ref solutionGeneration))
 				return;
+			if (!WorkspaceTrust.IsAllowed(TrustCapability.SemanticAnalysis))
+				return;
 			try {
 				var snapshots = await Task.Run(() => LanguageServiceProjectSnapshotFactory.FromProjectAllTargetFrameworks(project));
 				await Task.Run(() => remote.TryLoadProjectsAsync(snapshots, epoch, CancellationToken.None));
