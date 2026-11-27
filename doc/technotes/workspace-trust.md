@@ -109,12 +109,15 @@ Every executing operation --> WorkspaceTrust.Demand(capability)  (static helper)
 
 - Opening an unknown folder shows a dialog with three choices: **Trust this folder**, **Trust the
   parent folder** (hidden when the parent is too broad), **Restricted Mode**. Closing the dialog means
-  Restricted.
+  Restricted. When the folder itself is too broad to trust (a filesystem root, the user profile) only
+  Restricted Mode is offered. A load that fails or is cancelled clears the workspace again, so the badge
+  and the gates do not outlive a solution that never opened.
 - Restricted Mode is announced by a **"Restricted Mode" badge** in the status bar (`SDStatusBar`,
   button `WorkspaceTrustBadge`, orange, right side): it is visible exactly while a workspace is open,
   trust is enabled and the workspace is Restricted, follows `TrustChanged`, and a click opens
   Tools > Workspace Trust. The status message at open time and the Build output error when a build is
   refused say the same in words.
+- A solution handed over as an object (New Project) goes through the same open-time decision; `OpenSolution(ISolution)` does not persist trust by itself, because it cannot tell a created solution from one a caller supplied.
 - `Tools > Workspace Trust...` opens `WorkspaceTrustWindow`, with or without a solution open. It shows
   the state of the open workspace and lists every stored trusted folder; **Revoke Selected** and
   **Revoke All** remove them (revoking a parent folder removes the trust of everything under it, which
@@ -179,7 +182,11 @@ collapsed parent when trust is off.
 
 `tests/OpenDevelop.Base.Tests/WorkspaceTrustTests.cs` covers trust-root discovery, containment and
 case rules, persistence round trip and corrupt files, the too-broad guard, the enable switches, the
-`IsAllowed` matrix, `TrustChanged`, the language-service registry gate and the git fsmonitor guard. Run:
+`IsAllowed` matrix, `TrustChanged`, the language-service registry gate and the git fsmonitor guard.
+`WorkspaceTrustPromptTests` drives the open-time decision with a scripted dialog (restricted, closed,
+trust folder, trust parent, already trusted, trust off, too-broad root) and the revoke rule;
+`WorkspaceTrustResourcesTests` covers the strings. The `SDProjectService` wiring itself (ordering
+against loading, cleanup on failure) is verified only through DevFlow runs, not by a unit test. Run:
 
 ```bash
 /usr/local/share/dotnet/dotnet test --project tests/OpenDevelop.Base.Tests/OpenDevelop.Base.Tests.csproj -c Debug -- --filter-class '*WorkspaceTrust*'

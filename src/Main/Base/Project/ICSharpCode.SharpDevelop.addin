@@ -88,6 +88,8 @@
 		         class="ICSharpCode.SharpDevelop.Templates.TemplateService"/>
 		<Service id="ICSharpCode.SharpDevelop.Project.IBuildService"
 		         class="ICSharpCode.SharpDevelop.Project.BuildService"/>
+		<Service id="ICSharpCode.SharpDevelop.IWorkspaceTrustService"
+		         class="ICSharpCode.SharpDevelop.WorkspaceTrustService"/>
 		<Service id="ICSharpCode.SharpDevelop.Project.IProjectService"
 		         class="ICSharpCode.SharpDevelop.Project.SDProjectService"/>
 		<Service id="ICSharpCode.SharpDevelop.ILanguageService"
@@ -1923,6 +1925,9 @@
 			<MenuItem id = "ToolBuilder" type="Builder" class = "ICSharpCode.SharpDevelop.Commands.ToolMenuBuilder" />
 			<MenuItem id = "Separator1" type = "Separator" />
 			<Include id = "ToolList" path = "/SharpDevelop/Workbench/Tools" />
+			<MenuItem id = "WorkspaceTrust"
+			          label = "${res:XML.MainMenu.ToolMenu.WorkspaceTrust}"
+			          class = "ICSharpCode.SharpDevelop.Commands.WorkspaceTrustCommand"/>
 			<MenuItem id = "Separator2" type = "Separator" />
 			
 			<Condition name = "SolutionOpen" action="Disable">

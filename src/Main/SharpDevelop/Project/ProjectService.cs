@@ -171,7 +171,11 @@ namespace ICSharpCode.SharpDevelop.Project
 			solutionBuilder.WaitUntilIdle();
 			if (!CloseSolution(allowCancel: true))
 				return false;
-			FileUtility.ObservedLoad(OpenSolutionOrProjectInternal, fileName);
+			try {
+				FileUtility.ObservedLoad(OpenSolutionOrProjectInternal, fileName);
+			} finally {
+				ClearWorkspaceTrustIfNoSolution();
+			}
 			
 			return currentSolution != null;
 		}
@@ -208,6 +212,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			if (!CloseSolution(allowCancel: true))
 				return false;
 
+			WorkspaceTrustPrompt.Establish(SD.GetService<IWorkspaceTrustService>(), fileName);
 			BeginSolutionOpen();
 			ResolveProjectBindings();
 			LoadingSolution = fileName;
@@ -225,6 +230,7 @@ namespace ICSharpCode.SharpDevelop.Project
 					if (load != loadingSolutionGeneration)
 						return; // superseded: the user has moved on, do not report this load's failure
 					EndLoadingSolution(load);
+					ClearWorkspaceTrustIfNoSolution();
 					ObservedLoadReportingAllErrors(() => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex).Throw(), fileName);
 				});
 				return false;
@@ -243,7 +249,10 @@ namespace ICSharpCode.SharpDevelop.Project
 					return false;
 				}
 				EndLoadingSolution(load);
-				return solution != null && CompleteSolutionOpen(solution, fileName); // null: cancelled or superseded
+				bool opened = solution != null && CompleteSolutionOpen(solution, fileName); // null: cancelled or superseded
+				if (!opened)
+					ClearWorkspaceTrustIfNoSolution();
+				return opened;
 			});
 		}
 
@@ -252,6 +261,16 @@ namespace ICSharpCode.SharpDevelop.Project
 		/// nor be published: a newer open or a close advances it (<see cref="SupersedeLoadsInProgress"/>).
 		/// </summary>
 		int loadingSolutionGeneration;
+
+		/// <summary>
+		/// A load that failed or was cancelled leaves the workspace decided at its start behind; nothing is open, so the
+		/// Restricted badge and gates must not stay. Not while another load is in flight: that one decided its own.
+		/// </summary>
+		void ClearWorkspaceTrustIfNoSolution()
+		{
+			if (currentSolution == null && loadingSolution == null)
+				SD.GetService<IWorkspaceTrustService>()?.SetCurrentWorkspace(null);
+		}
 
 		/// <summary>
 		/// Called by every open and by <see cref="CloseSolution"/>: cancels a background build still running, and
@@ -341,6 +360,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		
 		void OpenSolutionInternal(FileName fileName)
 		{
+			WorkspaceTrustPrompt.Establish(SD.GetService<IWorkspaceTrustService>(), fileName);
 			BeginSolutionOpen();
 			Solution solution;
 			using (var progress = SD.StatusBar.CreateProgressMonitor()) {
@@ -516,6 +536,9 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 			if (!fileName.HasExtension(".sln"))
 				return fileName;
+			// `dotnet sln migrate` runs in the solution's folder; a Restricted workspace opens the .sln as it is.
+			if (!WorkspaceTrust.IsAllowed(TrustCapability.ExecuteBuild))
+				return fileName;
 
 			var slnxFileName = new FileName(Path.ChangeExtension(fileName, ".slnx"));
 			if (SD.FileSystem.FileExists(slnxFileName)) {
@@ -580,7 +603,11 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 			if (!CloseSolution(allowCancel: true))
 				return false;
-			FileUtility.ObservedLoad(OpenSolutionInternal, fileName);
+			try {
+				FileUtility.ObservedLoad(OpenSolutionInternal, fileName);
+			} finally {
+				ClearWorkspaceTrustIfNoSolution();
+			}
 			return currentSolution != null;
 		}
 		
@@ -590,6 +617,13 @@ namespace ICSharpCode.SharpDevelop.Project
 				throw new ArgumentNullException("solution");
 			if (!CloseSolution(allowCancel: true))
 				return false;
+			var trust = SD.GetService<IWorkspaceTrustService>();
+			if (trust != null && trust.CurrentWorkspaceRoot == null && solution.FileName != null) {
+				// A solution handed over as an object without a prior decision takes the open-time decision as
+				// well. This method cannot tell a solution the user just created from one a caller supplied, so
+				// it must not persist trust on its own.
+				WorkspaceTrustPrompt.Establish(trust, solution.FileName);
+			}
 			this.CurrentSolution = solution;
 			OnSolutionOpened(solution);
 			return true;
@@ -638,6 +672,7 @@ namespace ICSharpCode.SharpDevelop.Project
 		{
 			if (!Path.IsPathRooted(fileName))
 				throw new ArgumentException("Path must be rooted!");
+			WorkspaceTrustPrompt.Establish(SD.GetService<IWorkspaceTrustService>(), fileName);
 			FileName solutionFile = new FileName(Path.ChangeExtension(fileName, ".sln"));
 			if (!SD.FileSystem.FileExists(solutionFile)) {
 				FileName solutionFileX = new FileName(Path.ChangeExtension(fileName, ".slnx"));
@@ -735,6 +770,7 @@ namespace ICSharpCode.SharpDevelop.Project
 			
 			StopObservingConfigurationChanges(solution);
 			this.CurrentSolution = null; // this will fire the CurrentSolutionChanged event
+			SD.GetService<IWorkspaceTrustService>()?.SetCurrentWorkspace(null);
 			SolutionClosed(this, new SolutionEventArgs(solution));
 			MessageBus.Send(this, new SolutionClosedMessageEventArgs(solution, NextLifecycleRevision()));
 			solution.Dispose();

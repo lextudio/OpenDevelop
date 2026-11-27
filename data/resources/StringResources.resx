@@ -11392,4 +11392,91 @@ Press Esc to cancel this operation.</value>
   <data name="Dialog.Options.IDEOptions.Keyboard.AndMore" xml:space="preserve">
     <value>and {0} more</value>
   </data>
+  <data name="XML.MainMenu.ToolMenu.WorkspaceTrust" xml:space="preserve">
+    <value>Workspace T&amp;rust…</value>
+  </data>
+  <data name="WorkspaceTrust.Title" xml:space="preserve">
+    <value>Workspace Trust</value>
+  </data>
+  <data name="WorkspaceTrust.RestrictedMode" xml:space="preserve">
+    <value>Restricted Mode</value>
+  </data>
+  <data name="WorkspaceTrust.TrustFolder" xml:space="preserve">
+    <value>Trust Folder</value>
+  </data>
+  <data name="WorkspaceTrust.TrustParentFolder" xml:space="preserve">
+    <value>Trust Parent Folder</value>
+  </data>
+  <data name="WorkspaceTrust.Prompt.Caption" xml:space="preserve">
+    <value>Do you trust the authors of this folder?</value>
+  </data>
+  <data name="WorkspaceTrust.Prompt.Text" xml:space="preserve">
+    <value>OpenDevelop is about to open a solution from:
+
+{0}
+
+Build tools, analyzers, designers, debuggers and test hosts can run code that lives in this folder. In Restricted Mode OpenDevelop is a text editor with basic syntax highlighting for this solution: no code completion or other semantic analysis, no designers (code view only), no build, run, debug or tests, no analyzers or source generators, and no terminals.
+
+Trust the folder only if you know where it came from.</value>
+  </data>
+  <data name="WorkspaceTrust.StatusMessage" xml:space="preserve">
+    <value>Restricted Mode: code view with basic syntax highlighting only; semantic analysis, designers, build, run, debug, tests and terminals are disabled. Tools &gt; Workspace Trust changes this.</value>
+  </data>
+  <data name="WorkspaceTrust.Badge.ToolTip" xml:space="preserve">
+    <value>Restricted Mode: code view with basic syntax highlighting only. Semantic analysis, designers, build, run, debug, tests and terminals are disabled. Click to manage Workspace Trust.</value>
+  </data>
+  <data name="WorkspaceTrust.Window.Heading" xml:space="preserve">
+    <value>Trusted folders (code in these folders may be built, run and analyzed):</value>
+  </data>
+  <data name="WorkspaceTrust.Window.RevokeSelected" xml:space="preserve">
+    <value>Revoke Selected</value>
+  </data>
+  <data name="WorkspaceTrust.Window.RevokeAll" xml:space="preserve">
+    <value>Revoke All</value>
+  </data>
+  <data name="WorkspaceTrust.Window.TrustCurrent" xml:space="preserve">
+    <value>Trust Current Workspace...</value>
+  </data>
+  <data name="WorkspaceTrust.Window.StatusDisabled" xml:space="preserve">
+    <value>Workspace Trust is switched off (OD_WORKSPACE_TRUST=0): every folder is treated as trusted.</value>
+  </data>
+  <data name="WorkspaceTrust.Window.StatusNoSolution" xml:space="preserve">
+    <value>No solution is open.</value>
+  </data>
+  <data name="WorkspaceTrust.Window.StatusOpen" xml:space="preserve">
+    <value>Open workspace: {0}</value>
+  </data>
+  <data name="WorkspaceTrust.Window.StateTrusted" xml:space="preserve">
+    <value>Trusted.</value>
+  </data>
+  <data name="WorkspaceTrust.Window.StateRestricted" xml:space="preserve">
+    <value>Restricted Mode.</value>
+  </data>
+  <data name="WorkspaceTrust.Window.RevokedNote" xml:space="preserve">
+    <value>The open workspace is no longer trusted. Analyzers and assemblies already loaded stay in memory until OpenDevelop restarts; builds, runs, debugging, tests, terminals, designers and semantic analysis are refused from now on.</value>
+  </data>
+  <data name="WorkspaceTrust.NotAvailable" xml:space="preserve">
+    <value>Workspace Trust is not available.</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.LoadAnalyzers" xml:space="preserve">
+    <value>Loading analyzers and source generators is disabled because this workspace is in Restricted Mode. Use Tools &gt; Workspace Trust to trust it.</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.ExecuteBuild" xml:space="preserve">
+    <value>Restoring and building is disabled because this workspace is in Restricted Mode. Use Tools &gt; Workspace Trust to trust it.</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.RunProgram" xml:space="preserve">
+    <value>Running, debugging and testing is disabled because this workspace is in Restricted Mode. Use Tools &gt; Workspace Trust to trust it.</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.LoadProjectAssemblies" xml:space="preserve">
+    <value>Loading project assemblies in a designer is disabled because this workspace is in Restricted Mode. Use Tools &gt; Workspace Trust to trust it.</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.LaunchTerminal" xml:space="preserve">
+    <value>Starting a terminal is disabled because this workspace is in Restricted Mode. Use Tools &gt; Workspace Trust to trust it.</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.SemanticAnalysis" xml:space="preserve">
+    <value>Semantic analysis is disabled because this workspace is in Restricted Mode. Use Tools &gt; Workspace Trust to trust it.</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.Default" xml:space="preserve">
+    <value>This operation is disabled because this workspace is in Restricted Mode. Use Tools &gt; Workspace Trust to trust it.</value>
+  </data>
 </root>

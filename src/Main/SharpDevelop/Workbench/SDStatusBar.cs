@@ -41,6 +41,10 @@ namespace ICSharpCode.SharpDevelop.Workbench
 		StatusBarItem selectionStatusBarPanel = new StatusBarItem();
 		StatusBarItem modeStatusBarPanel   = new StatusBarItem();
 		
+		// Workspace Trust badge (doc/technotes/workspace-trust.md): shown only while the open workspace is Restricted.
+		StatusBarItem trustStatusBarPanel = new StatusBarItem { Visibility = Visibility.Collapsed };
+		IWorkspaceTrustService trustService;
+
 		public StatusBarItem CursorStatusBarPanel {
 			get {
 				return cursorStatusBarPanel;
@@ -92,14 +96,49 @@ namespace ICSharpCode.SharpDevelop.Workbench
 			DockPanel.SetDock(cursorStatusBarPanel, Dock.Right);
 			DockPanel.SetDock(statusProgressBarItem, Dock.Right);
 			DockPanel.SetDock(jobNamePanel, Dock.Right);
+			DockPanel.SetDock(trustStatusBarPanel, Dock.Right);
 			
 			Items.Add(modeStatusBarPanel);
 			Items.Add(selectionStatusBarPanel);
 			Items.Add(cursorStatusBarPanel);
 			Items.Add(statusProgressBarItem);
 			Items.Add(jobNamePanel);
+			Items.Add(trustStatusBarPanel);
 			
 			Items.Add(txtStatusBarPanel);
+
+			var badge = new Button {
+				Name = "WorkspaceTrustBadge",
+				Content = WorkspaceTrust.Text("WorkspaceTrust.RestrictedMode", "Restricted Mode"),
+				Padding = new Thickness(8, 0, 8, 0),
+				Margin = new Thickness(0, 0, 6, 0),
+				FontWeight = FontWeights.SemiBold,
+				Foreground = Brushes.White,
+				Background = Brushes.DarkOrange,
+				ToolTip = WorkspaceTrust.Text("WorkspaceTrust.Badge.ToolTip",
+					"Restricted Mode: code view with basic syntax highlighting only. Semantic analysis, designers, build, run, debug, tests and terminals are disabled. Click to manage Workspace Trust.")
+			};
+			badge.Click += (_, _) => new ICSharpCode.SharpDevelop.Commands.WorkspaceTrustCommand().Run();
+			trustStatusBarPanel.Content = badge;
+			Loaded += (_, _) => HookWorkspaceTrust();
+		}
+
+		void HookWorkspaceTrust()
+		{
+			if (trustService != null)
+				return;
+			trustService = SD.GetService<IWorkspaceTrustService>();
+			if (trustService == null)
+				return;
+			trustService.TrustChanged += (_, _) => SD.MainThread.InvokeAsyncAndForget(UpdateTrustBadge);
+			UpdateTrustBadge();
+		}
+
+		void UpdateTrustBadge()
+		{
+			bool restricted = trustService != null && trustService.IsEnabled
+				&& trustService.CurrentWorkspaceRoot != null && trustService.CurrentState == TrustState.Restricted;
+			trustStatusBarPanel.Visibility = restricted ? Visibility.Visible : Visibility.Collapsed;
 		}
 		
 		public void SetMessage(string message, bool highlighted, string actionText = null, Action action = null)

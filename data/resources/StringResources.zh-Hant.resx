@@ -10978,4 +10978,91 @@ SharpDevelop 2 編譯資源的方式有所不同：資源名稱不只是檔案�
   <data name="Dialog.Options.IDEOptions.Keyboard.AndMore" xml:space="preserve">
     <value>等另外 {0} 個</value>
   </data>
+  <data name="XML.MainMenu.ToolMenu.WorkspaceTrust" xml:space="preserve">
+    <value>工作區信任(&amp;R)...</value>
+  </data>
+  <data name="WorkspaceTrust.Title" xml:space="preserve">
+    <value>工作區信任</value>
+  </data>
+  <data name="WorkspaceTrust.RestrictedMode" xml:space="preserve">
+    <value>受限模式</value>
+  </data>
+  <data name="WorkspaceTrust.TrustFolder" xml:space="preserve">
+    <value>信任此資料夾</value>
+  </data>
+  <data name="WorkspaceTrust.TrustParentFolder" xml:space="preserve">
+    <value>信任父資料夾</value>
+  </data>
+  <data name="WorkspaceTrust.Prompt.Caption" xml:space="preserve">
+    <value>您信任此資料夾的作者嗎？</value>
+  </data>
+  <data name="WorkspaceTrust.Prompt.Text" xml:space="preserve">
+    <value>OpenDevelop 即將開啟位於以下位置的解決方案：
+
+{0}
+
+建置工具、分析器、設計工具、偵錯工具和測試主機都可能執行此資料夾中的程式碼。在受限模式下，OpenDevelop 對該解決方案只是一個具基本語法醒目提示的文字編輯器：沒有程式碼完成等語意分析，沒有設計工具（僅程式碼檢視），不能建置、執行、偵錯或測試，不載入分析器和原始碼產生器，也不能啟動終端機。
+
+只有在確認此資料夾來源可靠時才選擇信任。</value>
+  </data>
+  <data name="WorkspaceTrust.StatusMessage" xml:space="preserve">
+    <value>受限模式：僅提供程式碼檢視和基本語法醒目提示；語意分析、設計工具、建置、執行、偵錯、測試和終端機均已停用。可透過「工具 &gt; 工作區信任」變更。</value>
+  </data>
+  <data name="WorkspaceTrust.Badge.ToolTip" xml:space="preserve">
+    <value>受限模式：僅提供程式碼檢視和基本語法醒目提示。語意分析、設計工具、建置、執行、偵錯、測試和終端機均已停用。按一下以管理工作區信任。</value>
+  </data>
+  <data name="WorkspaceTrust.Window.Heading" xml:space="preserve">
+    <value>受信任的資料夾（這些資料夾中的程式碼可以被建置、執行和分析）：</value>
+  </data>
+  <data name="WorkspaceTrust.Window.RevokeSelected" xml:space="preserve">
+    <value>撤銷所選</value>
+  </data>
+  <data name="WorkspaceTrust.Window.RevokeAll" xml:space="preserve">
+    <value>全部撤銷</value>
+  </data>
+  <data name="WorkspaceTrust.Window.TrustCurrent" xml:space="preserve">
+    <value>信任目前工作區...</value>
+  </data>
+  <data name="WorkspaceTrust.Window.StatusDisabled" xml:space="preserve">
+    <value>工作區信任已關閉（OD_WORKSPACE_TRUST=0）：所有資料夾都被視為受信任。</value>
+  </data>
+  <data name="WorkspaceTrust.Window.StatusNoSolution" xml:space="preserve">
+    <value>目前沒有開啟解決方案。</value>
+  </data>
+  <data name="WorkspaceTrust.Window.StatusOpen" xml:space="preserve">
+    <value>已開啟的工作區：{0}</value>
+  </data>
+  <data name="WorkspaceTrust.Window.StateTrusted" xml:space="preserve">
+    <value>已信任。</value>
+  </data>
+  <data name="WorkspaceTrust.Window.StateRestricted" xml:space="preserve">
+    <value>受限模式。</value>
+  </data>
+  <data name="WorkspaceTrust.Window.RevokedNote" xml:space="preserve">
+    <value>已開啟的工作區不再受信任。已載入的分析器和組件會保留在記憶體中，直到重新啟動 OpenDevelop；從現在起，建置、執行、偵錯、測試、終端機、設計工具和語意分析都會被拒絕。</value>
+  </data>
+  <data name="WorkspaceTrust.NotAvailable" xml:space="preserve">
+    <value>工作區信任無法使用。</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.LoadAnalyzers" xml:space="preserve">
+    <value>載入分析器和原始碼產生器已停用，因為此工作區處於受限模式。請使用「工具 &gt; 工作區信任」來信任它。</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.ExecuteBuild" xml:space="preserve">
+    <value>還原和建置已停用，因為此工作區處於受限模式。請使用「工具 &gt; 工作區信任」來信任它。</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.RunProgram" xml:space="preserve">
+    <value>執行、偵錯和測試已停用，因為此工作區處於受限模式。請使用「工具 &gt; 工作區信任」來信任它。</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.LoadProjectAssemblies" xml:space="preserve">
+    <value>在設計工具中載入專案組件已停用，因為此工作區處於受限模式。請使用「工具 &gt; 工作區信任」來信任它。</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.LaunchTerminal" xml:space="preserve">
+    <value>啟動終端機已停用，因為此工作區處於受限模式。請使用「工具 &gt; 工作區信任」來信任它。</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.SemanticAnalysis" xml:space="preserve">
+    <value>語意分析已停用，因為此工作區處於受限模式。請使用「工具 &gt; 工作區信任」來信任它。</value>
+  </data>
+  <data name="WorkspaceTrust.Denied.Default" xml:space="preserve">
+    <value>此操作已停用，因為此工作區處於受限模式。請使用「工具 &gt; 工作區信任」來信任它。</value>
+  </data>
 </root>
