@@ -88,6 +88,7 @@ agent_exited() { ! kill -0 "$app_pid" 2>/dev/null; }
 source "$repo_root/build/verify-packaged-common.sh"
 
 echo '==> Starting the packaged OpenDevelop payload with DevFlow enabled...'
+seed_workspace_trust "$repo_root" "$payload"
 app_log="$config_dir/OpenDevelop.stdio.log"
 DEVFLOW_ENABLE=1 DEVFLOW_AGENT_PORT="$port" \
   dotnet "$payload/OpenDevelop.dll" "-devflow:$port" "-configdir:$config_dir" \

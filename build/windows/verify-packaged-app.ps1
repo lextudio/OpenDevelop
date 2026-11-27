@@ -105,6 +105,13 @@ try {
     # An ARM64 runner has no x64 .NET runtime, so the x64 launcher's child host never starts there and the agent never answers.
     $launcherName = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) { 'OpenDevelopARM64.exe' } else { 'OpenDevelop.exe' }
     $launcher = Join-Path $payload $launcherName
+    # The shipped default asks before opening a folder it has not been told about, and nobody can answer here; record
+    # the journey's trees with the same workspace-trust.json the IDE writes.
+    $trustedAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $trustRoots = @($repoRoot, $payload) | Where-Object { $_ } | Select-Object -Unique |
+        ForEach-Object { [ordered]@{ path = $_; trustedAt = $trustedAt; source = 'release-payload-check' } }
+    [ordered]@{ version = 1; trusted = @($trustRoots) } | ConvertTo-Json -Depth 4 |
+        Set-Content -LiteralPath (Join-Path $configDir 'workspace-trust.json') -Encoding utf8
     $arguments = @("-devflow:$Port", "-configdir:$configDir")
     Write-Host "==> Starting the packaged application ($launcher)..."
     if (Test-Path -LiteralPath $launcher) {

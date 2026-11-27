@@ -39,6 +39,17 @@ invoke() {
   jq -er '.returnValue | fromjson' <<<"$response"
 }
 
+# seed_workspace_trust <root>...: records the trees these journeys open as trusted in the isolated config directory.
+# The shipped default asks before opening a folder it has not been told about, and there is nobody to answer here; this
+# is the persisted-decision path (the same workspace-trust.json the IDE writes), not a switch that disables the feature.
+seed_workspace_trust() {
+  local at
+  at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  jq -n --arg at "$at" --args \
+    '{version: 1, trusted: ($ARGS.positional | map({path: ., trustedAt: $at, source: "release-payload-check"}))}' \
+    "$@" > "$config_dir/workspace-trust.json"
+}
+
 # wait_for_agent <attempts>: polls the status endpoint every 2 s, then requires two workbench-backed reads, because the
 # agent listens before the docking workbench has finished constructing.
 wait_for_agent() {

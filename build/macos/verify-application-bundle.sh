@@ -117,6 +117,8 @@ verify_label='macOS release bundle verification'
 # shellcheck source=../verify-packaged-common.sh
 source "$repo_root/build/verify-packaged-common.sh"
 
+seed_workspace_trust "$repo_root" "$app_path"
+
 echo '==> Starting the packaged OpenDevelop app with DevFlow enabled...'
 # A CLR fatal error (unhandled exception outside our handlers, FailFast, stack overflow) writes a
 # small triage dump; its presence or absence in a failure tells "the runtime aborted" apart from
