@@ -59,16 +59,25 @@ if (-not $RunnerOnly) {
     Write-Host "verify-bitness: every IL-only assembly outside the per-RID trees is AnyCPU."
 
     if ($Platform -like 'windows-*') {
-        # Windows resolves the LibreWPF payload per architecture from these trees; both must be present because the one
-        # package serves both lanes.
-        $own = Join-Path $PayloadRoot "runtimes/$expectedRid/lib/net10.0"
+        # Both Windows RIDs must be present because the one payload serves both lanes. Since the closure stopped
+        # shipping a per-RID managed copy under runtimes/<rid>/lib (openavalon's audit rejects it), the per-architecture
+        # part of the payload is its native tree.
+        $own = Join-Path $PayloadRoot "runtimes/$expectedRid/native"
         $dlls = @(Get-ChildItem -LiteralPath $own -Filter *.dll -File -ErrorAction SilentlyContinue).Count
-        if ($dlls -eq 0) { throw "The payload has no '$expectedRid' managed assets at runtimes/$expectedRid/lib/net10.0." }
+        if ($dlls -eq 0) { throw "The payload has no '$expectedRid' assets at runtimes/$expectedRid/native." }
         $siblingRid = if ($expectedRid -eq 'win-x64') { 'win-arm64' } else { 'win-x64' }
-        $sibling = Join-Path $PayloadRoot "runtimes/$siblingRid/lib/net10.0"
+        $sibling = Join-Path $PayloadRoot "runtimes/$siblingRid/native"
         $siblingCount = @(Get-ChildItem -LiteralPath $sibling -Filter *.dll -File -ErrorAction SilentlyContinue).Count
-        if ($siblingCount -eq 0) { throw "The unified Windows payload is missing its '$siblingRid' assets at runtimes/$siblingRid/lib/net10.0." }
-        Write-Host "verify-bitness: payload carries $dlls $expectedRid and $siblingCount $siblingRid managed assemblies."
+        if ($siblingCount -eq 0) { throw "The unified Windows payload is missing its '$siblingRid' assets at runtimes/$siblingRid/native." }
+        # A copy left over from an older closure would shadow the RID-neutral managed payload in deps resolution
+        # (the failure launch.ps1 documents: an old PresentationCore beside a new PresentationFramework).
+        foreach ($rid in @('win-x64', 'win-arm64')) {
+            $stale = Join-Path $PayloadRoot "runtimes/$rid/lib"
+            if (Test-Path -LiteralPath $stale) {
+                throw "The payload still carries '$stale'; the closure no longer ships a per-RID managed copy, so this is a stale one."
+            }
+        }
+        Write-Host "verify-bitness: payload carries $dlls $expectedRid and $siblingCount $siblingRid native assemblies."
     }
     elseif ($Platform -like 'macos-*') {
         # dist.macos.sh ships osx-arm64 only and the portable bootstrap loads the payload from the app base.

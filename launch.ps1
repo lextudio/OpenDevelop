@@ -95,6 +95,9 @@ function Sync-LibreWpfDevelopmentRuntime {
     # paired it with a newer PresentationFramework and broke every TextBox with
     # "MissingMethodException: InputManager.get_UsesPortableInput()".
     # Only take the RID copy when it is not older than the RID-neutral one it would replace.
+    # Since the closure stopped shipping runtimes/<rid>/lib/net10.0 there is no RID copy to install; the loop above
+    # already put the RID-neutral payload in place.
+    if (Test-Path -LiteralPath $runtimeDir) {
     foreach ($assembly in 'PresentationCore.dll', 'DirectWriteForwarder.dll') {
         $source = Join-Path $runtimeDir $assembly
         if (-not (Test-Path -LiteralPath $source)) {
@@ -111,6 +114,7 @@ function Sync-LibreWpfDevelopmentRuntime {
             }
         }
         Copy-Item -LiteralPath $source -Destination (Join-Path $outputDir $assembly) -Force
+    }
     }
 }
 
