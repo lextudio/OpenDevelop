@@ -445,7 +445,8 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 		var winUIRuntime = Environment.GetEnvironmentVariable("OD_WINUI_RUNTIME");
 		if (!string.IsNullOrEmpty(winUIRuntime))
 			psi.Environment["OD_WINUI_RUNTIME"] = winUIRuntime;
-		foreach (var variable in new[] { "OD_FORMS_RUNTIME", "OD_WPF_RUNTIME" }) {
+		// PROGPU_WPF_TRACE_INPUT makes LibreWPF log each pointer event and where it drops one (see InputTraceTail).
+		foreach (var variable in new[] { "OD_FORMS_RUNTIME", "OD_WPF_RUNTIME", "PROGPU_WPF_TRACE_INPUT" }) {
 			var value = Environment.GetEnvironmentVariable(variable);
 			if (!string.IsNullOrEmpty(value))
 				psi.Environment[variable] = value;
@@ -811,6 +812,33 @@ public sealed class OpenDevelopAppFixture : IAsyncLifetime
 			return picked.Count == 0
 				? $"X input events during the press: no ButtonPress/ButtonRelease seen ({lines.Length} lines captured)"
 				: "X input events during the press:\n" + string.Join("\n", picked.Take(60));
+		}
+	}
+
+	/// <summary>
+	/// The last LibreWPF input-trace lines ("ProGPU WPF input ...") of this launch's app log: which pointer events reached the
+	/// window host and where one was dropped (modal scope, popup, activation hook, no route). Empty unless the test process
+	/// ran with PROGPU_WPF_TRACE_INPUT=1, which the fixture forwards to the app.
+	/// </summary>
+	public string InputTraceTail(int lines = 40)
+	{
+		if (Environment.GetEnvironmentVariable("PROGPU_WPF_TRACE_INPUT") is not ("1" or "true"))
+			return "(LibreWPF input trace off: set PROGPU_WPF_TRACE_INPUT=1)";
+		try {
+			if (_appLogPath == null || !File.Exists(_appLogPath)) return "(no app log)";
+			using var stream = new FileStream(_appLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+			using var reader = new StreamReader(stream);
+			var trace = new Queue<string>();
+			string? line;
+			while ((line = reader.ReadLine()) != null) {
+				if (!line.Contains("ProGPU WPF input", StringComparison.Ordinal)) continue;
+				trace.Enqueue(line);
+				if (trace.Count > lines) trace.Dequeue();
+			}
+			return trace.Count == 0 ? "(no LibreWPF input-trace lines: the press never reached the window host, or this LibreWPF predates the trace)"
+				: "LibreWPF input trace (last " + trace.Count + "):\n" + string.Join("\n", trace);
+		} catch (Exception ex) {
+			return "(input trace unreadable: " + ex.Message + ")";
 		}
 	}
 

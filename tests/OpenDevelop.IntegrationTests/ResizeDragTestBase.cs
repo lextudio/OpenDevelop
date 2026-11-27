@@ -146,6 +146,6 @@ public abstract class ResizeDragTestBase(OpenDevelopAppFixture app)
                 : "No native resize press reached the main window after " + maxAttempts + " attempts; this is a foreground/input-delivery failure, not a designer resize failure.")
             + " before=" + before + "\nPointer deliveries:\n"
             + string.Join(Environment.NewLine, pointerDeliveries) + "\nafter=" + after
-            + (deliveredPress ? "" : "\n" + OpenDevelopAppFixture.X11PointerDiagnostics()));
+            + (deliveredPress ? "" : "\n" + OpenDevelopAppFixture.X11PointerDiagnostics() + "\n" + App.InputTraceTail()));
     }
 }

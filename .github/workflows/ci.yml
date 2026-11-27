@@ -693,6 +693,9 @@ jobs:
           OD_TEST_KEEP_ARTIFACTS: '1'
           OD_TEST_RESULTS: TestResults
           MSYS2_ROOT: ${{ steps.gtk-msys.outputs.msys2-location }}
+          # Linux native presses reach the IDE's X window but no WPF mouse-down follows; LibreWPF then logs each pointer
+          # event and where it drops one, and the failing press tests print the tail (OpenDevelopAppFixture.InputTraceTail).
+          PROGPU_WPF_TRACE_INPUT: ${{ startsWith(matrix.platform, 'linux') && '1' || '' }}
         run: |
           $through = -1
           if ($env:THROUGH_BATCH) { $through = [int]$env:THROUGH_BATCH }

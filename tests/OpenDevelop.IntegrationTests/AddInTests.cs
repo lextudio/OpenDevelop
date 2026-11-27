@@ -2415,7 +2415,7 @@ public sealed class AddInTests : ResizeDragTestBase, IAsyncDisposable
             var xEvents = monitor.Stop();
             Assert.True(pointerDelivery.GetProperty("count").GetInt32() > 0,
                 "The native toolbox press did not deliver a mouse-down to the main window: " + pointerDelivery
-                + "\npress=" + pressed + "\n" + xEvents + "\n" + OpenDevelopAppFixture.X11PointerDiagnostics());
+                + "\npress=" + pressed + "\n" + xEvents + "\n" + OpenDevelopAppFixture.X11PointerDiagnostics() + "\n" + _app.InputTraceTail());
             await _app.DragPointerInStepsAsync(fromX, fromY, toX, toY, steps: 8);
         }
         AssertPointerDeliveryMatchesScreenPoint(pointerDelivery, fromX, fromY);

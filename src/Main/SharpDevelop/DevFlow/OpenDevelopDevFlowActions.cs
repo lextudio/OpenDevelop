@@ -3687,8 +3687,15 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 			EventHandler onInvalidated = null;
 			long framesBefore = -1, wakeupsBefore = -1;
 			string trackerError = null;
+			// LibreWPF 2139ab8e0+ counts presented frames by reason (scene change kind and requester); older packages lack the API.
+			var setRecording = typeof(ProGpuWpfDiagnostics).GetMethod("SetPresentReasonRecording", BindingFlags.Public | BindingFlags.Static);
+			var getReasons = typeof(ProGpuWpfDiagnostics).GetMethod("TryGetPresentReasonCounts", BindingFlags.Public | BindingFlags.Static);
 			dispatcher.Invoke(() => {
 				var window = System.Windows.Application.Current.MainWindow;
+				if (setRecording != null && getReasons != null) {
+					setRecording.Invoke(null, new object[] { true });
+					getReasons.Invoke(null, new object[] { window, true, null });
+				}
 				if (ProGpuWpfDiagnostics.TryGetRenderActivitySnapshot(window, out var activity)) framesBefore = activity.PresentedFrameCount;
 				if (ProGpuWpfDiagnostics.TryGetRenderSchedulerWakeupCount(window, out var wakeups)) wakeupsBefore = wakeups;
 				try {
@@ -3711,10 +3718,18 @@ namespace ICSharpCode.SharpDevelop.DevFlow
 				long frames = -1, wakeups = -1;
 				if (ProGpuWpfDiagnostics.TryGetRenderActivitySnapshot(window, out var activity) && framesBefore >= 0) frames = activity.PresentedFrameCount - framesBefore;
 				if (ProGpuWpfDiagnostics.TryGetRenderSchedulerWakeupCount(window, out var w) && wakeupsBefore >= 0) wakeups = w - wakeupsBefore;
+				object presentReasons = "unavailable (LibreWPF without SetPresentReasonRecording)";
+				if (setRecording != null && getReasons != null) {
+					var arguments = new object[] { window, true, null };
+					if (getReasons.Invoke(null, arguments) is true && arguments[2] is IReadOnlyDictionary<string, long> counts)
+						presentReasons = counts.OrderByDescending(p => p.Value).Select(p => new { reason = p.Key, frames = p.Value }).ToArray();
+					setRecording.Invoke(null, new object[] { false });
+				}
 				return JsonSerializer.Serialize(new {
 					success = true,
 					periodMs = period.TotalMilliseconds,
 					presentedFrames = frames,
+					presentReasons,
 					schedulerWakeups = wakeups,
 					trackerError,
 					dirtySources = dirty.OrderByDescending(p => p.Value).Take(15).Select(p => new { source = p.Key, count = p.Value }).ToArray(),
