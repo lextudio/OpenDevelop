@@ -23,7 +23,7 @@
 				<ListBox.GroupStyle>
 					<GroupStyle>
 						<GroupStyle.HeaderTemplate>
-							<DataTemplate DataType="Group">
+							<DataTemplate DataType="{x:Type CollectionViewGroup}">
 								<TextBlock FontWeight="Bold" Text="{Binding Name}" />
 							</DataTemplate>
 						</GroupStyle.HeaderTemplate>

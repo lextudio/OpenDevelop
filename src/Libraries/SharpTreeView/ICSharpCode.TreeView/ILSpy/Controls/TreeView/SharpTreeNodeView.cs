@@ -75,7 +75,12 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 		{
 			base.OnVisualParentChanged(oldParent);
 			ParentItem = this.FindAncestor<SharpTreeViewItem>();
+			if (ParentItem == null)
+				return; // removed from the tree
 			ParentItem.NodeView = this;
+			// The DataContext can arrive while the node view is attached, before its visual parent is known: the indent waits for it.
+			if (Template != null && Node != null)
+				UpdateTemplate();
 		}
 
 		protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
@@ -92,7 +97,7 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 			if (newNode != null)
 			{
 				newNode.PropertyChanged += Node_PropertyChanged;
-				if (Template != null)
+				if (Template != null && ParentItem != null)
 				{
 					UpdateTemplate();
 				}
@@ -105,6 +110,9 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 
 		void Node_PropertyChanged(object sender, PropertyChangedEventArgs e)
 		{
+			// Detached from the tree (no SharpTreeViewItem above): there is no tree view to update, and the indent is recomputed when it is attached again.
+			if (ParentItem == null)
+				return;
 			if (e.PropertyName == "IsEditing")
 			{
 				OnIsEditingChanged();
@@ -132,7 +140,9 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 
 		void OnIsEditingChanged()
 		{
-			var textEditorContainer = Template.FindName("textEditorContainer", this) as Border;
+			var textEditorContainer = Template?.FindName("textEditorContainer", this) as Border;
+			if (textEditorContainer == null || Node == null)
+				return;
 			if (Node.IsEditing)
 			{
 				if (CellEditor == null)
@@ -149,9 +159,12 @@ namespace ICSharpCode.ILSpy.Controls.TreeView
 		void UpdateTemplate()
 		{
 			var spacer = Template.FindName("spacer", this) as FrameworkElement;
+			var expander = Template.FindName("expander", this) as ToggleButton;
+			// The template can be set before its parts exist (it is applied later, and OnApplyTemplate comes back here).
+			if (spacer == null || expander == null || ParentItem == null)
+				return;
 			spacer.Width = CalculateIndent();
 
-			var expander = Template.FindName("expander", this) as ToggleButton;
 			if (ParentTreeView.Root == Node && !ParentTreeView.ShowRootExpander)
 			{
 				expander.Visibility = Visibility.Collapsed;
