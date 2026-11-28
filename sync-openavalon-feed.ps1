@@ -133,9 +133,55 @@ if (-not $Force -and (@($packages | Where-Object {
     return
 }
 
+# Two ways to authenticate, because the GitHub CLI is not something every contributor has: gh (the shortest
+# path) or a token in the environment. Environment variables only - a -Token parameter would put the
+# credential on the command line, where every process on the machine can read it.
+# gh comes first; the environment token is the fallback, and whichever one GitHub rejects for packages (an
+# under-scoped token is common) is skipped for the other before the sync gives up.
 $gh = Get-Command gh -ErrorAction SilentlyContinue
-if ($null -eq $gh) {
-    throw 'GitHub CLI (gh) is required. Install it, run gh auth login, then grant package read access with: gh auth refresh -h github.com -s read:packages'
+$environmentToken = if (-not [string]::IsNullOrWhiteSpace($env:OD_GITHUB_TOKEN)) {
+    $env:OD_GITHUB_TOKEN.Trim()
+} elseif (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN)) {
+    $env:GITHUB_TOKEN.Trim()
+} else {
+    $null
+}
+
+$credentials = [System.Collections.Generic.List[object]]::new()
+if ($null -ne $gh) {
+    $ghToken = (& $gh.Source auth token --hostname github.com 2>$null | Out-String).Trim()
+    $ghLogin = if ([string]::IsNullOrWhiteSpace($ghToken)) { '' } else { (& $gh.Source api user --jq '.login' 2>$null | Out-String).Trim() }
+    if (-not [string]::IsNullOrWhiteSpace($ghToken) -and -not [string]::IsNullOrWhiteSpace($ghLogin)) {
+        $credentials.Add([pscustomobject]@{ Source = 'gh'; Login = $ghLogin; Token = $ghToken })
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($environmentToken)) {
+    # Basic auth needs a user name; ask GitHub whose token this is. A token that may not read /user
+    # (a fine-grained token without that permission) still works for packages with the conventional
+    # x-access-token name.
+    $environmentLogin = ''
+    try {
+        $userClient = [System.Net.Http.HttpClient]::new()
+        $userClient.Timeout = [TimeSpan]::FromSeconds(30)
+        $userClient.DefaultRequestHeaders.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $environmentToken)
+        $userClient.DefaultRequestHeaders.UserAgent.ParseAdd('OpenDevelop-openavalon-feed-sync')
+        try {
+            $environmentLogin = [string](($userClient.GetStringAsync('https://api.github.com/user').GetAwaiter().GetResult() | ConvertFrom-Json).login)
+        } finally {
+            $userClient.Dispose()
+        }
+    } catch {
+        $environmentLogin = ''
+    }
+    if ([string]::IsNullOrWhiteSpace($environmentLogin)) {
+        $environmentLogin = 'x-access-token'
+    }
+    if (-not ($credentials | Where-Object { $_.Token -eq $environmentToken })) {
+        $credentials.Add([pscustomobject]@{ Source = 'environment'; Login = $environmentLogin; Token = $environmentToken })
+    }
+}
+if ($credentials.Count -eq 0) {
+    throw 'No usable GitHub credential to read lextudio GitHub Packages. Either run gh auth login followed by gh auth refresh -h github.com -s read:packages, or set OD_GITHUB_TOKEN (or GITHUB_TOKEN) to a token that has the read:packages scope.'
 }
 
 # Keep the credential entirely in this process: it is never placed in NuGet.config, an environment
@@ -143,22 +189,28 @@ if ($null -eq $gh) {
 $token = $null
 $client = $null
 try {
-    $token = (& $gh.Source auth token --hostname github.com 2>$null | Out-String).Trim()
-    if ([string]::IsNullOrWhiteSpace($token)) {
-        throw 'gh has no usable GitHub credential. Run gh auth login, then grant package read access with: gh auth refresh -h github.com -s read:packages'
+    $index = $null
+    $rejected = [System.Collections.Generic.List[string]]::new()
+    foreach ($credential in $credentials) {
+        $client = [System.Net.Http.HttpClient]::new()
+        $client.Timeout = [TimeSpan]::FromMinutes(15)
+        $credentialBytes = [Text.Encoding]::UTF8.GetBytes("$($credential.Login):$($credential.Token)")
+        $client.DefaultRequestHeaders.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Basic', [Convert]::ToBase64String($credentialBytes))
+        $client.DefaultRequestHeaders.UserAgent.ParseAdd('OpenDevelop-openavalon-feed-sync')
+        try {
+            $index = $client.GetStringAsync('https://nuget.pkg.github.com/lextudio/index.json').GetAwaiter().GetResult() | ConvertFrom-Json
+            $token = $credential.Token
+            break
+        } catch {
+            $rejected.Add("$($credential.Source) credential: $($_.Exception.Message)")
+            $client.Dispose()
+            $client = $null
+        }
     }
-    $login = (& $gh.Source api user --jq '.login' 2>$null | Out-String).Trim()
-    if ([string]::IsNullOrWhiteSpace($login)) {
-        throw 'gh could not determine the authenticated GitHub user. Run gh auth login, then grant package read access with: gh auth refresh -h github.com -s read:packages'
+    if ($null -eq $client) {
+        throw "Could not read lextudio GitHub Packages with any available credential ($($rejected -join '; ')). Grant the GitHub CLI package access with gh auth refresh -h github.com -s read:packages, or set OD_GITHUB_TOKEN (or GITHUB_TOKEN) to a token with the read:packages scope."
     }
 
-    $client = [System.Net.Http.HttpClient]::new()
-    $client.Timeout = [TimeSpan]::FromMinutes(15)
-    $credentialBytes = [Text.Encoding]::UTF8.GetBytes("${login}:$token")
-    $client.DefaultRequestHeaders.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Basic', [Convert]::ToBase64String($credentialBytes))
-    $client.DefaultRequestHeaders.UserAgent.ParseAdd('OpenDevelop-openavalon-feed-sync')
-
-    $index = $client.GetStringAsync('https://nuget.pkg.github.com/lextudio/index.json').GetAwaiter().GetResult() | ConvertFrom-Json
     $flatContainer = @($index.resources | Where-Object { $_.'@type' -like 'PackageBaseAddress/*' } | Select-Object -First 1).'@id'
     if ([string]::IsNullOrWhiteSpace($flatContainer)) {
         throw 'The lextudio GitHub Packages service index did not expose a NuGet flat-container endpoint.'
@@ -228,8 +280,8 @@ try {
     }
 } catch {
     $detail = $_.Exception.Message
-    if ($detail -match '401|403|Unauthorized|Forbidden') {
-        throw "Could not read lextudio GitHub Packages. Grant gh package access with: gh auth refresh -h github.com -s read:packages"
+    if ($detail -notlike 'Could not read lextudio GitHub Packages*' -and $detail -match '401|403|Unauthorized|Forbidden') {
+        throw "Could not read lextudio GitHub Packages with the credential in use. With gh: gh auth refresh -h github.com -s read:packages. With a token: make sure OD_GITHUB_TOKEN (or GITHUB_TOKEN) has the read:packages scope and is not expired."
     }
     throw
 } finally {

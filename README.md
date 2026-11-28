@@ -377,10 +377,45 @@ The project intentionally develops these pieces in the open so that individual c
 
 ### Requirements
 
-- .NET 10 SDK
-- Git with submodule support
+- **.NET 11 SDK** (`global.json` pins the SDK band; .NET 10 alone is not enough for this tree).
+- **Git with submodule support.**
+- **PowerShell 7+** (`pwsh`) for `build.ps1`, `launch.ps1` and `dist.ps1`.
+- **A GitHub token with the `read:packages` scope.** LibreWPF, LibreWinForms, ProGPU, the AvalonEdit/AvalonDock
+  forks, DevFlow, SharpDbg and LibGhostty are published to lextudio GitHub Packages, which requires
+  authentication even though the packages are public. This is a one-time step, explained below.
+- **Windows only:** Visual Studio with the MSBuild component, for the projects `dotnet build` cannot build.
 
-Clone with submodules, or initialize them after cloning.
+Clone with submodules, or initialize them after cloning:
+
+```sh
+git clone --recurse-submodules https://github.com/lextudio/OpenDevelop.git
+# or, in an existing clone:
+git submodule update --init --recursive
+```
+
+### Package access before the first build
+
+`artifacts/openavalon-feed` is a local, token-free copy of the private package closure. Your first build
+must create it, which needs GitHub credentials; after that the build restores offline from that folder.
+Use whichever of these you have:
+
+```sh
+# With the GitHub CLI (shortest path):
+gh auth login
+gh auth refresh -h github.com -s read:packages
+pwsh ./sync-openavalon-feed.ps1
+
+# Without gh, with a personal access token that has the read:packages scope:
+export OD_GITHUB_TOKEN=ghp_xxx        # PowerShell: $env:OD_GITHUB_TOKEN = 'ghp_xxx'
+pwsh ./sync-openavalon-feed.ps1
+```
+
+`build.ps1` and `dist.ps1` run that synchronization themselves, so a `build.ps1` invocation only needs the
+credential to exist. When both are available, `gh` is tried first and a token in `OD_GITHUB_TOKEN` is the
+fallback if GitHub rejects the `gh` credential for packages. `launch.ps1` / `launch.sh` and **Visual Studio are different: they do not synchronize
+the feed.** Opening `OpenDevelop.Mvp.slnx` in Visual Studio on a fresh clone therefore fails with
+`401 (Unauthorized)` from `nuget.pkg.github.com/lextudio`, and so does a bare `dotnet restore`. Run the
+synchronization once first; that error is not a broken checkout.
 
 ### macOS
 
@@ -392,6 +427,18 @@ Clone with submodules, or initialize them after cloning.
 ./dist.macos.sh        # produce a distributable bundle
 ./release.macos.sh --version 0.1.0-preview.2 --prepare-only # prepare a DMG with the bundled Addin SDK
 ```
+
+### Windows and Linux
+
+```sh
+pwsh ./build.ps1 shell      # the IDE host (src/Main/SharpDevelop)
+pwsh ./build.ps1 base       # one shared project
+pwsh ./build.ps1 sln        # the whole solution
+./launch.sh            # macOS and Linux: build and run
+```
+
+On Windows, Visual Studio can build the whole solution too, but only after `pwsh ./sync-openavalon-feed.ps1`
+has run once (Visual Studio's restore does not download the private closure itself).
 
 The main application solution is:
 

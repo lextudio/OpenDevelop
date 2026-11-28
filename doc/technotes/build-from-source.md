@@ -31,9 +31,9 @@ and no longer describe this tree. Use the `.slnx` and the scripts above.
 
 ## Prerequisites
 
-- **.NET 10 SDK.** `global.json` pins the SDK band and the `LibreWPF.Sdk` MSBuild SDK version; build
-  with the `dotnet` that resolves through it (the scripts call `Find-DotNetHost` for exactly this),
-  not with an arbitrary host on `PATH`.
+- **.NET 11 SDK.** `global.json` pins the SDK band (11.0.100) and the `LibreWPF.Sdk` MSBuild SDK version;
+  build with the `dotnet` that resolves through it (the scripts call `Find-DotNetHost` for exactly this),
+  not with an arbitrary host on `PATH`. .NET 10 alone does not build this tree.
 - **Submodules.** `git submodule update --init --recursive`. `externals/*` (WpfDesigner, cps,
   XamlToCSharpGenerator, ...) are compiled sources; nothing builds without them.
 - **Windows: Visual Studio with the MSBuild component.** Projects whose path contains `MicrosoftHost`
@@ -41,8 +41,15 @@ and no longer describe this tree. Use the `.slnx` and the scripts above.
   `vswhere`.
 - **PowerShell 7+** for any `.ps1`; the `.bat`/`.sh` wrappers only need `pwsh` on `PATH` (or in the
   well-known Homebrew/Program Files locations).
-- **OpenAvalon package feed.** Run `./sync-openavalon-feed.ps1` once after authenticating `gh` with
-  `read:packages`; the normal build and distribution scripts do this automatically. It downloads the
+- **OpenAvalon package feed.** Run `pwsh ./sync-openavalon-feed.ps1` once with a GitHub credential that has
+  `read:packages`: either the `gh` CLI (`gh auth login`, then
+  `gh auth refresh -h github.com -s read:packages`) or a token in `OD_GITHUB_TOKEN` (or `GITHUB_TOKEN`)
+  for contributors who do not have `gh`; `gh` is tried first, and the token is used when GitHub rejects the
+  `gh` credential for packages. The script accepts no token argument on purpose - a credential
+  on the command line is readable by every process. `build.ps1` and `dist.ps1` do this automatically;
+  **`launch.ps1` / `launch.sh` and Visual Studio do not**, and a restore that runs before the first
+  synchronization fails with `401 (Unauthorized)` from `nuget.pkg.github.com/lextudio` (see
+  "Troubleshooting a 401" below). It downloads the
   required GitHub Packages closure into `artifacts/openavalon-feed` without writing a token to disk. The
   closure is the OpenAvalon packages (LibreWPF, LibreWinForms, ProGPU), LibGhostty.Net, the AvalonEdit and
   AvalonDock forks, the Toolkit for WPF fork (`LeXtudio.Wpf.Toolkit`), the VS editor contract packages
@@ -50,7 +57,7 @@ and no longer describe this tree. Use the `.slnx` and the scripts above.
   into the local feed first and consumed from there. The script keeps a verified package as it is, so a
   package that was republished under the same version number (GitHub Packages allows that, and it happened to
   the whole preview.69 closure and AvalonDock 5.0.1 on 2026-10-28) is only replaced by
-  `./sync-openavalon-feed.ps1 -Force`. Whenever the script copies a package it also deletes that version's
+  `pwsh ./sync-openavalon-feed.ps1 -Force`. Whenever the script copies a package it also deletes that version's
   extracted folder under `artifacts/nuget-packages`, because NuGet does not re-extract a version it already has.
   `NuGet.config` keeps all restores in this checkout's `artifacts/nuget-packages` cache, including
   direct `dotnet test --project` commands, so its same-version LibGhostty.Net fork cannot be confused
@@ -58,6 +65,23 @@ and no longer describe this tree. Use the `.slnx` and the scripts above.
 - **macOS:** `rsync` (the bundle script requires it), plus a working C toolchain. `LibreWPF.Sdk`
   compiles a native Win32-compat shim with `cc -dynamiclib`; `dist.macos.sh` probes for a linkable
   macOS SDK and pins `SDKROOT` if the default one is too old for the linker.
+
+## Troubleshooting a 401 from `nuget.pkg.github.com/lextudio`
+
+A restore that fails this way is almost always one of two things:
+
+1. **`artifacts/openavalon-feed` does not exist yet** (a fresh clone, or something ran `dotnet restore` or
+   Visual Studio before any build script). Run `pwsh ./sync-openavalon-feed.ps1` once with a credential. The
+   folder is git-ignored, so it never arrives with the clone.
+2. **The credential lacks the `read:packages` scope** (a default `gh auth login` does not grant it; a
+   personal access token needs it explicitly). With `gh`, run
+   `gh auth refresh -h github.com -s read:packages`; with a token, create one with that scope and set
+   `OD_GITHUB_TOKEN`.
+
+NuGet's own message ("Please ensure your access token is valid and has the appropriate scopes") does not
+say this, and even a correctly synchronized checkout may log the same 401 as a warning: `NuGet.config`
+maps the private closure to both the local folder and `lextudio_github`, so NuGet asks the private feed
+when the local folder cannot answer. A warning with a successful restore is harmless.
 
 ## Why not a bare `dotnet build` - the three traps
 
@@ -86,12 +110,12 @@ and no longer describe this tree. Use the `.slnx` and the scripts above.
 ## Inner loop: `build.ps1`
 
 ```bash
-./build.ps1 shell                       # the IDE host (src/Main/SharpDevelop)
-./build.ps1 base -Then shell            # a shared assembly, then the host, one pinned pass
-./build.ps1 unodesignhost -Kill         # one AddIn, killing file locks first
-./build.ps1 winui -List                 # what does this fuzzy name match? (builds nothing)
-./build.ps1 sln                         # the whole OpenDevelop.Mvp.slnx
-./build.ps1 shell -Configuration Release
+pwsh ./build.ps1 shell                       # the IDE host (src/Main/SharpDevelop)
+pwsh ./build.ps1 base -Then shell            # a shared assembly, then the host, one pinned pass
+pwsh ./build.ps1 unodesignhost -Kill         # one AddIn, killing file locks first
+pwsh ./build.ps1 winui -List                 # what does this fuzzy name match? (builds nothing)
+pwsh ./build.ps1 sln                         # the whole OpenDevelop.Mvp.slnx
+pwsh ./build.ps1 shell -Configuration Release
 ```
 
 Shortcuts: `shell`/`host`, `base`, `core`, `sln`/`all`. Anything else is resolved as a path or a
@@ -103,11 +127,11 @@ Rules that bite when you ignore them:
 - **Shared assemblies are copied into every AddIn folder that references them.** Rebuilding
   `Main/Base`, `Main/Core`, `Main/Designer` or `ICSharpCode.SharpDevelop.Widgets` refreshes only the
   shared copy, so the app can still load a stale per-AddIn copy. `build.ps1` prints a warning; the
-  reliable fix is a full `./build.ps1 sln`.
+  reliable fix is a full `pwsh ./build.ps1 sln`.
 - **A shared widget is not an AddIn.** `DesignerCanvas` and friends reach the distribution through
-  the **host publish**, not through `AddIns/`, so `./build.ps1 <addin>` cannot refresh them (the app
+  the **host publish**, not through `AddIns/`, so `pwsh ./build.ps1 <addin>` cannot refresh them (the app
   then dies at document-open with a signature-level `MissingMethodException`). Use
-  `./dist.ps1 -From host`.
+  `pwsh ./dist.ps1 -From host`.
 - **Build the *UnoDesignHost* project to change the WinUI designer client.**
   `UnoDesignSurfaceControl.cs` / `UnoDesignRuntimeHost.cs` live in `WinUIXamlDesigner.UnoDesignHost`,
   whose `OutputPath` is the deployed AddIn folder; the dependency edge runs
@@ -132,11 +156,11 @@ result with *"Distribution payload contains build-only or foreign assets"*.
 ## Build and run the app: `launch.ps1` / `launch.sh`
 
 ```bash
-./launch.ps1                       # restore, build the solution, then run
-./launch.ps1 -NoBuild              # just (re)run the last build output
-./launch.ps1 -BuildOnly            # build, do not launch (what the integration tests expect)
-./launch.ps1 -Configuration Release
-./launch.ps1 SomeFile.xaml         # files to open on launch
+pwsh ./launch.ps1                       # restore, build the solution, then run
+pwsh ./launch.ps1 -NoBuild              # just (re)run the last build output
+pwsh ./launch.ps1 -BuildOnly            # build, do not launch (what the integration tests expect)
+pwsh ./launch.ps1 -Configuration Release
+pwsh ./launch.ps1 SomeFile.xaml         # files to open on launch
 ./launch.sh --build-only           # macOS wrapper for the same thing
 DEVFLOW_DISABLE=1 ./launch.sh      # run without the DevFlow agent
 ```
@@ -152,7 +176,7 @@ Two things it deliberately does **not** do:
 
 - It does not build the **Microsoft designer hosts** (`FormsDesigner/MicrosoftHost`,
   `WinUIXamlDesigner.MicrosoftHost`). Those need Visual Studio's MSBuild and come from
-  `./dist.ps1 -Phase designer-hosts` (Windows) or `./build.ps1 <MicrosoftHost project>`. Tests that
+  `pwsh ./dist.ps1 -Phase designer-hosts` (Windows) or `pwsh ./build.ps1 <MicrosoftHost project>`. Tests that
   assert the Microsoft backends require them.
 - It does not produce a distribution. `launch.ps1` output is a **development** tree, correct for the
   machine/architecture that built it. Packaging is `dist.ps1` (next).
@@ -171,13 +195,13 @@ restore -> host -> addins -> designer-hosts (Windows only) -> payload -> smoke -
 ```
 
 ```bash
-./dist.ps1 -ListPhases                 # phases for this platform, plus worked examples
-./dist.ps1 -Configuration Debug        # package a Debug build for local testing
-./dist.ps1 -Phase payload              # re-assemble OpenDevelop-win from what is already built
-./dist.ps1 -Phase payload,smoke        # ...and verify it actually starts
-./dist.ps1 -From payload               # payload, smoke and archive
-./dist.ps1 -Phase addins,payload       # rebuild all AddIns, then re-assemble
-./dist.ps1 -Phase host                 # just the host publish
+pwsh ./dist.ps1 -ListPhases                 # phases for this platform, plus worked examples
+pwsh ./dist.ps1 -Configuration Debug        # package a Debug build for local testing
+pwsh ./dist.ps1 -Phase payload              # re-assemble OpenDevelop-win from what is already built
+pwsh ./dist.ps1 -Phase payload,smoke        # ...and verify it actually starts
+pwsh ./dist.ps1 -From payload               # payload, smoke and archive
+pwsh ./dist.ps1 -Phase addins,payload       # rebuild all AddIns, then re-assemble
+pwsh ./dist.ps1 -Phase host                 # just the host publish
 ./dist.windows.bat --phase payload     # the .bat wrapper forwards flags too
 ./dist.windows.bat --from payload      # payload, smoke, then the .7z
 ./dist.windows.bat --debug             # Debug configuration
@@ -193,7 +217,7 @@ restore -> host -> addins -> designer-hosts (Windows only) -> payload -> smoke -
   `dotnet exec OpenDevelop.dll` behind; designer hosts outlive the IDE), otherwise the next payload
   phase fails with an access-denied that now explains itself.
 - Phases that consume earlier artifacts fail with an actionable message
-  (*"Run './dist.ps1 -Phase host' first"*) instead of assembling around a missing host.
+  (*"Run 'pwsh ./dist.ps1 -Phase host' first"*) instead of assembling around a missing host.
 - **The payload must carry nothing the app writes at run time.** The app's first launch writes
   `SdkResolvers/Microsoft.Build.NuGetSdkResolver/Microsoft.Build.NuGetSdkResolver.xml` into its own
   directory, naming that machine's SDK by absolute path, so it is only correct where it was written.
@@ -212,8 +236,8 @@ restore -> host -> addins -> designer-hosts (Windows only) -> payload -> smoke -
 **The patch workflow** - roughly a minute instead of a full ~15-minute `dist.windows.bat`:
 
 ```bash
-./build.ps1 unodesignhost -ForDistribution -Configuration Release
-./dist.ps1 -Phase payload,smoke -Kill
+pwsh ./build.ps1 unodesignhost -ForDistribution -Configuration Release
+pwsh ./dist.ps1 -Phase payload,smoke -Kill
 ```
 
 Never hand-copy a DLL into `OpenDevelop-win/` instead: that skips the payload's by-name dedup and
@@ -239,8 +263,8 @@ whose `LibreWPF` submodule is the fork of dotnet/wpf. Only when you change that 
 transport package layout, or the ProGPU packages) do you need to repack and re-restore:
 
 ```bash
-./repack-librewpf.ps1            # Windows
-./repack-librewpf.ps1 -Fast      # ProGPU-only; do NOT use if src/Microsoft.DotNet.Wpf/src changed
+pwsh ./repack-librewpf.ps1            # Windows
+pwsh ./repack-librewpf.ps1 -Fast      # ProGPU-only; do NOT use if src/Microsoft.DotNet.Wpf/src changed
 ./repack-librewpf.sh             # macOS
 ./rebuild-all.sh                 # macOS: repack, restore, build, run in one step
 ```
@@ -283,9 +307,9 @@ The suite drives the **real** app as a child process, so it needs a runnable dev
 distribution:
 
 ```bash
-./launch.ps1 -BuildOnly                                                    # app + shared assemblies
+pwsh ./launch.ps1 -BuildOnly                                                    # app + shared assemblies
 dotnet build tests/fixtures/SampleTestProject/SampleTestProject.csproj     # baseline fixture
-./dist.ps1 -Phase designer-hosts                                           # Windows: Microsoft backends
+pwsh ./dist.ps1 -Phase designer-hosts                                           # Windows: Microsoft backends
 ```
 
 Some test classes need their own fixture built first (for example `IlSpyAddInTests` needs
@@ -308,12 +332,12 @@ Never run two invocations concurrently - they share one app instance and one Dev
 | Symptom | Cause / fix |
 |---|---|
 | `MSB3021` / `MSB3027` "file in use" while building an AddIn under `AddIns/` | A live OpenDevelop or an out-of-process designer host holds the deployed DLL. `-Kill`, or stop `OpenDevelop`/`dotnet`/`MSBuild`. |
-| AddIn loads but *"Cannot find class …"* everywhere | GitVersion drift - a partial rebuild produced a version that no longer matches the host. Rebuild the whole solution (`./build.ps1 sln`). |
+| AddIn loads but *"Cannot find class …"* everywhere | GitVersion drift - a partial rebuild produced a version that no longer matches the host. Rebuild the whole solution (`pwsh ./build.ps1 sln`). |
 | *"The assembly architecture is not compatible …"* | A build stamped the machine's RID. Rebuild with `-p:ProGpuWpfUseCurrentRuntimeIdentifier=false` (the scripts' default). |
 | `MSB4236` "The SDK 'LibreWPF.Sdk' specified could not be found" | Known transient; retry once before investigating. |
 | `MSB3202` project file not found | You used the stale root `SharpDevelop.sln`; use `OpenDevelop.Mvp.slnx` / the `.slnx`. |
 | `MSB4062` `Microsoft.Build.Packaging.Pri.Tasks.dll` | You ran `dotnet build` on a `MicrosoftHost` project; use VS MSBuild (`build.ps1`/`dist.ps1` do this). |
-| Payload validator: *"contains build-only or foreign assets"* | The AddIn was rebuilt without `-ForDistribution` (or the `runtimes/` tree was hand-edited). Rebuild with `-ForDistribution`, then `./dist.ps1 -Phase payload`. |
+| Payload validator: *"contains build-only or foreign assets"* | The AddIn was rebuilt without `-ForDistribution` (or the `runtimes/` tree was hand-edited). Rebuild with `-ForDistribution`, then `pwsh ./dist.ps1 -Phase payload`. |
 | `NU1301` / "No packages exist with this id in source(s): librewpf-local" | The sibling `openavalon/artifacts/local-feed` is missing or empty (and the feed path must use forward slashes - a backslash is not a path separator on macOS). Run `repack-librewpf`. |
 | Full parallel build races (`MC1000` on `ICSharpCode.Core.Presentation.dll`, `CS0006` on `ICSharpCode.Data.Core.dll`) | Build those two projects first, or build with `-m:1` (the scripts do). |
 | 12-byte corrupt `.g.resources` crashing at boot | Clear `src/Main/ICSharpCode.Core.Presentation/{obj,bin}` and rebuild (what `dist.ps1`'s host phase does). |
