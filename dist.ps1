@@ -747,6 +747,16 @@ function Test-WindowsDistributionPayload {
             throw "Distribution payload is missing the $rid WPF native runtime: $native"
         }
     }
+    # The WPF designer's LibreWPF host is a separate application with its own base directory, so the IDE's
+    # folder cannot supply the managed WPF payload it starts against. v5.9.6 shipped it without
+    # PresentationFramework and the designer failed with FileNotFoundException 11.0.0.0.
+    $wpfDesignerHost = Join-Path $PayloadRoot 'AddIns\DisplayBindings\WpfDesign\Host'
+    foreach ($assembly in 'PresentationFramework.dll', 'PresentationCore.dll', 'WindowsBase.dll', 'System.Xaml.dll') {
+        $assemblyPath = Join-Path $wpfDesignerHost $assembly
+        if (-not (Test-Path -LiteralPath $assemblyPath)) {
+            throw "Distribution payload's WPF designer host is missing $assembly`: $wpfDesignerHost"
+        }
+    }
     Test-AddinSdkInPayload -PayloadRoot $PayloadRoot
     $addIns = Join-Path $PayloadRoot 'AddIns'
     if (-not (Test-Path -LiteralPath $addIns)) { throw "Distribution payload has no AddIns directory: $PayloadRoot" }

@@ -201,10 +201,14 @@
     <ItemGroup>
       <!-- LibreWPF intentionally exposes reference assemblies from ref/net10.0.
            RID-less publish can omit their lib/net10.0 implementations, which a
-           child process cannot resolve from the parent application's base dir. -->
+           child process cannot resolve from the parent application's base dir.
+           Both matches normalize the separators first: FullPath uses backslashes on
+           Windows, where the literal '/ref/' tests never matched and the child host
+           shipped without PresentationFramework/WindowsBase (v5.9.6's designer then
+           failed with FileNotFoundException for PresentationFramework 11.0.0.0). -->
       <_OpenDevelopPortableWpfReference Include="@(ReferencePath)"
-        Condition="$([System.String]::Copy('%(FullPath)').ToLowerInvariant().Contains('/librewpf.transport/')) And $([System.String]::Copy('%(FullPath)').Contains('/ref/'))" />
-      <_OpenDevelopPortableWpfRuntime Include="$([System.String]::Copy('%(_OpenDevelopPortableWpfReference.FullPath)').Replace('/ref/', '/lib/'))"
+        Condition="$([System.String]::Copy('%(FullPath)').ToLowerInvariant().Replace('\','/').Contains('/librewpf.transport/')) And $([System.String]::Copy('%(FullPath)').Replace('\','/').Contains('/ref/'))" />
+      <_OpenDevelopPortableWpfRuntime Include="$([System.String]::Copy('%(_OpenDevelopPortableWpfReference.FullPath)').Replace('\','/').Replace('/ref/', '/lib/'))"
         Condition="Exists('%(Identity)')" />
       <!-- dist.ps1 builds AddIns with ProGpuWpfCopyPackageRuntimeAssets=false because in-process
            AddIns share the IDE's copy. A child host has no such parent directory to fall back
